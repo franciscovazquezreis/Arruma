@@ -13,7 +13,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
-from .. import APP_ID, APP_NAME  # noqa: E402
+from .. import APP_ID, APP_NAME, __version__  # noqa: E402
 from ..core import taxonomy as tx  # noqa: E402
 from ..core.ai import RECOMMENDED_MODEL, AIError, AIStatus, LocalAI  # noqa: E402
 from ..core.db import Database  # noqa: E402
@@ -23,14 +23,17 @@ from ..core.fsutil import COMPUTER_TOKEN, check_root_allowed, plural  # noqa: E4
 from ..core.planner import Action, PlanCancelled, Planner  # noqa: E402
 from ..core.scanner import ScanCancelled, ScanResult, scan  # noqa: E402
 from ..core.settings import Settings  # noqa: E402
+from ..core.system import IS_LINUX, IS_MAC, TRASH_TO, ollama_install_steps  # noqa: E402
 from .page_analysis import AnalysisPage  # noqa: E402
 from .page_duplicates import DuplicatesPage  # noqa: E402
 from .page_history import HistoryPage  # noqa: E402
 from .page_home import HomePage  # noqa: E402
 from .page_plan import PlanPage  # noqa: E402
 from .page_settings import SettingsPage  # noqa: E402
-from .widgets import (Throttle, Toast, add_classes, button, choose_folders, hbox, icon, label,
+from .widgets import (MISSING_ICONS, Throttle, Toast, add_classes, button, choose_folders, hbox, icon, label,
                       load_css, message, run_bg, vbox)
+
+ICON_PNG = Path(__file__).with_name("arruma.png")
 
 NAV_ITEMS = [
     ("home", "user-home-symbolic", "Início"),
@@ -61,7 +64,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                            subtitle="Organizador de ficheiros local")
         open_btn = button("Escolher pastas…", "folder-open-symbolic",
                           on_click=self._choose_folder_header,
-                          tooltip="Analisar uma ou mais pastas (Ctrl+O)")
+                          tooltip=f"Analisar uma ou mais pastas ({'Cmd' if IS_MAC else 'Ctrl'}+O)")
         hb.pack_start(open_btn)
         self.ai_header_pill = label("IA local", "pill", "info")
         self.ai_header_pill.set_valign(Gtk.Align.CENTER)
@@ -157,9 +160,10 @@ class ArrumaWindow(Gtk.ApplicationWindow):
     def _setup_shortcuts(self) -> None:
         accel = Gtk.AccelGroup()
         self.add_accel_group(accel)
-        key, mod = Gtk.accelerator_parse("<Control>o")
+        # <Primary> é Ctrl no Linux e no Windows e Cmd no macOS.
+        key, mod = Gtk.accelerator_parse("<Primary>o")
         accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *_: (self._choose_folder_header(), True)[1])
-        key, mod = Gtk.accelerator_parse("<Control>q")
+        key, mod = Gtk.accelerator_parse("<Primary>q")
         accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *_: (self.close(), True)[1])
 
     def _choose_folder_header(self) -> None:
@@ -211,12 +215,10 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         inner.pack_start(label("Inteligência artificial 100% local", "section-title"), False, False, 0)
         inner.pack_start(label(
             "Para ler documentos e sugerir nomes em português sem usar a internet, o Arruma liga-se ao "
-            "Ollama a correr no teu computador. Só precisas de internet uma única vez para o instalar e "
-            "descarregar o modelo (cerca de 2 GB).", wrap=True, max_width=68), False, False, 0)
-
-        cmds = (f"curl -fsSL https://ollama.com/install.sh | sh\n"
-                f"sudo systemctl start ollama || (ollama serve >/dev/null 2>&1 & sleep 2)\n"
-                f"ollama pull {RECOMMENDED_MODEL}")
+            "Ollama a correr no teu computador. Depois de instalado, funciona sem internet.",
+            wrap=True, max_width=68), False, False, 0)
+        steps, cmds = ollama_install_steps(RECOMMENDED_MODEL)
+        inner.pack_start(label(steps, wrap=True, max_width=68), False, False, 0)
         cmd_box = hbox(8)
         entry = label(cmds, "mono", selectable=True)
         cmd_box.pack_start(entry, True, True, 0)
@@ -406,7 +408,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             self.scan_result.files = [f for f in self.scan_result.files if f.path not in removed]
             self.history_page.refresh()
             self.find_duplicates()
-            self.toast.show(f"{plural(res.ok, 'cópia enviada', 'cópias enviadas')} para o Lixo.",
+            self.toast.show(f"{plural(res.ok, 'cópia enviada', 'cópias enviadas')} {TRASH_TO}.",
                             "Anular", lambda: self.undo_session(res.session_id))
 
         run_bg(work, done)
@@ -433,15 +435,28 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
 
 class ArrumaApp(Gtk.Application):
-    def __init__(self):
-        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+    def __init__(self, self_test: str | None = None):
+        flags = Gio.ApplicationFlags.HANDLES_COMMAND_LINE
+        if not IS_LINUX or self_test is not None:
+            # Fora do Linux não há barramento D-Bus de sessão: cada arranque abre a sua janela.
+            flags |= Gio.ApplicationFlags.NON_UNIQUE
+        super().__init__(application_id=APP_ID, flags=flags)
         self.win: ArrumaWindow | None = None
         self._initial_folders: list[str] = []
+        self.self_test = self_test
+        self.self_test_status = 1
 
     def do_startup(self) -> None:
         Gtk.Application.do_startup(self)
         GLib.set_application_name(APP_NAME)
         load_css()
+        if ICON_PNG.exists():
+            try:
+                Gtk.Window.set_default_icon_from_file(str(ICON_PNG))
+            except GLib.Error:
+                pass
+        if IS_LINUX and Gtk.IconTheme.get_default().has_icon(APP_ID):
+            Gtk.Window.set_default_icon_name(APP_ID)
 
     def do_command_line(self, command_line: Gio.ApplicationCommandLine) -> int:
         args = command_line.get_arguments()[1:]
@@ -455,11 +470,79 @@ class ArrumaApp(Gtk.Application):
         if not self.win:
             self.win = ArrumaWindow(self)
         self.win.present()
+        if self.self_test is not None:
+            GLib.timeout_add(800, self._run_self_test)
+            return
         if self._initial_folders:
             folders, self._initial_folders = self._initial_folders, []
             self.win.start_scan(folders)
 
+    # ------------------------------------------------------------------ autoteste
+    def _run_self_test(self) -> bool:
+        """Verifica que a aplicação empacotada funciona: análise, plano e páginas da interface."""
+        import tempfile
+        import traceback
+
+        from ..core.planner import MODE_INSIDE
+        lines = [f"Arruma {__version__}", f"Python {sys.version.split()[0]} em {sys.platform}",
+                 f"GTK {Gtk.get_major_version()}.{Gtk.get_minor_version()}.{Gtk.get_micro_version()}"]
+        ok = True
+        try:
+            tmp = Path(tempfile.mkdtemp(prefix="arruma-autoteste-"))
+            root = tmp / "Bagunça"
+            root.mkdir()
+            (root / "fatura_123.txt").write_text("FATURA n.º 1 Total a pagar 10,00 EUR NIF 500", encoding="utf-8")
+            (root / "IMG_20240812_101010.jpg").write_bytes(b"\xff\xd8\xff\xe0 teste")
+            (root / "Nova pasta").mkdir()
+            (root / "Nova pasta" / "notas.txt").write_text("Apontamentos da aula de Matemática", encoding="utf-8")
+            result = scan(str(root))
+            settings = Settings(use_ai=False)
+            plan = Planner(result, settings, MODE_INSIDE, db=Database(tmp / "autoteste.db")).build()
+            lines.append(f"Análise: {len(result.files)} ficheiros; plano: {len(plan.actions)} alterações")
+            if len(plan.actions) < 3:
+                ok = False
+                lines.append("ERRO: plano incompleto")
+            self.win.scan_result = result
+            self.win.analysis_page.show_result(result)
+            self.win.plan_page.show_plan(plan)
+            self.win.navigate("plan")
+            self.win.duplicates_page.ready()
+            self.win.history_page.refresh()
+            while Gtk.events_pending():
+                Gtk.main_iteration_do(False)
+            from ..core.extract import has_ocr
+            from ..core.system import find_tool
+            for tool in ("pdftotext", "pdftoppm", "tesseract", "ollama"):
+                lines.append(f"{tool}: {find_tool(tool) or 'não encontrado'}")
+            lines.append(f"OCR: {'sim' if has_ocr() else 'não'}")
+            lines.append("Ícones em falta: " + (", ".join(sorted(MISSING_ICONS)) or "nenhum"))
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+        except Exception:  # noqa: BLE001
+            ok = False
+            lines.append(traceback.format_exc())
+        lines.append("RESULTADO: " + ("OK" if ok else "FALHOU"))
+        report = "\n".join(lines) + "\n"
+        if self.self_test:
+            Path(self.self_test).write_text(report, encoding="utf-8")
+        else:
+            print(report, end="")
+        self.self_test_status = 0 if ok else 1
+        self.quit()
+        return False
+
 
 def main(argv: list[str] | None = None) -> int:
-    return ArrumaApp().run(argv if argv is not None else sys.argv)
-
+    argv = list(argv if argv is not None else sys.argv)
+    if "--version" in argv[1:]:
+        print(f"{APP_NAME} {__version__}")
+        return 0
+    self_test = None
+    for arg in argv[1:]:
+        if arg == "--self-test" or arg.startswith("--self-test="):
+            self_test = arg.partition("=")[2]
+    argv = [a for a in argv if not a.startswith("--self-test")]
+    GLib.set_prgname("arruma")  # nome da janela, para o menu e a barra de tarefas a associarem ao Arruma
+    app = ArrumaApp(self_test=self_test)
+    status = app.run(argv)
+    return app.self_test_status if self_test is not None else status

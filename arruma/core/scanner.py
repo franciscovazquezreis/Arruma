@@ -12,6 +12,7 @@ from typing import Callable
 
 from . import taxonomy as tx
 from .fsutil import HOME, display_path, is_generic_dir_name, is_within, normalize_roots, split_ext
+from .system import PROTECTED_NAMES, is_hidden_entry, is_link_entry, is_package_dir
 
 # Pastas de projetos de programação: nunca são desmontadas.
 PROJECT_MARKERS = {
@@ -66,6 +67,8 @@ PROTECTED_DIR_NAMES = {
     "site-packages": "dependências de programação",
     "lost+found": "pasta de recuperação do disco",
     ".Trash-1000": "Lixo do sistema",
+    ".Trashes": "Lixo do sistema",
+    **PROTECTED_NAMES,
 }
 
 
@@ -136,6 +139,8 @@ class ScanCancelled(Exception):
 def _protection_reason(path: str, name: str, entries: list[str], is_root: bool) -> str | None:
     if not is_root and name in PROTECTED_DIR_NAMES:
         return PROTECTED_DIR_NAMES[name]
+    if not is_root and is_package_dir(name):
+        return "pacote de aplicação ou biblioteca (é um ficheiro só)"
     names = set(entries)
     for marker, why in LIBRARY_MARKERS.items():
         if marker in names:
@@ -193,12 +198,11 @@ def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
         subdirs: list[FolderInfo] = []
         for entry in entries:
             name = entry.name
-            if name.startswith(".") and not include_hidden:
-                if name.lower() not in tx.JUNK_NAMES:
-                    hidden += 1
-                    continue
+            if not include_hidden and name.lower() not in tx.JUNK_NAMES and is_hidden_entry(entry):
+                hidden += 1
+                continue
             try:
-                if entry.is_symlink():
+                if is_link_entry(entry):
                     links += 1
                     continue
                 if entry.is_dir(follow_symlinks=False):
@@ -214,7 +218,7 @@ def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
                     st = entry.stat(follow_symlinks=False)
                     _, ext = split_ext(name)
                     ext = ext.lower().lstrip(".")
-                    kind = tx.kind_for(name, ext)
+                    kind = tx.kind_for(name, ext, st.st_size)
                     files.append(FileItem(entry.path, name, ext, st.st_size, st.st_mtime, kind, info.path))
                     info.direct_files += 1
                     info.total_files += 1

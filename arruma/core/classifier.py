@@ -12,6 +12,7 @@ from .extract import audio_tags, date_from_name, image_info, plausible
 from .fsutil import is_unclear_name, sanitize_name, split_ext, strip_accents
 from .scanner import FileItem
 from .settings import Settings
+from .system import TRASH_TO
 
 KIND_BASE = {
     tx.DOCUMENT: "documents", tx.BOOK: "documents", tx.IMAGE: "pictures", tx.VIDEO: "videos",
@@ -90,7 +91,7 @@ def junk_placement(item: FileItem) -> Placement:
         return Placement("", (), reason=f"Transferência incompleta (parada há {int(age_days)} dias).",
                          trash=True, trash_default=age_days > 2)
     return Placement("", (), reason="Ficheiro temporário ou cópia de segurança automática. "
-                     "Confirma antes de enviar para o Lixo.", trash=True, trash_default=False,
+                     f"Confirma antes de enviar {TRASH_TO}.", trash=True, trash_default=False,
                      confidence=0.5)
 
 

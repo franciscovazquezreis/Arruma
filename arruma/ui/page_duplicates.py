@@ -9,8 +9,9 @@ from gi.repository import Gtk, Pango
 
 from ..core.duplicates import DupGroup
 from ..core.fsutil import display_path, human_size, plural
+from ..core.system import TRASH_IN, TRASH_TO
 from .widgets import (Placeholder, ProgressPanel, button, confirm, esc, hbox, kind_icon, label,
-                      open_path, show_in_folder, vbox)
+                      open_path, resolve_icon, show_in_folder, vbox)
 
 COL_ACTIVE, COL_ICON, COL_MARKUP, COL_SIZE, COL_PATH, COL_IS_FILE = range(6)
 
@@ -27,7 +28,7 @@ class DuplicatesPage(Gtk.Stack):
                                    ("Ir para o Início", lambda: win.navigate("home"))), "empty")
         self.intro = Placeholder("edit-copy-symbolic", "Ficheiros repetidos",
                                  "O Arruma compara o conteúdo dos ficheiros (não só o nome) para encontrar cópias "
-                                 "exatas. Tu escolhes o que vai para o Lixo.",
+                                 f"exatas. Tu escolhes o que vai {TRASH_TO}.",
                                  ("Procurar duplicados", win.find_duplicates))
         self.add_named(self.intro, "intro")
         self.progress = ProgressPanel(on_cancel=win.cancel_task)
@@ -85,7 +86,7 @@ class DuplicatesPage(Gtk.Stack):
                            False, False, 0)
         actions.pack_start(button("Procurar de novo", "view-refresh-symbolic", "flat", on_click=self.win.find_duplicates),
                            False, False, 0)
-        self.trash_btn = button("Enviar para o Lixo", "user-trash-symbolic", "destructive-action", "big-button",
+        self.trash_btn = button(f"Enviar {TRASH_TO}", "user-trash-symbolic", "destructive-action", "big-button",
                                 on_click=self._on_trash)
         actions.pack_end(self.trash_btn, False, False, 0)
         root.pack_start(actions, False, False, 0)
@@ -123,7 +124,7 @@ class DuplicatesPage(Gtk.Stack):
                 keep = f.path == g.keep
                 date = datetime.fromtimestamp(f.mtime).strftime("%d/%m/%Y")
                 tag = "  <span size='small' foreground='#26a269' weight='bold'>manter</span>" if keep else ""
-                self.store.append(parent, [not keep, "text-x-generic",
+                self.store.append(parent, [not keep, resolve_icon("text-x-generic"),
                                            f"{esc(f.name)}{tag}\n<span size='small' alpha='62%'>"
                                            f"{esc(display_path(os.path.dirname(f.path)))} · {date}</span>",
                                            "", f.path, True])
@@ -190,7 +191,7 @@ class DuplicatesPage(Gtk.Stack):
 
     def _on_trash(self) -> None:
         sel = self._selected_paths()
-        if sel and confirm(self.win, f"Enviar {len(sel)} cópias para o Lixo?",
-                           "Ficam no Lixo do sistema, de onde as podes recuperar. Também podes anular no Histórico.",
-                           "Enviar para o Lixo", destructive=True):
+        if sel and confirm(self.win, f"Enviar {len(sel)} cópias {TRASH_TO}?",
+                           f"Ficam {TRASH_IN} do sistema, de onde as podes recuperar. Também podes anular no Histórico.",
+                           f"Enviar {TRASH_TO}", destructive=True):
             self.win.trash_duplicates(sel)

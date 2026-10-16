@@ -8,6 +8,7 @@ from gi.repository import Gtk
 
 from ..core import taxonomy as tx
 from ..core.fsutil import display_path, plural
+from ..core.system import TRASH_FROM
 from .widgets import Placeholder, add_classes, button, hbox, icon, label, vbox
 
 
@@ -34,7 +35,7 @@ class HistoryPage(Gtk.Stack):
         outer = vbox(16, margin_top=28, margin_bottom=28, margin_start=32, margin_end=32)
         outer.pack_start(label("Histórico", "page-title"), False, False, 0)
         outer.pack_start(label("Todas as alterações feitas pelo Arruma. Anular devolve cada ficheiro ao sítio "
-                               "onde estava (e recupera do Lixo o que lá foi parar).", "dim", wrap=True),
+                               f"onde estava (e recupera {TRASH_FROM} o que lá foi parar).", "dim", wrap=True),
                          False, False, 0)
         self.list = Gtk.ListBox()
         self.list.set_selection_mode(Gtk.SelectionMode.NONE)

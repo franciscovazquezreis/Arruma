@@ -11,12 +11,13 @@ from ..core.executor import Result
 from ..core.fsutil import HOME, display_path, human_size, is_within, plural
 from ..core.planner import (Action, Plan, move_folder_in_plan, rebase_document,
                             rename_action_in_plan, rename_folder_in_plan, retarget)
+from ..core.system import TRASH_NAME, TRASH_TO
 from .widgets import (Placeholder, ProgressPanel, add_classes, button, card, choose_folder, confirm,
                       esc, format_eta, hbox, icon, kind_icon, label, open_path, prompt_text,
-                      show_in_folder, vbox)
+                      resolve_icon, show_in_folder, vbox)
 
 COL_ACTIVE, COL_INCONS, COL_ICON, COL_MARKUP, COL_ID, COL_KEY, COL_BADGE = range(7)
-TRASH_NODE = "Para o Lixo"
+TRASH_NODE = TRASH_TO[0].upper() + TRASH_TO[1:]  # «Para o Lixo» / «Para a Reciclagem»
 EMPTY_NODE = "Pastas vazias a remover"
 
 FILTERS = [
@@ -403,7 +404,7 @@ class PlanPage(Gtk.Stack):
             parent = ensure(parts[:-1])
             special = key[0] in (TRASH_NODE, EMPTY_NODE)
             exists = special or os.path.isdir(os.path.join(self.anchor, *parts))
-            ico = "user-trash" if key == (TRASH_NODE,) else ("folder" if exists else "folder-new")
+            ico = resolve_icon("user-trash" if key == (TRASH_NODE,) else ("folder" if exists else "folder-new"))
             it = store.append(parent, [True, False, ico, "", -1, "\x1f".join(key), ""])
             nodes[key] = it
             stats[key] = [0, 0, exists]
@@ -449,10 +450,8 @@ class PlanPage(Gtk.Stack):
         self._update_top_summary()
 
     def _icon(self, a: Action) -> str:
-        if a.op == "move_dir":
-            return "folder"
-        if a.op == "rmdir":
-            return "folder"
+        if a.op in ("move_dir", "rmdir"):
+            return resolve_icon("folder")
         return kind_icon(a.kind)
 
     def _leaf_markup(self, a: Action, which: str) -> str:
@@ -472,7 +471,7 @@ class PlanPage(Gtk.Stack):
                 sub = f"pasta inteira ({a.count} ficheiros) · " + sub
             return f"{name}\n" + small.format(sub)
         if a.op == "trash":
-            target = "→ Lixo (recuperável)"
+            target = f"→ {TRASH_NAME} (recuperável)"
         elif a.op == "rmdir":
             target = "→ remover (está vazia)"
         else:
@@ -770,9 +769,9 @@ class PlanPage(Gtk.Stack):
                 a.renamed = False
                 a.source = "manual"
                 a.confidence = 1.0
-                a.reason = "Movido manualmente para o Lixo."
+                a.reason = f"Movido por ti {TRASH_TO}."
                 context.finish(True, False, time)
-                GLib.idle_add(self._finish_dnd, a.id, None, f"«{a.src_name}» movido para o Lixo.")
+                GLib.idle_add(self._finish_dnd, a.id, None, f"«{a.src_name}» movido {TRASH_TO}.")
                 return
             if target_dir:
                 if a.op == "move_dir" and (target_dir == a.src or is_within(target_dir, a.src)):
@@ -817,7 +816,7 @@ class PlanPage(Gtk.Stack):
         else:
             key = model.get_value(it, COL_KEY).split("\x1f")
             n = model.iter_n_children(it)
-            self._show_folder_detail(key, model.get_value(it, COL_ICON) == "folder-new", n)
+            self._show_folder_detail(key, model.get_value(it, COL_ICON) == resolve_icon("folder-new"), n)
 
     def _set_detail(self, widget: Gtk.Widget) -> None:
         child = self.detail_scroll.get_child()
@@ -836,7 +835,7 @@ class PlanPage(Gtk.Stack):
         box.pack_start(icon("folder-new" if new else "folder", 64), False, False, 0)
         box.pack_start(label(key[-1], "section-title", wrap=True), False, False, 4)
         if key[0] in (TRASH_NODE, EMPTY_NODE):
-            txt = ("Ficheiros temporários ou automáticos. Vão para o Lixo do sistema, de onde os podes "
+            txt = (f"Ficheiros temporários ou automáticos. Vão {TRASH_TO} do sistema, de onde os podes "
                    "recuperar.") if key[0] == TRASH_NODE else "Pastas vazias sem nome próprio."
             box.pack_start(label(txt, "dim", wrap=True), False, False, 0)
         else:
@@ -894,7 +893,7 @@ class PlanPage(Gtk.Stack):
             self._field(box, "NOME ATUAL", a.src_name)
         self._field(box, "ESTÁ EM", display_path(os.path.dirname(a.src)))
         if a.op == "trash":
-            self._field(box, "VAI PARA", "Lixo do sistema (podes recuperar)")
+            self._field(box, "VAI PARA", f"{TRASH_NAME} do sistema (podes recuperar)")
         elif a.op == "rmdir":
             self._field(box, "VAI SER", "Removida (está vazia)")
         else:
@@ -909,7 +908,7 @@ class PlanPage(Gtk.Stack):
             lvl.set_value(a.confidence)
             lvl.set_size_request(-1, 8)
             box.pack_start(lvl, False, False, 2)
-            word = "Alta" if a.confidence >= 0.75 else ("Média" if a.confidence >= 0.55 else "Baixa — confirma")
+            word = "Alta" if a.confidence >= 0.75 else ("Média" if a.confidence >= 0.55 else "Baixa: confirma")
             src, _ = SOURCE_LABEL.get(a.source, (a.source, ""))
             who = f"IA local ({self.plan.ai_model})" if a.source == "IA" and self.plan.ai_model else src
             box.pack_start(label(f"{word} · decidido por {who}", "small", "dim", wrap=True), False, False, 0)
@@ -980,7 +979,7 @@ class PlanPage(Gtk.Stack):
         if moves:
             parts.append(f"{plural(moves, 'item vai ser movido', 'itens vão ser movidos')} para as novas pastas.")
         if trash:
-            parts.append(f"{plural(trash, 'ficheiro temporário vai', 'ficheiros temporários vão')} para o Lixo.")
+            parts.append(f"{plural(trash, 'ficheiro temporário vai', 'ficheiros temporários vão')} {TRASH_TO}.")
         parts.append("Nada é apagado definitivamente e podes anular tudo no Histórico.")
         if confirm(self.win, f"Aplicar {len(en)} alterações?", "\n".join(parts), "Aplicar"):
             self.win.apply_plan(en)
@@ -1000,7 +999,7 @@ class PlanPage(Gtk.Stack):
             exp = Gtk.Expander(label=f"{plural(len(res.errors), 'item não pôde', 'itens não puderam')} ser alterados")
             lst = vbox(4, margin_top=6)
             for path, err in res.errors[:100]:
-                lst.pack_start(label(f"{display_path(path)} — {err}", "small", "dim", wrap=True, max_width=70),
+                lst.pack_start(label(f"{display_path(path)}: {err}", "small", "dim", wrap=True, max_width=70),
                                False, False, 0)
             exp.add(lst)
             box.pack_start(exp, False, False, 0)

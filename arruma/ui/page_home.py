@@ -7,15 +7,15 @@ import os
 from gi.repository import Gdk, Gtk
 
 from ..core.ai import RECOMMENDED_MODEL, AIStatus
-from ..core.fsutil import (COMPUTER_TOKEN, HOME, display_path, expand_computer_roots, plural,
-                           xdg_user_dirs)
+from ..core.fsutil import COMPUTER_TOKEN, HOME, display_path, expand_computer_roots, plural, user_dirs
+from ..core.system import DISPLAY_NAMES, is_hidden_entry
 from .widgets import add_classes, button, card, choose_folders, hbox, icon, label, vbox
 
 
 def _count_items(path: str) -> int | None:
     try:
         with os.scandir(path) as it:
-            return sum(1 for e in it if not e.name.startswith("."))
+            return sum(1 for e in it if not is_hidden_entry(e))
     except OSError:
         return None
 
@@ -120,22 +120,23 @@ class HomePage(Gtk.ScrolledWindow):
         for child in self.flow.get_children():
             self.flow.remove(child)
         self._card_widgets.clear()
-        xdg = xdg_user_dirs()
+        xdg = user_dirs()
         entries = [
-            ("folder-download", "Transferências", str(xdg["DOWNLOAD"])),
-            ("user-desktop", "Secretária", str(xdg["DESKTOP"])),
-            ("folder-documents", "Documentos", str(xdg["DOCUMENTS"])),
-            ("folder-pictures", "Imagens", str(xdg["PICTURES"])),
-            ("folder-videos", "Vídeos", str(xdg["VIDEOS"])),
-            ("folder-music", "Música", str(xdg["MUSIC"])),
-            ("user-home", "Pasta pessoal", str(HOME)),
+            ("folder-download", "DOWNLOAD", str(xdg["DOWNLOAD"])),
+            ("user-desktop", "DESKTOP", str(xdg["DESKTOP"])),
+            ("folder-documents", "DOCUMENTS", str(xdg["DOCUMENTS"])),
+            ("folder-pictures", "PICTURES", str(xdg["PICTURES"])),
+            ("folder-videos", "VIDEOS", str(xdg["VIDEOS"])),
+            ("folder-music", "MUSIC", str(xdg["MUSIC"])),
+            ("user-home", "HOME", str(HOME)),
         ]
         known_paths = {p for _, _, p in entries}
-        for ico, name, path in entries:
+        for ico, key, path in entries:
             if os.path.isdir(path):
                 n = _count_items(path)
                 sub = plural(n, "item", "itens") if n is not None else display_path(path)
-                title = os.path.basename(path) if path != str(HOME) else name
+                # No Windows e no macOS as pastas chamam-se Documents, Downloads… no disco.
+                title = "Pasta pessoal" if key == "HOME" else DISPLAY_NAMES.get(key, os.path.basename(path))
                 self.flow.add(self._selectable_card(ico, title, sub, path))
 
         # Todo o computador
@@ -174,7 +175,7 @@ class HomePage(Gtk.ScrolledWindow):
         btn.add(overlay)
         btn.connect("clicked", lambda *_: self._toggle_path(key))
         btn.connect("button-press-event", self._on_card_button_press, key)
-        btn.set_tooltip_text(f"Clique para selecionar «{title}» (duplo clique para analisar já)")
+        btn.set_tooltip_text(f"Clica para selecionar «{title}» (duplo clique para analisar já)")
         self._card_widgets[key] = (btn, check)
         return btn
 
@@ -239,13 +240,13 @@ class HomePage(Gtk.ScrolledWindow):
             roots = expand_computer_roots()
             self.sel_title.set_text("Todo o computador selecionado")
             self.sel_sub.set_text("Inclui: " + ", ".join(display_path(r) for r in roots) +
-                                  " (as pastas internas do sistema Linux ficam protegidas).")
+                                  " (as pastas internas do sistema operativo ficam protegidas).")
             self.start_btn.set_label("Analisar todo o computador")
         elif n == 1:
             p = self.selected_paths[0]
             name = os.path.basename(p) or p
             self.sel_title.set_text(f"1 pasta selecionada: {name}")
-            self.sel_sub.set_text(f"{display_path(p)} — podes clicar noutras pastas para juntar mais à seleção.")
+            self.sel_sub.set_text(f"{display_path(p)}. Podes clicar noutras pastas para juntar mais à seleção.")
             self.start_btn.set_label(f"Analisar «{name}»")
         else:
             names = ", ".join(os.path.basename(p) or p for p in self.selected_paths[:4])

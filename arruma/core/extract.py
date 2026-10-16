@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import html
 import re
-import shutil
-import subprocess
 import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
+
+from .system import find_tool, run_quiet
 
 _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
@@ -49,39 +49,45 @@ def _strings(path: str, limit: int) -> str:
     return _clean(" ".join(parts), limit)
 
 
-def _run(cmd: list[str], timeout: int) -> str:
-    try:
-        res = subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
-        return res.stdout.decode("utf-8", "ignore")
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-
-
 def _ocr_pdf(path: str, limit: int) -> str:
-    if not (shutil.which("tesseract") and shutil.which("pdftoppm")):
+    tesseract, pdftoppm = find_tool("tesseract"), find_tool("pdftoppm")
+    if not (tesseract and pdftoppm):
         return ""
     with tempfile.TemporaryDirectory(prefix="arruma-ocr-") as tmp:
         base = str(Path(tmp) / "p")
-        _run(["pdftoppm", "-f", "1", "-l", "1", "-r", "150", "-png", path, base], 60)
+        run_quiet([pdftoppm, "-f", "1", "-l", "1", "-r", "150", "-png", path, base], 60)
         pngs = sorted(Path(tmp).glob("p*.png"))
         if not pngs:
             return ""
         for lang in ("por+eng", "eng"):
-            text = _run(["tesseract", str(pngs[0]), "-", "-l", lang], 90)
+            text = run_quiet([tesseract, str(pngs[0]), "-", "-l", lang], 90)
             if text.strip():
                 return _clean(text, limit)
     return ""
 
 
 def has_ocr() -> bool:
-    return bool(shutil.which("tesseract") and shutil.which("pdftoppm"))
+    return bool(find_tool("tesseract") and find_tool("pdftoppm"))
+
+
+def _pdf_text(path: str, limit: int) -> str:
+    """Texto das duas primeiras páginas: pdftotext (Poppler) ou, se faltar, a biblioteca pypdf."""
+    pdftotext = find_tool("pdftotext")
+    if pdftotext:
+        return _clean(run_quiet([pdftotext, "-l", "2", "-q", "-enc", "UTF-8", path, "-"], 20), limit)
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(path)
+        return _clean(" ".join((page.extract_text() or "") for page in reader.pages[:2]), limit)
+    except Exception:  # pypdf não instalado ou PDF estranho/cifrado
+        return ""
 
 
 def extract_text(path: str, ext: str, limit: int = 2000) -> str:
     """Primeiros caracteres de texto do documento (vazio se não for possível)."""
     try:
         if ext == "pdf":
-            text = _clean(_run(["pdftotext", "-l", "2", "-q", "-enc", "UTF-8", path, "-"], 20), limit)
+            text = _pdf_text(path, limit)
             if len(text) < 40:
                 text = _ocr_pdf(path, limit) or text
             return text

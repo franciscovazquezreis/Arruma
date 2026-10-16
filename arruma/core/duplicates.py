@@ -10,7 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable
 
-from .fsutil import is_within, xdg_user_dirs
+from .fsutil import is_within, user_dirs
 from .scanner import FileItem
 
 CHUNK = 64 * 1024
@@ -50,7 +50,7 @@ def _full_hash(path: str, cancel: threading.Event | None) -> str:
 
 def choose_keep(files: list[FileItem]) -> str:
     """Mantém a cópia com melhor nome e local mais "arrumado"."""
-    xdg = xdg_user_dirs()
+    xdg = user_dirs()
     inboxes = [str(xdg["DOWNLOAD"]), str(xdg["DESKTOP"])]
 
     def score(f: FileItem):

@@ -12,6 +12,8 @@ from typing import Callable
 
 from .db import Database
 from .fsutil import is_within, unique_path
+from .trash import restore as restore_from_trash
+from .trash import send_to_trash
 
 
 @dataclass
@@ -41,35 +43,6 @@ def safe_move(src: str, dst: str) -> None:
                 os.remove(dst)
                 raise OSError("A cópia não ficou igual ao original.") from e
             os.remove(src)
-
-
-def trash(path: str) -> None:
-    import gi
-    gi.require_version("Gio", "2.0")
-    from gi.repository import Gio
-    Gio.File.new_for_path(path).trash(None)
-
-
-def restore_from_trash(orig: str) -> None:
-    import gi
-    gi.require_version("Gio", "2.0")
-    from gi.repository import Gio
-    root = Gio.File.new_for_uri("trash:///")
-    enum = root.enumerate_children("standard::name,trash::orig-path,trash::deletion-date",
-                                   Gio.FileQueryInfoFlags.NONE, None)
-    best: tuple[str, str] | None = None
-    for info in enum:
-        path = info.get_attribute_byte_string("trash::orig-path")
-        if path == orig:
-            date = info.get_attribute_string("trash::deletion-date") or ""
-            if best is None or date > best[0]:
-                best = (date, info.get_name())
-    if best is None:
-        raise FileNotFoundError("O ficheiro já não está no Lixo.")
-    if os.path.lexists(orig):
-        raise FileExistsError("Já existe um ficheiro no local original.")
-    os.makedirs(os.path.dirname(orig), exist_ok=True)
-    root.get_child(best[1]).move(Gio.File.new_for_path(orig), Gio.FileCopyFlags.NONE, None, None)
 
 
 ProgressFn = Callable[[int, int, str], None]
@@ -118,8 +91,8 @@ class Executor:
                     log(a.op, a.src, str(dst))
                     res.bytes_moved += a.size
                 elif a.op == "trash":
-                    trash(a.src)
-                    log("trash", a.src)
+                    where = send_to_trash(a.src)
+                    log("trash", a.src, where)
                 elif a.op == "rmdir":
                     self._remove_empty_tree(a.src, log)
                 res.ok += 1
@@ -177,7 +150,7 @@ class Executor:
                 elif op == "rmdir":
                     os.makedirs(src, exist_ok=True)
                 elif op == "trash":
-                    restore_from_trash(src)
+                    restore_from_trash(src, dst)
                 res.ok += 1
             except Exception as e:
                 res.errors.append((o["src"], getattr(e, "strerror", None) or str(e)))

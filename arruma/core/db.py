@@ -9,7 +9,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from .settings import data_dir
+from .system import data_dir
 
 _LOCK = threading.Lock()
 _SCHEMA = """

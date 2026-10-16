@@ -18,7 +18,8 @@ from .ai import PROMPT_VERSION, AIError, LocalAI
 from .classifier import KIND_BASE, Placement, classify_simple, document_placement
 from .db import Database
 from .extract import date_from_name, extract_text, image_info, plausible
-from .fsutil import is_within, sanitize_name, split_ext, unique_path, xdg_user_dirs
+from .fsutil import is_within, path_key, sanitize_name, split_ext, unique_path, user_dirs
+from .system import is_external_mount
 from .scanner import FileItem, FolderInfo, ScanResult, is_home
 from .settings import Settings
 
@@ -106,7 +107,7 @@ class PlanCancelled(Exception):
 
 
 def default_mode(scan_or_root: ScanResult | str) -> str:
-    xdg = xdg_user_dirs()
+    xdg = user_dirs()
     if isinstance(scan_or_root, ScanResult):
         if scan_or_root.whole_computer or len(scan_or_root.roots) > 1:
             return MODE_PERSONAL
@@ -119,7 +120,7 @@ def default_mode(scan_or_root: ScanResult | str) -> str:
 
 
 def _personal_bases() -> dict[str, str]:
-    xdg = xdg_user_dirs()
+    xdg = user_dirs()
     return {
         "documents": str(xdg["DOCUMENTS"]),
         "pictures": str(xdg["PICTURES"]),
@@ -133,8 +134,8 @@ def _personal_bases() -> dict[str, str]:
 
 
 def compute_bases_for_root(root: str, scan: ScanResult, mode: str) -> dict[str, str]:
-    xdg = xdg_user_dirs()
-    external_mount = root.startswith(("/media/", "/run/media/", "/mnt/"))
+    xdg = user_dirs()
+    external_mount = is_external_mount(root)
     if (mode == MODE_PERSONAL or is_home(root)) and not (scan.whole_computer and external_mount):
         return _personal_bases()
     bases = {k: str(Path(root) / v) for k, v in INSIDE_NAMES.items()}
@@ -187,7 +188,7 @@ class Planner:
     # ------------------------------------------------------------------ estrutura
     def _traverse(self, bases_by_root: dict[str, dict[str, str]]):
         scan = self.scan
-        xdg = xdg_user_dirs()
+        xdg = user_dirs()
         inboxes = {str(xdg["DOWNLOAD"]), str(xdg["DESKTOP"])}
         base_set: set[str] = set()
         for bmap in bases_by_root.values():
@@ -412,7 +413,7 @@ class Planner:
                 conf = r["confianca"]
                 if kw_area == r["area"]:
                     conf = max(conf, 0.8)
-                elif kw_area != "Outros" and kw_conf >= 0.7:
+                elif kw_area != "Outros" and kw_conf >= 0.55:
                     conf = min(conf, 0.5)
                     reason += f" As palavras-chave apontavam para {kw_area}: confirma."
                 date = r["data"]
@@ -463,7 +464,7 @@ class Planner:
             final = unique_path(dst, taken)
             if final != dst:
                 p.reason += f" Já existe «{dst.name}» no destino; ficará «{final.name}»."
-            taken.add(str(final))
+            taken.add(path_key(final))
             add("move", f.path, str(final), f.kind, f.size, p)
 
         for (u, dominant, ufiles), p in zip(unit_info, unit_places):
@@ -472,7 +473,7 @@ class Planner:
             if str(dst) == u.path or is_within(dst, u.path):
                 continue
             final = unique_path(dst, taken)
-            taken.add(str(final))
+            taken.add(path_key(final))
             add("move_dir", u.path, str(final), dominant, u.total_size, p, count=u.total_files)
 
         for d in empty_generic:
@@ -549,16 +550,16 @@ def simplify_tree(entries: list[tuple[Placement, str]]) -> None:
             p.month_level = False
 
     # Anos: ou todos os anos de uma pasta têm subpasta, ou nenhum (evita «2025/» com uma captura).
-    by_parent: dict[tuple, list[Placement]] = defaultdict(list)
+    by_parent: dict[tuple, list[tuple[Placement, int]]] = defaultdict(list)
     for p, bdir in entries:
-        if p.year_level and not p.month_level and p.rel and re.fullmatch(r"(19|20)\d{2}", p.rel[-1]):
-            by_parent[(bdir, p.rel[:-1])].append(p)
-    for (bdir, parent), ps in by_parent.items():
-        per_year = Counter(p.rel[-1] for p in ps)
-        parent_dir = Path(bdir, *parent)
-        if max(per_year.values()) >= MIN_GROUP or _has_year_dirs(parent_dir):
+        idx = len(p.rel) - (2 if p.month_level else 1)
+        if p.year_level and idx >= 0 and re.fullmatch(r"(19|20)\d{2}", p.rel[idx]):
+            by_parent[(bdir, p.rel[:idx])].append((p, idx))
+    for (bdir, parent), items in by_parent.items():
+        per_year = Counter(p.rel[idx] for p, idx in items)
+        if max(per_year.values()) >= MIN_GROUP or _has_year_dirs(Path(bdir, *parent)):
             continue
-        for p in ps:
+        for p, _idx in items:  # nenhum ano chega para ter pasta (e por isso também não há meses)
             p.rel = parent
             p.year_level = False
 
@@ -589,7 +590,7 @@ def rebase_document(action: Action, plan: Plan, area: str) -> None:
         rel = Path(action.dst).relative_to(base).parts if is_within(action.dst, base) else ()
         sub = rel[1] if len(rel) >= 3 and rel[0] in tx.AREAS and rel[1] in tx.AREAS.get(area, []) else ""
         new = Path(base, area, sub, name) if sub else Path(base, area, name)
-    taken = {a.dst for a in plan.actions if a is not action}
+    taken = {path_key(a.dst) for a in plan.actions if a is not action and a.dst}
     action.dst = str(unique_path(new, taken)) if str(new) != action.dst else action.dst
     action.area = area
     action.source = "manual"
@@ -602,7 +603,7 @@ def retarget(action: Action, plan: Plan, folder: str) -> None:
     name = os.path.basename(action.dst or action.src)
     if action.op == "trash":
         action.op = "move"
-    taken = {a.dst for a in plan.actions if a is not action and a.dst}
+    taken = {path_key(a.dst) for a in plan.actions if a is not action and a.dst}
     action.dst = str(unique_path(Path(folder) / name, taken))
     action.renamed = (os.path.basename(action.dst) != os.path.basename(action.src))
     action.source = "manual"
@@ -624,7 +625,7 @@ def rename_action_in_plan(action: Action, plan: Plan, new_name: str) -> None:
     candidate = parent / clean
     if str(candidate) == action.dst:
         return
-    taken = {a.dst for a in plan.actions if a is not action and a.dst}
+    taken = {path_key(a.dst) for a in plan.actions if a is not action and a.dst}
     action.dst = str(unique_path(candidate, taken))
     action.renamed = (os.path.basename(action.dst) != action.src_name)
     action.source = "manual"
@@ -638,7 +639,7 @@ def _rewrite_prefix(plan: Plan, old_dir: str, new_dir: str, reason: str) -> None
     if old_dir == new_dir:
         return
     affected = [a for a in plan.actions if a.dst and is_within(a.dst, old_dir)]
-    taken = {a.dst for a in plan.actions if a.dst and a not in affected}
+    taken = {path_key(a.dst) for a in plan.actions if a.dst and a not in affected}
     for a in affected:
         if os.path.normpath(a.dst) == old_dir:
             cand = Path(new_dir)
@@ -646,7 +647,7 @@ def _rewrite_prefix(plan: Plan, old_dir: str, new_dir: str, reason: str) -> None
             rel = os.path.relpath(a.dst, old_dir)
             cand = Path(new_dir) / rel
         final = unique_path(cand, taken)
-        taken.add(str(final))
+        taken.add(path_key(final))
         a.dst = str(final)
         a.renamed = (os.path.basename(a.dst) != a.src_name)
         a.source = "manual"

@@ -9,10 +9,10 @@ from gi.repository import Gtk
 
 from ..core import taxonomy as tx
 from ..core.fsutil import (COMPUTER_TOKEN, display_path, human_count, human_size, is_unclear_name,
-                           plural, split_ext, xdg_user_dirs)
+                           is_within, plural, split_ext, user_dirs)
 from ..core.planner import MODE_INSIDE, MODE_PERSONAL, default_mode
 from ..core.scanner import ScanResult, is_home
-from .widgets import (DonutChart, Placeholder, ProgressPanel, StatCard, add_classes, button, card,
+from .widgets import (DonutChart, Placeholder, ProgressPanel, StatCard, button, card,
                       esc, hbox, icon, kind_color, kind_icon, kind_label, label, show_in_folder, vbox)
 
 
@@ -181,10 +181,9 @@ class AnalysisPage(Gtk.Stack):
                         f"({human_size(inst[1] + arch[1])}) que talvez já não sejam precisos.",
                         inst[0] + arch[0], "info"))
         year_ago = time.time() - 365 * 86400
-        xdg = xdg_user_dirs()
-        dl_dir = str(xdg["DOWNLOAD"])
+        dl_dir = str(user_dirs()["DOWNLOAD"])
         if dl_dir in root_set or scan.whole_computer:
-            old = sum(1 for f in scan.files if f.mtime < year_ago and f.path.startswith(dl_dir + os.sep))
+            old = sum(1 for f in scan.files if f.mtime < year_ago and is_within(f.path, dl_dir))
             if old:
                 out.append(("document-open-recent-symbolic",
                             f"<b>{human_count(old)}</b> transferências com mais de um ano.", old, "info"))

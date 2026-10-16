@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import subprocess
 import threading
 import time
 import traceback
@@ -18,8 +19,61 @@ gi.require_version("PangoCairo", "1.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 
 from ..core import taxonomy as tx  # noqa: E402
+from ..core.system import IS_MAC, IS_WINDOWS, NO_WINDOW  # noqa: E402
 
 CSS_PATH = Path(__file__).with_name("style.css")
+
+# Alternativas para ícones que nem todos os temas têm (no Windows e no macOS o Arruma leva o
+# tema Adwaita, que só tem parte dos ícones coloridos do Linux Mint).
+_ICON_FALLBACKS = {
+    "folder-download": ["folder-download-symbolic", "folder"],
+    "user-desktop": ["user-desktop-symbolic", "user-home-symbolic", "folder"],
+    "folder-documents": ["folder-documents-symbolic", "folder"],
+    "folder-pictures": ["folder-pictures-symbolic", "folder"],
+    "folder-videos": ["folder-videos-symbolic", "folder"],
+    "folder-music": ["folder-music-symbolic", "folder"],
+    "user-home": ["user-home-symbolic", "go-home-symbolic", "folder"],
+    "folder-open": ["folder-open-symbolic", "folder"],
+    "folder-new": ["folder-new-symbolic", "folder"],
+    "computer": ["computer-symbolic", "drive-harddisk"],
+    "computer-symbolic": ["computer", "drive-harddisk-symbolic"],
+    "x-office-document": ["x-office-document-symbolic", "text-x-generic", "text-x-generic-symbolic"],
+    "image-x-generic": ["image-x-generic-symbolic", "text-x-generic"],
+    "video-x-generic": ["video-x-generic-symbolic", "text-x-generic"],
+    "audio-x-generic": ["audio-x-generic-symbolic", "text-x-generic"],
+    "package-x-generic": ["package-x-generic-symbolic", "text-x-generic"],
+    "application-x-executable": ["application-x-executable-symbolic", "system-run-symbolic", "text-x-generic"],
+    "text-x-script": ["text-x-script-symbolic", "text-x-generic"],
+    "text-x-generic": ["text-x-generic-symbolic"],
+    "user-trash": ["user-trash-symbolic", "user-trash-full"],
+    "applications-science-symbolic": ["applications-science", "system-run-symbolic", "emblem-system-symbolic"],
+    "network-offline-symbolic": ["network-wired-disconnected-symbolic", "network-offline"],
+    "view-dual-symbolic": ["view-paged-symbolic", "view-list-symbolic"],
+    "view-paged-symbolic": ["view-list-symbolic"],
+    "view-grid-symbolic": ["view-app-grid-symbolic", "view-list-symbolic"],
+    "security-high-symbolic": ["security-medium-symbolic", "channel-secure-symbolic", "emblem-ok-symbolic"],
+    "applications-system-symbolic": ["preferences-system-symbolic"],
+}
+_RESOLVED: dict[str, str] = {}
+MISSING_ICONS: set[str] = set()
+
+
+def resolve_icon(name: str) -> str:
+    """Nome de ícone que existe no tema atual (com alternativas se o original faltar)."""
+    if name in _RESOLVED:
+        return _RESOLVED[name]
+    theme = Gtk.IconTheme.get_default()
+    found = name
+    if theme is not None and not theme.has_icon(name):
+        alt = name[:-9] if name.endswith("-symbolic") else name + "-symbolic"
+        for cand in [alt] + _ICON_FALLBACKS.get(name, []):
+            if theme.has_icon(cand):
+                found = cand
+                break
+        else:
+            MISSING_ICONS.add(name)
+    _RESOLVED[name] = found
+    return found
 
 
 def load_css() -> None:
@@ -67,7 +121,7 @@ def label(text: str = "", *classes: str, xalign: float = 0.0, wrap: bool = False
 
 
 def icon(name: str, size: int = 16, *classes: str) -> Gtk.Image:
-    img = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.BUTTON)
+    img = Gtk.Image.new_from_icon_name(resolve_icon(name), Gtk.IconSize.BUTTON)
     img.set_pixel_size(size)
     add_classes(img, *classes)
     return img
@@ -108,7 +162,7 @@ def card(*classes: str, spacing: int = 10, horizontal: bool = False) -> Gtk.Box:
 
 
 def kind_icon(kind: str) -> str:
-    return tx.KIND_INFO.get(kind, tx.KIND_INFO[tx.OTHER])[2]
+    return resolve_icon(tx.KIND_INFO.get(kind, tx.KIND_INFO[tx.OTHER])[2])
 
 
 def kind_label(kind: str) -> str:
@@ -128,23 +182,41 @@ def hex_rgba(color: str) -> tuple[float, float, float, float]:
 # --------------------------------------------------------------------------- abrir ficheiros
 
 def open_path(path: str) -> None:
+    """Abre o ficheiro ou a pasta com o programa predefinido do sistema."""
     try:
-        Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(path).get_uri(), None)
-    except GLib.Error:
+        if IS_WINDOWS:
+            os.startfile(path)  # noqa: S606
+        elif IS_MAC:
+            subprocess.Popen(["open", path])
+        else:
+            Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(path).get_uri(), None)
+    except (GLib.Error, OSError):
         pass
 
 
 def show_in_folder(path: str) -> None:
-    """Abre o gestor de ficheiros (Nemo) com o ficheiro selecionado."""
-    uri = Gio.File.new_for_path(path).get_uri()
+    """Abre o gestor de ficheiros (Nemo, Explorador, Finder) com o ficheiro selecionado."""
     try:
-        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        bus.call_sync("org.freedesktop.FileManager1", "/org/freedesktop/FileManager1",
-                      "org.freedesktop.FileManager1", "ShowItems",
-                      GLib.Variant("(ass)", ([uri], "")), None, Gio.DBusCallFlags.NONE, 2000, None)
-    except GLib.Error:
-        parent = path if os.path.isdir(path) else os.path.dirname(path)
-        open_path(parent)
+        if IS_WINDOWS:
+            subprocess.Popen(["explorer", f"/select,{os.path.normpath(path)}"], creationflags=NO_WINDOW)
+            return
+        if IS_MAC:
+            subprocess.Popen(["open", "-R", path])
+            return
+    except OSError:
+        pass
+    else:
+        uri = Gio.File.new_for_path(path).get_uri()
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            bus.call_sync("org.freedesktop.FileManager1", "/org/freedesktop/FileManager1",
+                          "org.freedesktop.FileManager1", "ShowItems",
+                          GLib.Variant("(ass)", ([uri], "")), None, Gio.DBusCallFlags.NONE, 2000, None)
+            return
+        except GLib.Error:
+            pass
+    parent = path if os.path.isdir(path) else os.path.dirname(path)
+    open_path(parent)
 
 
 # --------------------------------------------------------------------------- tarefas em segundo plano

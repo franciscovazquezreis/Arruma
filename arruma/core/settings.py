@@ -1,25 +1,12 @@
-"""Definições do utilizador, guardadas em ~/.config/arruma/definicoes.json."""
+"""Definições do utilizador, guardadas em definicoes.json na pasta de configuração do Arruma
+(~/.config/arruma no Linux, %APPDATA%\\Arruma no Windows, ~/Library/Application Support/Arruma no macOS)."""
 
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict, dataclass, field, fields
-from pathlib import Path
 
-
-def config_dir() -> Path:
-    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    path = Path(base) / "arruma"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def data_dir() -> Path:
-    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    path = Path(base) / "arruma"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+from .system import config_dir
 
 
 @dataclass

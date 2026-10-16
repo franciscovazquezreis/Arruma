@@ -1,4 +1,4 @@
-"""Utilitários de sistema de ficheiros: pastas XDG, nomes, tamanhos, caminhos únicos."""
+"""Utilitários de sistema de ficheiros: nomes, tamanhos, caminhos únicos e pastas permitidas."""
 
 from __future__ import annotations
 
@@ -7,36 +7,10 @@ import re
 import unicodedata
 from pathlib import Path
 
-HOME = Path.home()
+from .system import (HOME, IS_MAC, IS_WINDOWS, computer_roots, is_whole_computer_path, program_data_dirs,
+                     system_paths, temp_dir, user_dirs)
 
-_XDG_DEFAULTS = {
-    "DESKTOP": "Desktop",
-    "DOWNLOAD": "Downloads",
-    "DOCUMENTS": "Documents",
-    "MUSIC": "Music",
-    "PICTURES": "Pictures",
-    "VIDEOS": "Videos",
-    "TEMPLATES": "Templates",
-    "PUBLICSHARE": "Public",
-}
-
-
-def xdg_user_dirs() -> dict[str, Path]:
-    """Lê ~/.config/user-dirs.dirs (pastas pessoais na língua do sistema)."""
-    dirs = {k: HOME / v for k, v in _XDG_DEFAULTS.items()}
-    cfg = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config") / "user-dirs.dirs"
-    try:
-        for line in cfg.read_text(encoding="utf-8").splitlines():
-            m = re.match(r'^\s*XDG_([A-Z]+)_DIR\s*=\s*"(.*)"\s*$', line)
-            if not m:
-                continue
-            key, value = m.group(1), m.group(2).replace("$HOME", str(HOME))
-            path = Path(value)
-            if path != HOME:  # pastas desativadas apontam para $HOME
-                dirs[key] = path
-    except OSError:
-        pass
-    return dirs
+xdg_user_dirs = user_dirs  # nome antigo
 
 
 # --------------------------------------------------------------------------- formatação
@@ -62,8 +36,10 @@ def plural(n: int, singular: str, plural_: str) -> str:
 
 
 def display_path(path: str | Path) -> str:
-    """Caminho legível: ~/Documentos/… em vez de /home/utilizador/Documentos/…"""
+    """Caminho legível: ~/Documentos/… em vez de /home/utilizador/Documentos/… (no Windows fica completo)."""
     p = str(path)
+    if IS_WINDOWS:
+        return p
     home = str(HOME)
     if p == home:
         return "~"
@@ -135,14 +111,17 @@ def is_unclear_name(stem: str) -> bool:
 
 
 _BAD_CHARS = re.compile(r'[\x00-\x1f/\\:*?"<>|]')
+_RESERVED = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)", re.IGNORECASE)
 
 
 def sanitize_name(name: str, maxlen: int = 110) -> str:
     """Nome de ficheiro/pasta seguro e portátil (também para pens USB e Windows)."""
-    name = _BAD_CHARS.sub(" ", name)
+    name = _BAD_CHARS.sub(" ", unicodedata.normalize("NFC", name))
     name = re.sub(r"\s+", " ", name).strip(" .")
     if len(name) > maxlen:
         name = name[:maxlen].rstrip(" .")
+    if _RESERVED.match(name):  # nomes proibidos no Windows (CON, NUL, COM1…)
+        name = "_" + name
     return name or "Sem nome"
 
 
@@ -157,63 +136,50 @@ def split_ext(name: str) -> tuple[str, str]:
     return stem, ext
 
 
+def path_key(path: str | Path) -> str:
+    """Chave para comparar caminhos: no Windows e no macOS «Faturas» e «faturas» são a mesma pasta."""
+    p = os.path.normpath(str(path))
+    if IS_WINDOWS:
+        return os.path.normcase(p)
+    if IS_MAC:
+        return unicodedata.normalize("NFC", p).casefold()
+    return p
+
+
 def unique_path(path: Path, taken: set[str] | None = None) -> Path:
-    """Devolve um caminho livre, acrescentando « (2)», « (3)»… se necessário."""
+    """Devolve um caminho livre, acrescentando « (2)», « (3)»… se necessário.
+
+    «taken» tem as chaves (path_key) dos destinos já reservados no plano."""
     taken = taken if taken is not None else set()
-    if not os.path.lexists(path) and str(path) not in taken:
+    if not os.path.lexists(path) and path_key(path) not in taken:
         return path
     stem, ext = split_ext(path.name)
     i = 2
     while True:
         cand = path.with_name(f"{stem} ({i}){ext}")
-        if not os.path.lexists(cand) and str(cand) not in taken:
+        if not os.path.lexists(cand) and path_key(cand) not in taken:
             return cand
         i += 1
 
 
 def is_within(path: str | Path, base: str | Path) -> bool:
-    p, b = str(path), str(base).rstrip(os.sep)
-    return p == b or p.startswith(b + os.sep)
+    p, b = str(path), str(base)
+    if IS_WINDOWS:
+        p, b = os.path.normcase(p), os.path.normcase(b)
+    b = b.rstrip(os.sep) if len(b) > 1 and not b.endswith(":" + os.sep) else b
+    if p == b:
+        return True
+    return p.startswith(b if b.endswith(os.sep) else b + os.sep)
 
 
-SYSTEM_PATHS = ["/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64", "/libx32",
-                "/opt", "/proc", "/root", "/run", "/sbin", "/snap", "/srv", "/sys", "/tmp",
-                "/usr", "/var", "/lost+found"]
+SYSTEM_PATHS = system_paths()
 
 COMPUTER_TOKEN = "__COMPUTER__"
 
 
 def expand_computer_roots() -> list[str]:
     """Pastas de utilizador e discos/partições montados em todo o computador."""
-    roots: list[str] = []
-    if HOME.is_dir() and os.access(HOME, os.R_OK | os.W_OK | os.X_OK):
-        roots.append(str(HOME.resolve()))
-    home_parent = Path("/home")
-    if home_parent.is_dir():
-        try:
-            for entry in sorted(home_parent.iterdir()):
-                if entry.is_dir() and os.access(entry, os.R_OK | os.W_OK | os.X_OK):
-                    rp = str(entry.resolve())
-                    if rp not in roots:
-                        roots.append(rp)
-        except OSError:
-            pass
-    user = os.environ.get("USER") or HOME.name
-    mount_bases = [Path("/media") / user, Path("/run/media") / user, Path("/media"), Path("/mnt")]
-    for mb in mount_bases:
-        if not mb.is_dir():
-            continue
-        try:
-            for entry in sorted(mb.iterdir()):
-                if not entry.is_dir() or entry.name == user:
-                    continue
-                if os.access(entry, os.R_OK | os.W_OK | os.X_OK):
-                    rp = str(entry.resolve())
-                    if not any(is_within(rp, r) or is_within(r, rp) for r in roots):
-                        roots.append(rp)
-        except OSError:
-            continue
-    return roots or [str(HOME.resolve())]
+    return computer_roots()
 
 
 def normalize_roots(paths: str | Path | list[str | Path] | tuple[str | Path, ...]) -> tuple[list[str], bool]:
@@ -231,7 +197,7 @@ def normalize_roots(paths: str | Path | list[str | Path] | tuple[str | Path, ...
             expanded.extend(expand_computer_roots())
         else:
             p = str(Path(s).expanduser().resolve())
-            if p == "/":
+            if is_whole_computer_path(p):
                 whole_computer = True
                 expanded.extend(expand_computer_roots())
             else:
@@ -249,16 +215,16 @@ def check_root_allowed(path: Path | str) -> str | None:
     if str(path) in (COMPUTER_TOKEN, "/"):
         return None
     p = str(Path(path).resolve())
-    if p == "/":
+    if is_whole_computer_path(p):
         return None
-    for sp in SYSTEM_PATHS:
-        if p == sp or (p.startswith(sp + os.sep) and not p.startswith("/tmp/")):
-            return "Esta é uma pasta do sistema. Por segurança, o Arruma não lhe toca."
-    if p == "/tmp":
-        return "Esta é uma pasta do sistema. Por segurança, o Arruma não lhe toca."
-    hidden_cfg = [HOME / ".config", HOME / ".local", HOME / ".cache"]
-    if any(is_within(p, h) for h in hidden_cfg):
-        return "Esta pasta contém configurações de programas e não deve ser reorganizada."
+    tmp = temp_dir()
+    in_temp = is_within(p, tmp) and os.path.normcase(p) != os.path.normcase(tmp)
+    if not in_temp:
+        for sp in SYSTEM_PATHS:
+            if is_within(p, sp):
+                return "Esta é uma pasta do sistema. Por segurança, o Arruma não lhe toca."
+        if any(is_within(p, str(h)) for h in program_data_dirs()):
+            return "Esta pasta contém configurações de programas e não deve ser reorganizada."
     if not Path(p).is_dir():
         return "A pasta não existe."
     if not os.access(p, os.W_OK | os.X_OK):

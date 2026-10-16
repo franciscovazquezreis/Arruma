@@ -7,7 +7,8 @@ from gi.repository import Gtk
 from ..core.ai import RECOMMENDED_MODEL, AIStatus
 from ..core.extract import has_ocr
 from ..core.fsutil import HOME, display_path
-from .widgets import (add_classes, button, choose_folder, hbox, icon, label, pref_group, pref_row, vbox)
+from ..core.system import TRASH_TO, ocr_install_hint
+from .widgets import add_classes, button, choose_folder, hbox, label, pref_group, pref_row, vbox
 
 
 class SettingsPage(Gtk.ScrolledWindow):
@@ -62,7 +63,7 @@ class SettingsPage(Gtk.ScrolledWindow):
         for sw in (self.photos_month, self.rename_unclear, self.clean_junk, self.remove_empty, self.include_hidden):
             sw.connect("notify::active", self._save)
 
-        ocr_pill = label("instalado" if has_ocr() else "não instalado (opcional: sudo apt install tesseract-ocr-por)",
+        ocr_pill = label("instalado" if has_ocr() else f"não instalado ({ocr_install_hint()})",
                          "pill", "ok" if has_ocr() else "off")
 
         outer.pack_start(pref_group([
@@ -74,7 +75,7 @@ class SettingsPage(Gtk.ScrolledWindow):
                      "Só propõe mudar nomes como «scan_003.pdf» ou «Documento (1).pdf». "
                      "Nomes que já fazem sentido nunca são alterados.",
                      self.rename_unclear),
-            pref_row("Propor envio de ficheiros temporários para o Lixo",
+            pref_row(f"Propor envio de ficheiros temporários {TRASH_TO}",
                      "Ficheiros como Thumbs.db, .DS_Store ou transferências incompletas antigas.",
                      self.clean_junk),
             pref_row("Remover pastas genéricas que fiquem vazias",

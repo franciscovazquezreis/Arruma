@@ -324,8 +324,10 @@ _KEYWORDS: list[tuple[str, str, list[str], list[str]]] = [
       "termo de autenticacao", "habilitacao de herdeiros", "testamento", "partilhas"],
      ["outorgante", "poderes"]),
     ("Jurídico", "Contratos e Acordos",
-     ["primeiro outorgante", "segundo outorgante", "clausula primeira", "contraente"],
-     ["clausula", "contrato", "acordo", "partes"]),
+     ["contrato de comodato", "contrato de mutuo", "contrato de cessao", "contrato de doacao",
+      "acordo de partilha", "contraente"],
+     ["primeiro outorgante", "segundo outorgante", "clausula primeira", "clausula", "contrato", "acordo",
+      "partes"]),
     ("Veículos", "Documentação e Inspeções",
      ["documento unico automovel", "certificado de matricula", "inspecao periodica",
       "centro de inspecoes", "livrete", "titulo de registo de propriedade", "ipo"],
@@ -385,9 +387,10 @@ def normalize(text: str) -> str:
 def keyword_classify(name: str, text: str) -> tuple[str, str, float, list[str]]:
     """Classificação rápida por palavras-chave. Devolve (área, subárea, confiança, pistas).
 
-    Cada palavra forte vale 3 pontos no nome do ficheiro e 2 por ocorrência no texto (até 3);
-    cada palavra fraca vale 1 no nome e 0,5 por ocorrência (até 2). Só conta um grupo com pelo
-    menos uma palavra forte e 3 pontos; se duas áreas ficarem perto, a confiança desce.
+    Cada palavra forte vale 3 pontos no nome do ficheiro e 2 por ocorrência no texto (3 se for uma
+    expressão de várias palavras), até 3 ocorrências; cada palavra fraca vale 1 no nome e 0,5 por
+    ocorrência (até 2). Só conta um grupo com pelo menos uma palavra forte e 3 pontos; se duas áreas
+    ficarem perto, a confiança desce.
     """
     n_name = normalize(re.sub(r"[_\-\.]+", " ", name))
     n_text = normalize(text[:6000])
@@ -401,7 +404,9 @@ def keyword_classify(name: str, text: str) -> tuple[str, str, float, list[str]]:
                 if in_name or count:
                     hits.append(word)
                     has_strong = has_strong or words is strong
-                score += weight_name * in_name + weight_text * min(count, cap)
+                # Expressões fortes com várias palavras («cartão de cidadão») são muito específicas.
+                w_text = 3.0 if words is strong and " " in word else weight_text
+                score += weight_name * in_name + w_text * min(count, cap)
         if has_strong:
             candidates.append((score, area, sub, hits))
     if not candidates:

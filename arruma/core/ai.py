@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import taxonomy as tx
 from .fsutil import sanitize_name, strip_accents
+from .system import IS_MAC, find_tool, start_detached
 
 PREFERRED_MODELS = ["qwen2.5:3b", "qwen3:4b", "gemma3:4b", "qwen2.5:7b", "llama3.2:3b",
                     "qwen2.5:1.5b", "gemma2:2b", "llama3.1:8b", "mistral:7b"]
@@ -165,18 +166,19 @@ class LocalAI:
 
     # ------------------------------------------------------------------ estado
     def _try_autostart(self) -> bool:
-        import shutil
-        import subprocess
         import time
-        binary = shutil.which("ollama") or ("/usr/local/bin/ollama" if Path("/usr/local/bin/ollama").exists() else None)
-        if not binary:
-            return False
+        app = Path("/Applications/Ollama.app")
         try:
-            subprocess.Popen([binary, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             start_new_session=True)
+            if IS_MAC and app.exists():
+                start_detached(["open", "-g", "-a", str(app)])  # a aplicação arranca o servidor
+            else:
+                binary = find_tool("ollama")
+                if not binary:
+                    return False
+                start_detached([binary, "serve"])
         except OSError:
             return False
-        for _ in range(12):
+        for _ in range(20):
             time.sleep(0.4)
             try:
                 self._request("/api/version", timeout=1.5)
