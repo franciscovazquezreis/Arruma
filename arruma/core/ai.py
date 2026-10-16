@@ -322,27 +322,59 @@ def clean_title(raw, text: str = "", source: str = "") -> str:
     letters = [c for c in title if c.isalpha()]
     if letters and sum(c.isupper() for c in letters) / len(letters) > 0.6:
         title = " ".join(w if len(w) <= 4 else w.capitalize() for w in title.split())
+    # Palavras comuns copiadas em maiúsculas de um cabeçalho («ATA», «FATURA») ficam normais.
+    title = " ".join(w.lower() if w.isupper() and len(w) > 1 and _canon(w) in _DOC_WORDS else w
+                     for w in title.split())
     title = title[0].upper() + title[1:]
     title = sanitize_name(title, 70)
     return "" if title == "Sem nome" else title
 
 
+_MONTH_WORDS = [
+    (_canon(name), _canon(name)[:3]) for name in tx.MONTHS_PT
+]
+
+
+def _date_in_text(text: str, year: int, month: int, day: int | None) -> str:
+    """Até onde a data está escrita no texto: "dia", "mes" ou ""."""
+    t = _canon(text)
+    y, m = f"{year:04d}", f"{month:02d}"
+    name, short = _MONTH_WORDS[month - 1]
+    months = rf"(?:0?{month}|{name}|{short}\.?)"
+    if day is not None:
+        d = rf"0?{day}"
+        if re.search(rf"{y}[-/.]{m}[-/.]{day:02d}(?!\d)", t) or \
+                re.search(rf"(?<!\d){d}[-/. ]+(?:de\s+)?{months}[-/. ]+(?:de\s+)?{y}(?!\d)", t):
+            return "dia"
+    if re.search(rf"{y}[-/.]{m}(?!\d)", t) or re.search(rf"(?<!\d){months}[-/. ]+(?:de\s+)?{y}(?!\d)", t):
+        return "mes"
+    return ""
+
+
 def clean_date(raw, text: str = "", source: str = "") -> str:
-    """Data AAAA-MM-DD ou AAAA-MM plausível e cujo ano aparece no documento; senão ""."""
+    """Data AAAA-MM-DD ou AAAA-MM plausível e escrita no documento; senão "".
+
+    Se o texto só tiver o mês («janeiro de 2025»), fica AAAA-MM: o dia não se inventa."""
     date = str(raw or "").strip()
     m = re.fullmatch(r"((?:19|20)\d{2})-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?", date)
     if not m:
         return ""
-    year = int(m.group(1))
+    year, month = int(m.group(1)), int(m.group(2))
+    day = int(m.group(3)) if m.group(3) else None
     try:
-        datetime(year, int(m.group(2)), int(m.group(3) or 1))
+        datetime(year, month, day or 1)
     except ValueError:
         return ""
     if year < 1990 or year > datetime.now().year + 1:
         return ""
-    if (text or source) and m.group(1) not in f"{text} {source}":
-        return ""
-    return date
+    if not (text or source):
+        return date
+    found = _date_in_text(f"{text} {source}", year, month, day)
+    if found == "dia":
+        return date
+    if found == "mes":
+        return f"{year:04d}-{month:02d}"
+    return ""
 
 
 def validate_result(raw: dict, text: str = "", source: str = "") -> dict:

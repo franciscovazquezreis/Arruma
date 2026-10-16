@@ -100,10 +100,14 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(clean_title("Documento digitalizado"), "")
         self.assertEqual(clean_title("Fatura EDP março.pdf"), "Fatura EDP março")
         self.assertEqual(clean_title("Fatura 2025-03-12 EDP"), "Fatura EDP")
-        self.assertEqual(clean_title("CONTRATO DE ARRENDAMENTO HABITACIONAL"), "Contrato DE Arrendamento Habitacional")
+        self.assertEqual(clean_title("CONTRATO DE ARRENDAMENTO HABITACIONAL"), "Contrato de Arrendamento Habitacional")
+        self.assertEqual(clean_title("ATA Assembleia de Condóminos"), "Ata Assembleia de Condóminos")
 
     def test_date_must_be_grounded(self):
         self.assertEqual(clean_date("2025-03-12", self.TEXT), "2025-03-12")
+        # Só o mês está escrito: o dia não se inventa.
+        self.assertEqual(clean_date("2025-01-31", "Recibo de vencimento de janeiro de 2025"), "2025-01")
+        self.assertEqual(clean_date("2025-02-20", "Lourinhã, 20 de fevereiro de 2025"), "2025-02-20")
         self.assertEqual(clean_date("2023-03-12", self.TEXT), "")
         self.assertEqual(clean_date("2025-02-30"), "")
         self.assertEqual(clean_date("12/03/2025"), "")
@@ -252,8 +256,14 @@ class AIPlanTests(unittest.TestCase):
         self.assertTrue(by_name["scan_001.txt"].dst.endswith("2025-03-12 Fatura LusoEnergia eletricidade.txt"))
         # Título com empresa que não está no texto: o nome não muda.
         self.assertEqual(os.path.basename(by_name["doc2025.txt"].dst), "doc2025.txt")
-        # A IA contraria palavras-chave claras: fica marcado para rever.
-        self.assertLess(by_name["doc2025.txt"].confidence, 0.55)
+        # A IA contraria pistas fortes no texto («recibo de vencimento»): prevalecem as palavras-chave.
+        self.assertIn("/Documentos/Finanças/", by_name["doc2025.txt"].dst)
+        self.assertEqual(by_name["doc2025.txt"].source, "palavras-chave")
+        # A IA contraria pistas fracas: fica onde a IA disse, mas marcado para rever.
+        self.assertEqual(Path(by_name["garantia.txt"].dst).parent, self.root / "Documentos" / "Veículos")
+        # Modelo inventou a subpasta «Educação › Trabalho»; o CV tem pistas fortes de Pessoal.
+        self.assertEqual(Path(by_name["CV.docx"].dst).parent, self.root / "Documentos" / "Pessoal")
+        self.assertLess(by_name["garantia.txt"].confidence, 0.55)
 
 
 class StructureTests(unittest.TestCase):

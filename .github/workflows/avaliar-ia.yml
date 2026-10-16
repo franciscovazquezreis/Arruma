@@ -1,4 +1,7 @@
-# Avaliação da organização com a IA local real (Ollama), comparando duas versões do código.
+# Avaliação da organização com a IA local real (Ollama), comparando duas versões do código
+# em dois conjuntos de documentos fictícios:
+# - «desenvolvimento»: o conjunto usado para afinar as regras (os números são otimistas);
+# - «validação»: documentos diferentes, nunca usados para afinar nada (a medida honesta).
 # Corre-se à mão em Actions → «Avaliar IA» → Run workflow.
 name: Avaliar IA
 
@@ -19,10 +22,11 @@ on:
 jobs:
   avaliar:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
       MODELO: ${{ inputs.modelo }}
       REF_ANTES: ${{ inputs.ref_antes }}
+      SO_ANTES: ${{ inputs.so_antes }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,33 +52,39 @@ jobs:
           ollama pull "$MODELO"
           ollama list
 
-      - name: Gerar o corpus
-        run: python tests/avaliacao/gerar_corpus.py corpus
-
-      - name: Avaliar a versão de referência
+      - name: Código de referência
         if: env.REF_ANTES != ''
         run: |
           mkdir -p antes
           git archive "$REF_ANTES" arruma | tar -x -C antes
-          python tests/avaliacao/avaliar.py --codigo antes --corpus corpus --saida antes.json --modelo "$MODELO"
 
-      - name: Avaliar a versão atual
-        if: ${{ !inputs.so_antes }}
-        run: python tests/avaliacao/avaliar.py --codigo . --corpus corpus --saida depois.json --modelo "$MODELO"
-
-      - name: Relatório
+      - name: Avaliar
         run: |
-          python tests/avaliacao/comparar.py --antes antes.json --depois depois.json \
-            --esperado corpus/esperado.json --saida relatorio.md
-          cat relatorio.md >> "$GITHUB_STEP_SUMMARY"
+          for conjunto in desenvolvimento validacao; do
+            opcao=""; [ "$conjunto" = validacao ] && opcao="--validacao"
+            python tests/avaliacao/gerar_corpus.py "corpus-$conjunto" $opcao
+            if [ -n "$REF_ANTES" ]; then
+              python tests/avaliacao/avaliar.py --codigo antes --corpus "corpus-$conjunto" \
+                --saida "antes-$conjunto.json" --modelo "$MODELO"
+            fi
+            if [ "$SO_ANTES" != "true" ]; then
+              python tests/avaliacao/avaliar.py --codigo . --corpus "corpus-$conjunto" \
+                --saida "depois-$conjunto.json" --modelo "$MODELO"
+            fi
+            python tests/avaliacao/comparar.py --antes "antes-$conjunto.json" --depois "depois-$conjunto.json" \
+              --esperado "corpus-$conjunto/esperado.json" --saida "relatorio-$conjunto.md" > /dev/null
+            { echo "# Conjunto: $conjunto"; echo; cat "relatorio-$conjunto.md"; echo; } >> "$GITHUB_STEP_SUMMARY"
+            echo "===== Conjunto: $conjunto ====="
+            cat "relatorio-$conjunto.md"
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: avaliacao-ia
           path: |
-            antes.json
-            depois.json
-            relatorio.md
+            antes-*.json
+            depois-*.json
+            relatorio-*.md
             ollama.log
           if-no-files-found: ignore

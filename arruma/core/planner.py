@@ -342,7 +342,7 @@ class Planner:
 
         # 2) Documentos: ler conteúdo e palavras-chave
         texts: dict[int, str] = {}
-        keyword: dict[int, tuple[str, float]] = {}
+        keyword: dict[int, tuple[str, str, float, list[str]]] = {}
         for n, i in enumerate(docs):
             self._check()
             f = files[i]
@@ -350,7 +350,7 @@ class Planner:
             text = extract_text(f.path, f.ext) if f.ext in tx.TEXT_EXTRACTABLE else ""
             texts[i] = text
             area, sub, conf, hits = tx.keyword_classify(f.name, text)
-            keyword[i] = (area, conf)
+            keyword[i] = (area, sub, conf, hits)
             if hits:
                 reason = "Contém " + ", ".join(f"«{h}»" for h in hits) + f", por isso parece de {area}" + \
                          (f" › {sub}." if sub else ".")
@@ -403,16 +403,25 @@ class Planner:
                 if not r:
                     continue
                 prev = placements[i]
-                kw_area, kw_conf = keyword[i]
+                kw_area, kw_sub, kw_conf, kw_hits = keyword[i]
                 if r["area"] == "Outros" and prev.area != "Outros" and prev.confidence >= 0.5:
                     continue  # a IA não soube; as palavras-chave tinham pistas claras
                 f = files[i]
-                label = tx.category_label(r["area"], r["subarea"])
+                area, sub, source = r["area"], r["subarea"], "IA"
+                label = tx.category_label(area, sub)
                 what = f"«{r['titulo']}»" if r["titulo"] else "o documento"
                 reason = f"A IA local leu {what} e classificou-o em {label}."
                 conf = r["confianca"]
-                if kw_area == r["area"]:
+                if kw_area == area:
                     conf = max(conf, 0.8)
+                elif kw_area != "Outros" and kw_conf >= 0.7:
+                    # Pistas fortes no texto contrariam a IA. Nas avaliações, nestes casos quem
+                    # acertava eram as palavras-chave; fica o título proposto pela IA.
+                    area, sub, source = kw_area, kw_sub, "palavras-chave"
+                    pistas = ", ".join(f"«{h}»" for h in kw_hits)
+                    reason = (f"O texto contém {pistas}, por isso fica em {tx.category_label(area, sub)} "
+                              f"(a IA local tinha sugerido {label}).")
+                    conf = min(kw_conf, 0.7)
                 elif kw_area != "Outros" and kw_conf >= 0.55:
                     conf = min(conf, 0.5)
                     reason += f" As palavras-chave apontavam para {kw_area}: confirma."
@@ -420,8 +429,7 @@ class Planner:
                 if not date:
                     d = plausible(date_from_name(f.name))
                     date = d.strftime("%Y-%m-%d") if d else ""
-                placements[i] = document_placement(f, st, r["area"], r["subarea"], conf,
-                                                   "IA", reason, r["titulo"], date)
+                placements[i] = document_placement(f, st, area, sub, conf, source, reason, r["titulo"], date)
                 ai_count += 1
             self._unit_ai = {n: results.get(1_000_000 + n) for n in range(len(unit_info))}
 

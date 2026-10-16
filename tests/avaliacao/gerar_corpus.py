@@ -1,7 +1,7 @@
 """Gera uma pasta «Bagunça» realista para avaliar a organização (com e sem IA).
 
 Todos os documentos são fictícios: pessoas, empresas, números e moradas foram inventados
-só para estes testes. Uso: python3 gerar_corpus.py <pasta-destino>
+só para estes testes. Uso: python3 gerar_corpus.py <pasta-destino> [--validacao]
 """
 
 from __future__ import annotations
@@ -318,6 +318,156 @@ DOCUMENTOS: dict[str, tuple[list[str], list[str]]] = {
 }
 
 
+# Conjunto de validação: documentos diferentes, com as áreas esperadas fixadas antes de qualquer
+# avaliação. Não serve para afinar palavras-chave nem pedidos à IA; mede a qualidade real.
+VALIDACAO: dict[str, tuple[list[str], list[str]]] = {
+    "fatura-recibo_0042.pdf": (["Finanças", "Trabalho"], [
+        "Portal das Finanças - Fatura-Recibo n.º FR ATSIRE01FR/42",
+        "Transmitente: Ana Ribeiro   NIF 234 567 890",
+        "Adquirente: Atlântida Seguros, S.A.   NIF 503 222 111",
+        "Descrição: prestação de serviços de consultoria em gestão de produto",
+        "Valor base: 3.800,00 EUR   IVA 23%: 874,00 EUR",
+        "Retenção na fonte de IRS (25%): 950,00 EUR   Importância recebida: 3.724,00 EUR",
+    ]),
+    "simulacao_credito.pdf": (["Finanças"], [
+        "Banco Douro - Simulação de crédito à habitação",
+        "Montante: 180.000 EUR   Prazo: 35 anos   Taxa variável Euribor 12 meses + 0,85%",
+        "Prestação mensal estimada: 742,18 EUR   TAEG: 4,1%",
+        "Esta simulação não constitui proposta contratual.",
+    ]),
+    "iuc_2025.pdf": (["Finanças", "Veículos"], [
+        "AUTORIDADE TRIBUTÁRIA E ADUANEIRA",
+        "Imposto Único de Circulação - Documento de cobrança",
+        "Matrícula: 12-AB-34   Categoria B   Ano do imposto: 2025",
+        "Valor a pagar: 152,30 EUR   Data limite: 30-04-2025",
+    ]),
+    "apolice_casa.pdf": (["Finanças", "Casa"], [
+        "Atlântida Seguros - Seguro Multirriscos Habitação",
+        "Condições particulares - Apólice n.º 0077 5512 3301",
+        "Tomador do seguro: Ana Ribeiro   Local de risco: Rua do Carmo, 45, Lourinhã",
+        "Capital seguro do edifício: 150.000 EUR   Recheio: 25.000 EUR",
+        "Prémio anual: 218,40 EUR",
+    ]),
+    "marcacao.txt": (["Saúde"], [
+        "Consulta de medicina dentária marcada para 14/11/2025 às 15h30, Clínica Sorriso Oeste.",
+        "Traga o cartão de utente e chegue 10 minutos antes.",
+    ]),
+    "boletim_vacinas.pdf": (["Saúde"], [
+        "Boletim Individual de Saúde - Registo de vacinação",
+        "Utente: Ana Ribeiro",
+        "Tétano e difteria (Td): 2019-05-02, reforço previsto em 2029",
+        "Gripe sazonal: 2024-10-15   Lote FX1234",
+    ]),
+    "pauta_3periodo.pdf": (["Educação"], [
+        "Escola Básica da Lourinhã - Ficha de avaliação do 3.º período",
+        "Aluno: Tomás Ribeiro   Turma 6.º B",
+        "Português: 5   Matemática: 4   Inglês: 5   Ciências Naturais: 4",
+        "Observações da diretora de turma: aluno empenhado e participativo.",
+    ]),
+    "dissertacao_capitulo2.docx": (["Educação"], [
+        "Capítulo 2 - Revisão da literatura",
+        "Segundo Schwaber e Sutherland (2020), o Scrum é um enquadramento leve para equipas.",
+        "Vários estudos empíricos apontam ganhos de previsibilidade com o Kanban.",
+        "Referências bibliográficas",
+        "Schwaber, K.; Sutherland, J. (2020). The Scrum Guide.",
+    ]),
+    "oferta_emprego.pdf": (["Trabalho", "Pessoal"], [
+        "Carta-proposta de emprego",
+        "Temos o prazer de lhe propor a função de Product Owner na nossa equipa de produto.",
+        "Remuneração base anual: 48.000 EUR, paga em 14 prestações.",
+        "Data de início prevista: 2 de janeiro de 2026.",
+    ]),
+    "timesheet_outubro.xlsx": (["Trabalho"], [
+        "Registo de horas - outubro de 2025",
+        "Cliente: Atlântida Seguros   Projeto: Portal do Cliente",
+        "Dias trabalhados: 22   Total de horas: 176",
+    ]),
+    "agenda_reuniao.docx": (["Trabalho"], [
+        "Convocatória - Reunião de direção de 20 de outubro de 2025",
+        "Ordem de trabalhos:",
+        "1. Orçamento para 2026",
+        "2. Recrutamento para a equipa de dados",
+        "3. Outros assuntos",
+    ]),
+    "bilhete_cp.pdf": (["Viagens"], [
+        "CP - Comboios de Portugal",
+        "Bilhete Intercidades: Lisboa Santa Apolónia - Porto Campanhã",
+        "Data: 05-12-2025   Partida 09:09   Carruagem 3   Lugar 45",
+    ]),
+    "reserva_alojamento.eml": (["Viagens"], [
+        "From: Reservas Gerês <reservas@casadolago.example>",
+        "Subject: Reserva confirmada - Casa do Lago",
+        "",
+        "A sua estadia na Casa do Lago, Gerês, está confirmada: 3 noites, de 12 a 15 de junho.",
+        "Check-in a partir das 16h. O anfitrião deixa a chave na caixa junto à porta.",
+    ]),
+    "fatura_telemovel_loja.pdf": (["Finanças", "Compras e Garantias"], [
+        "Eletrolar - Fatura simplificada FS 2025/88123",
+        "Smartphone Nova X 128 GB   349,99 EUR",
+        "Pago com cartão. Garantia legal: 3 anos.",
+    ]),
+    "manual_tv.pdf": (["Compras e Garantias", "Casa"], [
+        "Televisor LED 55 polegadas - Guia de início rápido",
+        "1. Ligue o cabo de alimentação. 2. Insira as pilhas no comando.",
+        "3. Siga o assistente para a sintonização automática dos canais.",
+    ]),
+    "matricula_escola.pdf": (["Educação", "Pessoal"], [
+        "Pedido de matrícula no 1.º ano do ensino básico - ano letivo 2026/2027",
+        "Aluno: Tomás Ribeiro   Encarregado de educação: Ana Ribeiro",
+        "Estabelecimento pretendido: Escola Básica da Lourinhã",
+    ]),
+    "reparacao_carro.pdf": (["Veículos", "Finanças"], [
+        "Auto Oeste, Lda. - Fatura n.º AO/2025/551",
+        "Viatura: Renault Clio, matrícula 12-AB-34, 101.230 km",
+        "Substituição de pastilhas de travão e discos dianteiros: 289,00 EUR",
+        "Mão de obra: 60,00 EUR",
+    ]),
+    "multa.pdf": (["Veículos", "Jurídico"], [
+        "Autoridade Nacional de Segurança Rodoviária",
+        "Auto de contraordenação n.º 912345678",
+        "Infração: excesso de velocidade (72 km/h numa via limitada a 50 km/h)",
+        "Veículo: matrícula 12-AB-34   Coima: 120,00 EUR",
+    ]),
+    "contrato_ginasio.pdf": (["Lazer", "Outros", "Jurídico"], [
+        "Ginásio Atlântico - Contrato de adesão",
+        "Sócio: Ana Ribeiro   Plano: acesso livre a aulas de grupo e musculação",
+        "Mensalidade: 35,00 EUR   Período de fidelização: 12 meses",
+    ]),
+    "arroz_pato.txt": (["Lazer", "Outros"], [
+        "Arroz de pato à antiga",
+        "Ingredientes: 1 pato, 300 g de arroz, 1 chouriço, 1 cebola, louro.",
+        "Coza o pato, desfie a carne e leve ao forno com o arroz e rodelas de chouriço.",
+    ]),
+    "artigo_revista.pdf": (["Livros e Leituras", "Trabalho"], [
+        "Revista Gestão Ágil n.º 12 - outubro de 2025",
+        "Kanban para equipas de apoio ao cliente",
+        "por Rui Silva",
+        "Limitar o trabalho em curso é o primeiro passo para reduzir os tempos de resposta.",
+    ]),
+    "habilitacao_herdeiros.pdf": (["Jurídico"], [
+        "Cartório Notarial da Lourinhã",
+        "Escritura de habilitação de herdeiros",
+        "Por óbito de Joaquim Ribeiro, ocorrido em 3 de março de 2025, sucederam-lhe",
+        "como únicos herdeiros a cônjuge e os dois filhos.",
+    ]),
+    "lista_compras.txt": (["Outros", "Casa"], [
+        "leite, pão, ovos, detergente da loiça, maçãs",
+    ]),
+    "scan_0091.pdf": (["Outros"], [""]),
+    "anexo_b.pdf": (["Finanças"], [
+        "Declaração de rendimentos IRS - Modelo 3 - Anexo B",
+        "Rendimentos da categoria B - regime simplificado",
+        "Prestações de serviços: 41.800,00 EUR",
+    ]),
+    "certidao_nascimento.pdf": (["Pessoal"], [
+        "Conservatória do Registo Civil da Lourinhã",
+        "Certidão de nascimento",
+        "Nome: Tomás Ribeiro   Data de nascimento: 7 de setembro de 2019",
+        "Filiação: Ana Ribeiro e João Martins",
+    ]),
+}
+
+
 # --------------------------------------------------------------------------- formatos
 
 def _pdf(path: Path, lines: list[str]) -> None:
@@ -360,6 +510,12 @@ def _docx(path: Path, lines: list[str]) -> None:
         z.writestr("word/document.xml", f"<w:document><w:body>{body}</w:body></w:document>")
 
 
+def _xlsx(path: Path, lines: list[str]) -> None:
+    items = "".join(f"<si><t>{_xml_escape(t)}</t></si>" for t in lines)
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("xl/sharedStrings.xml", f"<sst>{items}</sst>")
+
+
 def _pptx(path: Path, lines: list[str]) -> None:
     body = "".join(f"<a:p><a:r><a:t>{_xml_escape(t)}</a:t></a:r></a:p>" for t in lines)
     with zipfile.ZipFile(path, "w") as z:
@@ -397,11 +553,9 @@ def _mp3(path: Path, artist: str, album: str, title: str) -> None:
         pass
 
 
-def gerar(dest: Path) -> dict[str, list[str]]:
-    root = dest / "Bagunça"
-    root.mkdir(parents=True, exist_ok=True)
+def _escrever_documentos(root: Path, documentos: dict[str, tuple[list[str], list[str]]]) -> dict[str, list[str]]:
     esperado: dict[str, list[str]] = {}
-    for rel, (areas, lines) in DOCUMENTOS.items():
+    for rel, (areas, lines) in documentos.items():
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         ext = path.suffix.lower()
@@ -411,9 +565,26 @@ def gerar(dest: Path) -> dict[str, list[str]]:
             _docx(path, lines)
         elif ext == ".pptx":
             _pptx(path, lines)
+        elif ext == ".xlsx":
+            _xlsx(path, lines)
         else:
             path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         esperado[rel] = areas
+    return esperado
+
+
+def gerar_validacao(dest: Path) -> dict[str, list[str]]:
+    root = dest / "Bagunça"
+    root.mkdir(parents=True, exist_ok=True)
+    esperado = _escrever_documentos(root, VALIDACAO)
+    (dest / "esperado.json").write_text(json.dumps(esperado, ensure_ascii=False, indent=2), encoding="utf-8")
+    return esperado
+
+
+def gerar(dest: Path) -> dict[str, list[str]]:
+    root = dest / "Bagunça"
+    root.mkdir(parents=True, exist_ok=True)
+    esperado = _escrever_documentos(root, DOCUMENTOS)
 
     # Fotografias, capturas de ecrã e imagens recebidas
     _jpg(root / "IMG_20240812_101010.jpg", (200, 120, 60), "2024:08:12 10:10:10", ("Google", "Pixel 7"))
@@ -447,9 +618,13 @@ def gerar(dest: Path) -> dict[str, list[str]]:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(args) != 1:
         sys.exit(__doc__)
-    out = Path(sys.argv[1])
-    gerar(out)
+    out = Path(args[0])
+    if "--validacao" in sys.argv:
+        gerar_validacao(out)
+    else:
+        gerar(out)
     n = sum(1 for _ in (out / "Bagunça").rglob("*") if _.is_file())
     print(f"Corpus criado em {out / 'Bagunça'} ({n} ficheiros).")
