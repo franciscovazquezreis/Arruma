@@ -1,0 +1,9 @@
+[Nemo Action]
+Active=true
+Name=Arrumar com o Arruma
+Comment=Analisa e propõe uma organização para as pastas selecionadas
+Exec=arruma %F
+Icon-Name=pt.arruma.Arruma
+Selection=notnone
+Extensions=dir;
+Quote=double

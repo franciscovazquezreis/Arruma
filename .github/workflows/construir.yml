@@ -1,0 +1,173 @@
+# Testa o Arruma em Linux, Windows e macOS e constrói as versões para instalar.
+# Os ficheiros ficam em Actions → (execução) → Artifacts. Ao criar uma etiqueta vX.Y.Z,
+# são também publicados numa versão (Releases) do GitHub.
+name: Construir e testar
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testes:
+    name: Testes (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, python: "3.10" }
+          - { os: ubuntu-latest, python: "3.12" }
+          - { os: windows-latest, python: "3.12" }
+          - { os: macos-latest, python: "3.12" }
+    runs-on: ${{ matrix.os }}
+    env:
+      ARRUMA_TESTAR_LIXO: ${{ startsWith(matrix.os, 'ubuntu') && '0' || '1' }}
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pillow mutagen pypdf
+      - run: python -m unittest discover -s tests -v
+
+  linux:
+    name: Linux (.deb)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: packaging/linux/build-deb.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arruma-linux-deb
+          path: dist/*.deb
+
+  linux-instalar:
+    name: Instalar o .deb (${{ matrix.os }})
+    needs: linux
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: arruma-linux-deb
+      - name: Instalar como no Linux Mint
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ./arruma_*.deb xvfb
+      - name: Autoteste da aplicação instalada
+        run: |
+          xvfb-run -a arruma --self-test="$PWD/autoteste.txt"
+          cat autoteste.txt
+          grep -q "RESULTADO: OK" autoteste.txt
+
+  windows:
+    name: Windows (instalador)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-gobject
+            mingw-w64-ucrt-x86_64-python-cairo
+            mingw-w64-ucrt-x86_64-gtk3
+            mingw-w64-ucrt-x86_64-adwaita-icon-theme
+            mingw-w64-ucrt-x86_64-adwaita-icon-theme-legacy
+            mingw-w64-ucrt-x86_64-librsvg
+            mingw-w64-ucrt-x86_64-python-pillow
+            mingw-w64-ucrt-x86_64-python-mutagen
+            mingw-w64-ucrt-x86_64-pyinstaller
+            mingw-w64-ucrt-x86_64-poppler
+            zip
+      - name: Versão
+        run: echo "VERSAO=$(python -c 'import arruma; print(arruma.__version__)')" >> "$GITHUB_ENV"
+      - name: Testes com o Python do pacote
+        run: python -m unittest discover -s tests
+      - name: Construir com o PyInstaller
+        run: pyinstaller packaging/pyinstaller/arruma.spec --noconfirm --clean
+      - name: Autoteste da versão empacotada
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\Arruma\Arruma.exe" -ArgumentList "--self-test=$PWD\autoteste.txt" -Wait -PassThru
+          Get-Content autoteste.txt
+          if ($p.ExitCode -ne 0) { throw "O autoteste falhou (código $($p.ExitCode))." }
+      - name: Versão portátil (.zip)
+        run: cd dist && zip -qr "Arruma-${VERSAO}-windows-portatil.zip" Arruma
+      - name: Instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DAppVersion=$env:VERSAO" packaging\windows\arruma.iss
+          if ($LASTEXITCODE -ne 0) { throw "O Inno Setup falhou." }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arruma-windows
+          path: |
+            dist/*.exe
+            dist/*.zip
+
+  macos:
+    name: macOS (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, arch: apple-silicon }
+          - { runner: macos-15-intel, arch: intel }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: GTK e Python do Homebrew
+        run: |
+          brew install python@3.14 pygobject3 gtk+3 adwaita-icon-theme librsvg
+          "$(brew --prefix python@3.14)/bin/python3.14" -m venv --system-site-packages venv
+          venv/bin/pip install --quiet pyinstaller pillow mutagen pypdf
+          echo "ARRUMA_MACOS_MIN=$(sw_vers -productVersion | cut -d. -f1).0" >> "$GITHUB_ENV"
+      - name: Testes com o Python do pacote
+        env:
+          ARRUMA_TESTAR_LIXO: "1"
+        run: venv/bin/python -m unittest discover -s tests
+      - name: Construir com o PyInstaller
+        run: venv/bin/pyinstaller packaging/pyinstaller/arruma.spec --noconfirm --clean
+      - name: Autoteste da versão empacotada
+        run: |
+          dist/Arruma.app/Contents/MacOS/Arruma --self-test="$PWD/autoteste.txt"
+          cat autoteste.txt
+          grep -q "RESULTADO: OK" autoteste.txt
+      - name: Imagem de disco (.dmg)
+        run: packaging/macos/make-dmg.sh ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arruma-macos-${{ matrix.arch }}
+          path: dist/*.dmg
+
+  publicar:
+    name: Publicar versão
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [testes, linux-instalar, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artefactos
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artefactos/*
+          generate_release_notes: true

@@ -41,7 +41,55 @@ def _gio_trash(path: str) -> str | None:
     return None
 
 
+def _mount_point(path: str) -> str:
+    p = os.path.realpath(os.path.dirname(path))
+    while not os.path.ismount(p) and os.path.dirname(p) != p:
+        p = os.path.dirname(p)
+    return p
+
+
+def _freedesktop_find(orig: str) -> tuple[Path, Path] | None:
+    """Procura no Lixo segundo a norma freedesktop (a que o GIO e o Nemo usam), sem precisar do GVFS.
+    Devolve (ficheiro no Lixo, .trashinfo) da remoção mais recente."""
+    from urllib.parse import unquote
+    home_trash = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "Trash"
+    top = _mount_point(orig)
+    uid = str(os.getuid()) if hasattr(os, "getuid") else ""
+    places = [(home_trash, None), (Path(top) / f".Trash-{uid}", top), (Path(top) / ".Trash" / uid, top)]
+    best: tuple[str, Path, Path] | None = None
+    for trash_dir, base in places:
+        try:
+            infos = list((trash_dir / "info").glob("*.trashinfo"))
+        except OSError:
+            continue
+        for info in infos:
+            try:
+                lines = info.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            fields = dict(line.split("=", 1) for line in lines if "=" in line)
+            path = unquote(fields.get("Path", ""))
+            if base and path and not path.startswith("/"):
+                path = os.path.join(base, path)
+            if path == orig:
+                date = fields.get("DeletionDate", "")
+                stored = trash_dir / "files" / info.name[:-len(".trashinfo")]
+                if os.path.lexists(stored) and (best is None or date > best[0]):
+                    best = (date, stored, info)
+    return (best[1], best[2]) if best else None
+
+
 def _gio_restore(orig: str) -> None:
+    found = _freedesktop_find(orig)
+    if found is not None:
+        stored, info = found
+        os.makedirs(os.path.dirname(orig), exist_ok=True)
+        os.rename(stored, orig)
+        try:
+            info.unlink()
+        except OSError:
+            pass
+        return
     import gi
     gi.require_version("Gio", "2.0")
     from gi.repository import Gio

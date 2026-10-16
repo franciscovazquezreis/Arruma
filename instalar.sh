@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Instala (ou atualiza) o Arruma para o utilizador atual no Linux Mint, sem precisar de sudo.
+# Alternativa com sudo: o pacote arruma_<versão>_all.deb (ver README).
 set -euo pipefail
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,9 +8,10 @@ APP_DIR="$HOME/.local/share/arruma-app"
 BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+PNG_ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 NEMO_ACTION_DIR="$HOME/.local/share/nemo/actions"
 
-mkdir -p "$APP_DIR" "$BIN_DIR" "$DESKTOP_DIR" "$ICON_DIR" "$NEMO_ACTION_DIR"
+mkdir -p "$APP_DIR" "$BIN_DIR" "$DESKTOP_DIR" "$ICON_DIR" "$PNG_ICON_DIR" "$NEMO_ACTION_DIR"
 
 rm -rf "$APP_DIR/arruma"
 cp -r "$SRC_DIR/arruma" "$APP_DIR/arruma"
@@ -26,6 +28,7 @@ EOF
 chmod +x "$BIN_DIR/arruma"
 
 cp "$SRC_DIR/arruma/ui/arruma.svg" "$ICON_DIR/pt.arruma.Arruma.svg"
+cp "$SRC_DIR/arruma/ui/arruma.png" "$PNG_ICON_DIR/pt.arruma.Arruma.png"
 
 cat > "$DESKTOP_DIR/pt.arruma.Arruma.desktop" <<EOF
 [Desktop Entry]
@@ -39,6 +42,7 @@ Terminal=false
 Categories=Utility;FileTools;
 Keywords=organizar;arrumar;ficheiros;pastas;duplicados;
 StartupNotify=true
+StartupWMClass=arruma
 EOF
 
 cat > "$NEMO_ACTION_DIR/arruma.nemo_action" <<EOF
@@ -58,5 +62,5 @@ gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 |
 
 echo "✓ Arruma instalado com sucesso!"
 echo "  • Menu de aplicações do Linux Mint → Acessórios → Arruma"
-echo "  • Gestor de ficheiros (Nemo): clique direito numa pasta → «Arrumar esta pasta com o Arruma»"
+echo "  • Gestor de ficheiros (Nemo): clique direito numa pasta → «Arrumar com o Arruma»"
 echo "  • Terminal: $BIN_DIR/arruma"

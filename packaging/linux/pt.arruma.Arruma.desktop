@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Arruma
+GenericName=Organizador de ficheiros
+Comment=Organiza pastas e ficheiros localmente, sem internet
+Exec=arruma %F
+Icon=pt.arruma.Arruma
+Terminal=false
+Categories=Utility;FileTools;
+Keywords=organizar;arrumar;ficheiros;pastas;duplicados;
+StartupNotify=true
+StartupWMClass=arruma
