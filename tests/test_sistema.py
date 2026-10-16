@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -106,6 +107,15 @@ class SystemTests(unittest.TestCase):
         for name in ("pdftotext", "tesseract", "ollama", "programa-que-nao-existe"):
             found = system.find_tool(name)
             self.assertTrue(found is None or os.path.isfile(found), found)
+
+    def test_bundled_tools_come_first(self):
+        """Na versão empacotada usa-se o pdftotext que vem com o Arruma, mesmo havendo outro no PATH."""
+        tool = self.tmp / ("pdftotext.exe" if system.IS_WINDOWS else "pdftotext")
+        tool.write_bytes(b"")
+        tool.chmod(0o755)
+        with mock.patch.object(sys, "frozen", True, create=True), \
+                mock.patch.object(sys, "_MEIPASS", str(self.tmp), create=True):
+            self.assertEqual(system.find_tool("pdftotext"), str(tool))
 
     def test_recycle_bin_index(self):
         for version in (1, 2):

@@ -68,7 +68,7 @@ def main() -> int:
         } for a in plan.actions],
     }
     Path(args.saida).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"{len(plan.actions)} ações em {seconds:.0f} s; IA: {plan.ai_model or '—'} "
+    print(f"{len(plan.actions)} ações em {seconds:.0f} s; IA: {plan.ai_model or 'nenhuma'} "
           f"({plan.ai_count} documentos). Notas: {plan.notes}")
     shutil.rmtree(tmp, ignore_errors=True)
     return 0

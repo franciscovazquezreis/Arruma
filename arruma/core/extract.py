@@ -71,10 +71,12 @@ def has_ocr() -> bool:
 
 
 def _pdf_text(path: str, limit: int) -> str:
-    """Texto das duas primeiras páginas: pdftotext (Poppler) ou, se faltar, a biblioteca pypdf."""
+    """Texto das duas primeiras páginas: pdftotext (Poppler) ou, se faltar ou falhar, a biblioteca pypdf."""
     pdftotext = find_tool("pdftotext")
     if pdftotext:
-        return _clean(run_quiet([pdftotext, "-l", "2", "-q", "-enc", "UTF-8", path, "-"], 20), limit)
+        text = _clean(run_quiet([pdftotext, "-l", "2", "-q", "-enc", "UTF-8", path, "-"], 20), limit)
+        if text:
+            return text
     try:
         from pypdf import PdfReader
         reader = PdfReader(path)

@@ -377,16 +377,25 @@ def _app_dirs() -> list[Path]:
     return dirs
 
 
-def find_tool(name: str) -> str | None:
-    """Procura um programa no PATH, junto do Arruma e nos sítios habituais de cada sistema.
+def _executable_in(dirs: list[Path], exe: str) -> str | None:
+    for d in dirs:
+        cand = d / exe
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return str(cand)
+    return None
 
-    As aplicações abertas a partir do Finder não herdam o PATH do Terminal, por isso no macOS
-    também se procura nas pastas do Homebrew."""
-    found = shutil.which(name)
+
+def find_tool(name: str) -> str | None:
+    """Procura um programa junto do Arruma, no PATH e nos sítios habituais de cada sistema.
+
+    Os programas que vêm com o Arruma têm prioridade: outro pdftotext no PATH pode ser de
+    outra versão ou do Xpdf, com opções diferentes. As aplicações abertas a partir do Finder
+    não herdam o PATH do Terminal, por isso no macOS também se procura nas pastas do Homebrew."""
+    exe = name + ".exe" if IS_WINDOWS else name
+    found = _executable_in(_app_dirs(), exe) or shutil.which(name)
     if found:
         return found
-    exe = name + ".exe" if IS_WINDOWS else name
-    extra = _app_dirs()
+    extra: list[Path] = []
     if IS_MAC:
         extra += [Path("/opt/homebrew/bin"), Path("/usr/local/bin"), Path("/opt/local/bin")]
         if name == "ollama":
@@ -399,11 +408,7 @@ def find_tool(name: str) -> str | None:
                   local / "Programs" / "Tesseract-OCR", local / "Tesseract-OCR"]
     else:
         extra += [Path("/usr/local/bin"), HOME / ".local" / "bin"]
-    for d in extra:
-        cand = d / exe
-        if cand.is_file() and os.access(cand, os.X_OK):
-            return str(cand)
-    return None
+    return _executable_in(extra, exe)
 
 
 def run_quiet(cmd: list[str], timeout: int) -> str:
