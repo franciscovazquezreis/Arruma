@@ -14,5 +14,14 @@ trap 'rm -rf "$STAGE"' EXIT
 [ -d "$APP" ] || { echo "Falta $APP: corre primeiro o PyInstaller." >&2; exit 1; }
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Aplicações"
-hdiutil create -volname "Arruma $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$OUT" >/dev/null
-echo "$OUT"
+# Nos servidores macOS do GitHub, o hdiutil falha por vezes com «Resource busy» porque o
+# sistema ainda está a examinar a imagem temporária; basta tentar outra vez.
+for attempt in 1 2 3 4 5; do
+  if hdiutil create -volname "Arruma $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$OUT" >/dev/null; then
+    echo "$OUT"
+    exit 0
+  fi
+  echo "O hdiutil falhou (tentativa $attempt de 5)." >&2
+  sleep $((attempt * 5))
+done
+exit 1

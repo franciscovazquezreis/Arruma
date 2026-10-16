@@ -73,9 +73,20 @@ O workflow [Avaliar IA](https://github.com/franciscovazquezreis/Arruma/actions/w
 - **desenvolvimento** (36 documentos, mais fotografias, música e instaladores): foi usado para afinar as regras, por isso os números são otimistas;
 - **validação** (26 documentos diferentes): as áreas esperadas foram fixadas antes de qualquer teste e o conjunto não serve para afinar nada. É a medida honesta.
 
-Resultados na última avaliação (versão original 0.1.0 e versão 0.2.0):
+Resultados da avaliação de 16 de outubro de 2026 (versão original 0.1.0 e versão 0.2.0):
 
-RESULTADOS_AVALIACAO
+| Indicador | Desenvolvimento 0.1.0 | Desenvolvimento 0.2.0 | Validação 0.1.0 | Validação 0.2.0 |
+|---|---|---|---|---|
+| Documentos na área certa | 28 de 36 | 36 de 36 | 19 de 26 | 21 de 26 |
+| Pastas novas | 48 | 26 | 14 | 11 |
+| Pastas novas com um só item | 26 | 9 | 4 | 3 |
+| Subpastas com nome inventado | 2 | 0 | 3 | 0 |
+| Profundidade máxima | 4 | 3 | 2 | 2 |
+| Tempo da análise | 274 s | 285 s | 163 s | 177 s |
+
+Nos documentos que nunca serviram para afinar nada, a versão 0.2.0 acerta na área de 81 % (21 de 26), contra 73 % na original, e deixou de criar subpastas com nomes inventados, como «Casa/Manutenção Veículos» ou «Educação/Escola Básica da Lourinhã». Os cinco documentos que ainda ficam fora da área esperada são casos em que um modelo de 3 mil milhões de parâmetros hesita: um manual de televisor em «Pessoal», uma multa em «Finanças», um contrato de ginásio em «Trabalho», um artigo de revista em «Lazer» e uma lista de compras em «Compras e Garantias». Como o plano é sempre revisto antes de ser aplicado, estes casos corrigem-se na página do plano.
+
+Os números variam um pouco de uma execução para outra, mesmo com o mesmo código, porque o modelo nem sempre responde exatamente da mesma forma em máquinas diferentes: numa execução anterior, a versão original acertou 27 de 36 no conjunto de desenvolvimento, em vez de 28. Num servidor do GitHub sem placa gráfica, a IA demora 7 a 8 segundos por documento.
 
 ## Para quem desenvolve
 
