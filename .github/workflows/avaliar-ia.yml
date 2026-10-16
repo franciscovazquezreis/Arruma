@@ -1,0 +1,80 @@
+# Avaliação da organização com a IA local real (Ollama), comparando duas versões do código.
+# Corre-se à mão em Actions → «Avaliar IA» → Run workflow.
+name: Avaliar IA
+
+on:
+  workflow_dispatch:
+    inputs:
+      modelo:
+        description: Modelo do Ollama
+        default: qwen2.5:3b
+      ref_antes:
+        description: Versão de referência (commit, ramo ou etiqueta); vazio para avaliar só a atual
+        default: 4bee4977e730627225dab2ac9bdf6b572d1c39ce
+      so_antes:
+        description: Avaliar apenas a versão de referência
+        type: boolean
+        default: false
+
+jobs:
+  avaliar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      MODELO: ${{ inputs.modelo }}
+      REF_ANTES: ${{ inputs.ref_antes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependências
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+          pip install pillow mutagen pypdf
+
+      - name: Instalar o Ollama e o modelo
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          if ! curl -fsS http://127.0.0.1:11434/api/version; then
+            nohup ollama serve > ollama.log 2>&1 &
+            for i in $(seq 1 30); do curl -fsS http://127.0.0.1:11434/api/version && break; sleep 1; done
+          fi
+          ollama pull "$MODELO"
+          ollama list
+
+      - name: Gerar o corpus
+        run: python tests/avaliacao/gerar_corpus.py corpus
+
+      - name: Avaliar a versão de referência
+        if: env.REF_ANTES != ''
+        run: |
+          mkdir -p antes
+          git archive "$REF_ANTES" arruma | tar -x -C antes
+          python tests/avaliacao/avaliar.py --codigo antes --corpus corpus --saida antes.json --modelo "$MODELO"
+
+      - name: Avaliar a versão atual
+        if: ${{ !inputs.so_antes }}
+        run: python tests/avaliacao/avaliar.py --codigo . --corpus corpus --saida depois.json --modelo "$MODELO"
+
+      - name: Relatório
+        run: |
+          python tests/avaliacao/comparar.py --antes antes.json --depois depois.json \
+            --esperado corpus/esperado.json --saida relatorio.md
+          cat relatorio.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: avaliacao-ia
+          path: |
+            antes.json
+            depois.json
+            relatorio.md
+            ollama.log
+          if-no-files-found: ignore
