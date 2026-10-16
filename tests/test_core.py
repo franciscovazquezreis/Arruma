@@ -113,19 +113,19 @@ class PlanTests(unittest.TestCase):
         by_src = {os.path.relpath(a.src, self.root): a for a in plan.actions}
         rel = lambda a: os.path.relpath(a.dst, self.root)  # noqa: E731
 
-        self.assertTrue(rel(by_src["fatura_123.txt"]).startswith("Documentos/Finanças/Faturas e Recibos/"))
+        # Poucos ficheiros: não se criam subpastas de subárea, ano ou mês só para um ou dois.
+        self.assertEqual(rel(by_src["fatura_123.txt"]), "Documentos/Finanças/fatura_123.txt")
         self.assertTrue(rel(by_src["Documento (1).docx"]).startswith("Documentos/Saúde/"))
-        self.assertEqual(rel(by_src["IMG_20240812_101010.jpg"]),
-                         "Imagens/Fotografias/2024/2024-08 Agosto/IMG_20240812_101010.jpg")
-        self.assertTrue(rel(by_src["Screenshot from 2025-01-02 10-00-00.png"]).startswith("Imagens/Capturas de ecrã/2025/"))
+        self.assertEqual(rel(by_src["IMG_20240812_101010.jpg"]), "Imagens/Fotografias/IMG_20240812_101010.jpg")
+        self.assertEqual(rel(by_src["Screenshot from 2025-01-02 10-00-00.png"]),
+                         "Imagens/Capturas de ecrã/Screenshot from 2025-01-02 10-00-00.png")
         self.assertTrue(rel(by_src["programa.deb"]).startswith("Instaladores/"))
-        self.assertTrue(rel(by_src["fotos.zip"]).startswith("Arquivos comprimidos/"))
+        self.assertTrue(rel(by_src["fotos.zip"]).startswith("Ficheiros comprimidos/"))
         self.assertTrue(rel(by_src["Nova pasta/contrato.txt"]).startswith("Documentos/Casa/"))
         self.assertEqual(by_src["Thumbs.db"].op, "trash")
-        unit = by_src["Férias Algarve"]
-        self.assertEqual(unit.op, "move_dir")
-        self.assertTrue(rel(unit).startswith("Imagens/Fotografias/"))
-        self.assertTrue(rel(unit).endswith("/Férias Algarve"))
+        # Subpasta com nome próprio dentro da pasta escolhida: fica onde está.
+        self.assertNotIn("Férias Algarve", by_src)
+        self.assertIn(str(self.root / "Férias Algarve"), [p for p, _ in plan.respected])
         self.assertEqual(by_src["Nova pasta (2)"].op, "rmdir")
         self.assertFalse(any("meuprojeto" in s for s in by_src))
         # destinos nunca colidem
@@ -196,7 +196,7 @@ class PlanTests(unittest.TestCase):
         old_dir = os.path.dirname(fat.dst)
         # 1. Renomear pasta sugerida
         new_dir = rename_folder_in_plan(plan, old_dir, "Despesas Mensais")
-        self.assertTrue(new_dir.endswith("/Documentos/Finanças/Despesas Mensais"))
+        self.assertEqual(new_dir, os.path.join(os.path.dirname(old_dir), "Despesas Mensais"))
         self.assertEqual(os.path.dirname(fat.dst), new_dir)
         # 2. Mover pasta sugerida para dentro de outra pasta
         target_parent = str(self.root / "Documentos" / "Casa")

@@ -156,7 +156,8 @@ def run_bg(fn: Callable, on_done: Callable, on_error: Callable | None = None) ->
         except Exception as e:  # noqa: BLE001 — mostrado ao utilizador
             traceback.print_exc()
             if on_error:
-                GLib.idle_add(lambda: (on_error(e), False)[1])
+                # «e» deixa de existir no fim do except: passa-se o erro como argumento.
+                GLib.idle_add(lambda err: (on_error(err), False)[1], e)
             return
         GLib.idle_add(lambda: (on_done(result), False)[1])
     t = threading.Thread(target=worker, daemon=True)

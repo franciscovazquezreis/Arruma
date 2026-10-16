@@ -106,7 +106,11 @@ _UNCLEAR_FILE = re.compile(
     r"(scan|scanned|scanner|digitaliza[cç][aã]o|doc|docs|document|documento|file|ficheiro|"
     r"arquivo|untitled|sem t[ií]tulo|novo documento( de texto)?|new document|download|"
     r"print|impress[aã]o|output|export|img|image|imagem|pdf|attachment|anexo|unnamed|"
-    r"temp|tmp|teste?|test|c[oó]pia de .*|copy of .*|fatura|invoice|recibo|receipt)"
+    r"temp|tmp|teste?|test|c[oó]pia de .*|copy of .*|fatura|invoice|recibo|receipt|"
+    # uma só palavra genérica não diz qual é o documento («Contrato.pdf», «ata.pdf»)
+    r"contrato|relat[oó]rio|ata|manual|certificado|extrato|carta|receita|declara[cç][aã]o|"
+    r"comprovativo|or[cç]amento|proposta|apresenta[cç][aã]o|notas?|garantia|encomenda|bilhete|"
+    r"reserva|livro|procura[cç][aã]o|inspe[cç][aã]o|seguro|ap[oó]lice|an[aá]lises|exame)"
     r"[\s_\-\.]*\d*",
     re.IGNORECASE,
 )

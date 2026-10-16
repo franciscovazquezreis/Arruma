@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import threading
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
 from . import taxonomy as tx
-from .ai import AIError, LocalAI
+from .ai import PROMPT_VERSION, AIError, LocalAI
 from .classifier import KIND_BASE, Placement, classify_simple, document_placement
 from .db import Database
 from .extract import date_from_name, extract_text, image_info, plausible
-from .fsutil import HOME, is_within, sanitize_name, split_ext, unique_path, xdg_user_dirs
+from .fsutil import is_within, sanitize_name, split_ext, unique_path, xdg_user_dirs
 from .scanner import FileItem, FolderInfo, ScanResult, is_home
 from .settings import Settings
 
@@ -25,10 +27,17 @@ MODE_PERSONAL = "personal"
 
 INSIDE_NAMES = {
     "documents": "Documentos", "pictures": "Imagens", "videos": "Vídeos", "music": "Música",
-    "archives": "Arquivos comprimidos", "installers": "Instaladores", "code": "Código",
-    "other": "Outros",
+    "archives": "Ficheiros comprimidos", "installers": "Instaladores", "code": "Código",
+    "other": "Outros ficheiros",
 }
 BASE_LABELS = INSIDE_NAMES
+
+# Uma subpasta nova (subárea, álbum) só se cria se ficar com pelo menos MIN_GROUP itens;
+# com menos, os ficheiros ficam na pasta de cima. Não se criam pastas para um só ficheiro.
+MIN_GROUP = 3
+# As fotografias de um ano só se dividem por meses a partir deste número.
+MONTH_SPLIT_MIN = 40
+_MONTH_DIR = re.compile(r"^(19|20)\d{2}-(0[1-9]|1[0-2])\b")
 
 
 @dataclass
@@ -116,10 +125,10 @@ def _personal_bases() -> dict[str, str]:
         "pictures": str(xdg["PICTURES"]),
         "videos": str(xdg["VIDEOS"]),
         "music": str(xdg["MUSIC"]),
-        "archives": str(xdg["DOWNLOAD"] / "Arquivos comprimidos"),
+        "archives": str(xdg["DOWNLOAD"] / "Ficheiros comprimidos"),
         "installers": str(xdg["DOWNLOAD"] / "Instaladores"),
-        "code": str(HOME / "Projetos"),
-        "other": str(xdg["DOCUMENTS"] / "Outros"),
+        "code": str(xdg["DOCUMENTS"] / "Código"),
+        "other": str(xdg["DOCUMENTS"] / "Outros ficheiros"),
     }
 
 
@@ -199,12 +208,19 @@ class Planner:
 
         queue: list[tuple[str, str]] = []
         for r in reversed(scan.roots):
+            inside = all(is_within(b, r) for b in bases_by_root[r].values())
             if is_home(r):
                 r_state = "home"
             elif r in base_set and r not in inboxes:
                 r_state = "base"
-            else:
+            elif r in inboxes or not inside:
+                # Transferências, Secretária ou pastas a esvaziar para as pastas pessoais:
+                # as subpastas com nome próprio também são arrumadas (inteiras).
                 r_state = "inbox"
+            else:
+                # Arrumar dentro de uma pasta: as subpastas com nome próprio são a organização
+                # da pessoa e ficam onde estão (não se cria «Trabalho/Documentos/Trabalho/…»).
+                r_state = "keep"
             queue.append((r, r_state))
 
         while queue:
@@ -261,7 +277,7 @@ class Planner:
         return ai
 
     def _run_ai(self, ai: LocalAI, requests: list[dict]) -> dict[int, dict]:
-        """requests: dicts com id, nome, pasta, texto, tipo, cache_key."""
+        """requests: dicts com id, nome, pasta, texto, tipo, cache_key. Um pedido por item."""
         results: dict[int, dict] = {}
         pending = []
         for r in requests:
@@ -273,47 +289,30 @@ class Planner:
         total = len(requests)
         done = total - len(pending)
         started = time.monotonic()
-        processed = 0
         failures = 0
-
-        def batches():
-            cur, size = [], 0
-            for r in pending:
-                cost = len(r.get("texto", "")) + 80
-                if cur and (len(cur) >= 4 or size + cost > 2600):
-                    yield cur
-                    cur, size = [], 0
-                cur.append(r)
-                size += cost
-            if cur:
-                yield cur
-
-        for batch in batches():
+        for n, r in enumerate(pending):
             self._check()
             if self.skip_ai.is_set():
                 self.notes.append("A análise com IA foi interrompida; os restantes documentos "
                                   "foram classificados por palavras-chave.")
                 break
             elapsed = time.monotonic() - started
-            eta = (elapsed / processed) * (len(pending) - processed) if processed else None
-            self.progress("ai", done, total, batch[0]["nome"], eta)
-            items = [{k: r[k] for k in ("id", "nome", "pasta", "texto", "tipo") if k in r} for r in batch]
+            eta = (elapsed / n) * (len(pending) - n) if n else None
+            self.progress("ai", done, total, r["nome"], eta)
             try:
-                out = ai.classify(items)
+                out = ai.classify_item(r)
                 failures = 0
             except AIError as e:
                 failures += 1
-                if failures >= 2:
-                    self.notes.append(f"A IA deixou de responder ({e}). Usaram-se regras para o resto.")
+                done += 1
+                if failures >= 3:
+                    self.notes.append(f"A IA deixou de responder ({e}). Usaram-se palavras-chave para o resto.")
                     break
                 continue
-            for r in batch:
-                if r["id"] in out:
-                    results[r["id"]] = out[r["id"]]
-                    if self.db:
-                        self.db.cache_put(r["cache_key"], out[r["id"]])
-            processed += len(batch)
-            done += len(batch)
+            results[r["id"]] = out
+            if self.db:
+                self.db.cache_put(r["cache_key"], out)
+            done += 1
         self.progress("ai", done, total, "", 0)
         return results
 
@@ -342,6 +341,7 @@ class Planner:
 
         # 2) Documentos: ler conteúdo e palavras-chave
         texts: dict[int, str] = {}
+        keyword: dict[int, tuple[str, float]] = {}
         for n, i in enumerate(docs):
             self._check()
             f = files[i]
@@ -349,6 +349,7 @@ class Planner:
             text = extract_text(f.path, f.ext) if f.ext in tx.TEXT_EXTRACTABLE else ""
             texts[i] = text
             area, sub, conf, hits = tx.keyword_classify(f.name, text)
+            keyword[i] = (area, conf)
             if hits:
                 reason = "Contém " + ", ".join(f"«{h}»" for h in hits) + f", por isso parece de {area}" + \
                          (f" › {sub}." if sub else ".")
@@ -376,47 +377,67 @@ class Planner:
             dominant = kinds.most_common(1)[0][0] if kinds else tx.OTHER
             unit_info.append((u, dominant, unit_files[u.path]))
 
-        # 4) IA local
-        ai = self._ai_client() if (docs or any(d in (tx.DOCUMENT,) for _, d, _ in unit_info)) else None
+        # 4) IA local, um documento de cada vez
+        ai = self._ai_client() if (docs or any(d == tx.DOCUMENT for _, d, _ in unit_info)) else None
         ai_count = 0
+        self._unit_ai: dict[int, dict | None] = {}
         if ai is not None:
             reqs = []
             for i in docs:
                 f = files[i]
                 reqs.append({"id": i, "nome": f.name, "pasta": os.path.basename(f.parent),
-                             "texto": texts.get(i, "")[:700], "tipo": "documento",
-                             "cache_key": f"{ai.model}|{f.name}|{f.size}|{int(f.mtime)}"})
+                             "texto": texts.get(i, ""), "tipo": "documento",
+                             "cache_key": f"v{PROMPT_VERSION}|{ai.model}|{f.name}|{f.size}|{int(f.mtime)}"})
             for n, (u, dominant, ufiles) in enumerate(unit_info):
                 if dominant != tx.DOCUMENT:
                     continue
                 names = sorted(x.name for x in ufiles)[:25]
+                digest = hashlib.sha1("\n".join(names).encode("utf-8")).hexdigest()[:16]
                 reqs.append({"id": 1_000_000 + n, "nome": u.name, "pasta": os.path.basename(os.path.dirname(u.path)),
-                             "texto": "Pasta com os ficheiros: " + "; ".join(names), "tipo": "pasta",
-                             "cache_key": f"{ai.model}|dir|{u.name}|{len(ufiles)}|{hash(tuple(names))}"})
+                             "texto": "; ".join(names), "tipo": "pasta",
+                             "cache_key": f"v{PROMPT_VERSION}|{ai.model}|dir|{u.name}|{len(ufiles)}|{digest}"})
             results = self._run_ai(ai, reqs)
             for i in docs:
                 r = results.get(i)
                 if not r:
                     continue
                 prev = placements[i]
-                if r["area"] == "Outros" and r["confianca"] < 0.5 and prev.area != "Outros" and prev.confidence >= 0.5:
-                    continue
+                kw_area, kw_conf = keyword[i]
+                if r["area"] == "Outros" and prev.area != "Outros" and prev.confidence >= 0.5:
+                    continue  # a IA não soube; as palavras-chave tinham pistas claras
                 f = files[i]
-                label = r["area"] + (f" › {r['subarea']}" if r["subarea"] else "")
+                label = tx.category_label(r["area"], r["subarea"])
                 what = f"«{r['titulo']}»" if r["titulo"] else "o documento"
                 reason = f"A IA local leu {what} e classificou-o em {label}."
+                conf = r["confianca"]
+                if kw_area == r["area"]:
+                    conf = max(conf, 0.8)
+                elif kw_area != "Outros" and kw_conf >= 0.7:
+                    conf = min(conf, 0.5)
+                    reason += f" As palavras-chave apontavam para {kw_area}: confirma."
                 date = r["data"]
                 if not date:
                     d = plausible(date_from_name(f.name))
                     date = d.strftime("%Y-%m-%d") if d else ""
-                placements[i] = document_placement(f, st, r["area"], r["subarea"], r["confianca"],
+                placements[i] = document_placement(f, st, r["area"], r["subarea"], conf,
                                                    "IA", reason, r["titulo"], date)
                 ai_count += 1
             self._unit_ai = {n: results.get(1_000_000 + n) for n in range(len(unit_info))}
-        else:
-            self._unit_ai = {}
 
-        # 5) Ações
+        # 5) Destinos: simplificar a árvore antes de criar as ações
+        entries: list[tuple[Placement, str]] = []
+        for i, f in enumerate(files):
+            p = placements[i]
+            if not p.trash:
+                entries.append((p, bases_by_root[self._root_for(f.path)][p.base]))
+        unit_places: list[Placement] = []
+        for n, (u, dominant, ufiles) in enumerate(unit_info):
+            p = self._unit_placement(u, dominant, ufiles, self._unit_ai.get(n))
+            unit_places.append(p)
+            entries.append((p, bases_by_root[self._root_for(u.path)][p.base]))
+        simplify_tree(entries)
+
+        # 6) Ações
         actions: list[Action] = []
         taken: set[str] = set()
         next_id = 0
@@ -445,8 +466,7 @@ class Planner:
             taken.add(str(final))
             add("move", f.path, str(final), f.kind, f.size, p)
 
-        for n, (u, dominant, ufiles) in enumerate(unit_info):
-            p = self._unit_placement(u, dominant, ufiles, self._unit_ai.get(n))
+        for (u, dominant, ufiles), p in zip(unit_info, unit_places):
             r_bases = bases_by_root[self._root_for(u.path)]
             dst = Path(r_bases[p.base], *p.rel, u.name)
             if str(dst) == u.path or is_within(dst, u.path):
@@ -484,7 +504,7 @@ class Planner:
                 d = d or datetime.fromtimestamp(f.mtime)
                 years[d.year] += 1
             year = years.most_common(1)[0][0] if years else datetime.now().year
-            return Placement("pictures", ("Fotografias", str(year)),
+            return Placement("pictures", ("Fotografias", str(year)), year_level=True,
                              reason=f"Álbum de imagens, sobretudo de {year}. {keep}", confidence=0.8)
         if dominant in (tx.DOCUMENT, tx.BOOK):
             if ai_result:
@@ -498,6 +518,65 @@ class Planner:
                              reason=f"{why}{keep}")
         label = tx.KIND_INFO.get(dominant, tx.KIND_INFO[tx.OTHER])[0].lower()
         return Placement(base, (), reason=f"Pasta sobretudo com {label}. {keep}", confidence=0.75)
+
+
+def _has_month_dirs(year_dir: Path) -> bool:
+    try:
+        return any(e.is_dir() and _MONTH_DIR.match(e.name) for e in os.scandir(year_dir))
+    except OSError:
+        return False
+
+
+def _has_year_dirs(parent: Path) -> bool:
+    try:
+        return any(e.is_dir() and re.fullmatch(r"(19|20)\d{2}", e.name) for e in os.scandir(parent))
+    except OSError:
+        return False
+
+
+def simplify_tree(entries: list[tuple[Placement, str]]) -> None:
+    """Evita pastas que não fazem sentido: subpastas novas com um ou dois ficheiros e meses
+    com meia dúzia de fotografias. entries: (colocação, pasta-base). Altera as colocações."""
+    years: dict[tuple, list[Placement]] = defaultdict(list)
+    for p, bdir in entries:
+        if p.month_level and len(p.rel) >= 2:
+            years[(bdir, p.rel[:-1])].append(p)
+    for (bdir, year_rel), ps in years.items():
+        if len(ps) >= MONTH_SPLIT_MIN or _has_month_dirs(Path(bdir, *year_rel)):
+            continue
+        for p in ps:
+            p.rel = p.rel[:-1]
+            p.month_level = False
+
+    # Anos: ou todos os anos de uma pasta têm subpasta, ou nenhum (evita «2025/» com uma captura).
+    by_parent: dict[tuple, list[Placement]] = defaultdict(list)
+    for p, bdir in entries:
+        if p.year_level and not p.month_level and p.rel and re.fullmatch(r"(19|20)\d{2}", p.rel[-1]):
+            by_parent[(bdir, p.rel[:-1])].append(p)
+    for (bdir, parent), ps in by_parent.items():
+        per_year = Counter(p.rel[-1] for p in ps)
+        parent_dir = Path(bdir, *parent)
+        if max(per_year.values()) >= MIN_GROUP or _has_year_dirs(parent_dir):
+            continue
+        for p in ps:
+            p.rel = parent
+            p.year_level = False
+
+    changed = True
+    while changed:
+        changed = False
+        counts = Counter((bdir, p.rel) for p, bdir in entries)
+        for p, bdir in entries:
+            if p.optional_levels <= 0 or not p.rel:
+                continue
+            if counts[(bdir, p.rel)] >= MIN_GROUP or os.path.isdir(os.path.join(bdir, *p.rel)):
+                continue
+            parent = p.rel[:-1]
+            p.rel = parent
+            p.optional_levels -= 1
+            if parent:
+                p.reason += f" Fica em «{parent[-1]}» porque ainda há poucos ficheiros deste tipo."
+            changed = True
 
 
 def rebase_document(action: Action, plan: Plan, area: str) -> None:

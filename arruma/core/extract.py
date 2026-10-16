@@ -108,6 +108,15 @@ def extract_text(path: str, ext: str, limit: int = 2000) -> str:
             return _clean(raw, limit)
         if ext in ("doc", "xls", "ppt"):
             return _strings(path, limit)
+        if ext in ("html", "htm", "xml"):
+            with open(path, "rb") as fh:
+                raw = fh.read(limit * 20)
+            try:
+                markup = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                markup = raw.decode("latin-1")
+            markup = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", markup)
+            return _clean(_TAG.sub(" ", markup), limit)
     except (OSError, zipfile.BadZipFile, KeyError, ValueError, RuntimeError):
         return ""
     return ""
@@ -171,17 +180,29 @@ def image_info(path: str) -> dict:
     return info
 
 
+def fix_mojibake(text: str) -> str:
+    """Corrige etiquetas UTF-8 lidas como Latin-1 («JosÃ© Afonso» → «José Afonso»)."""
+    if "Ã" in text or "Â" in text:
+        try:
+            return text.encode("latin-1").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+    return text
+
+
 def audio_tags(path: str) -> dict:
     try:
         import mutagen
         f = mutagen.File(path, easy=True)
         if not f or not f.tags:
             return {}
+
         def first(key: str) -> str:
             v = f.tags.get(key)
-            return str(v[0]).strip() if v else ""
+            return fix_mojibake(str(v[0]).strip()) if v else ""
         return {
-            "artist": first("albumartist") or first("artist"),
+            "albumartist": first("albumartist"),
+            "artist": first("artist"),
             "album": first("album"),
             "title": first("title"),
             "year": first("date")[:4],

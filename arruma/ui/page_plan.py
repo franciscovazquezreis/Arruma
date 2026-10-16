@@ -650,8 +650,8 @@ class PlanPage(Gtk.Stack):
             "Mudar nome da pasta sugerida",
             f"Escolhe o novo nome para a pasta «{current_name}».\n"
             "Todos os ficheiros e subpastas dentro dela serão atualizados automaticamente.",
-            default=current_name,
-            confirm_label="Guardar nome",
+            initial=current_name,
+            ok_label="Guardar nome",
         )
         if new_name:
             self._apply_folder_rename(folder_path, new_name)
@@ -679,8 +679,8 @@ class PlanPage(Gtk.Stack):
             self.win,
             "Mudar nome proposto",
             f"Escolhe o nome com que «{a.src_name}» ficará guardado:",
-            default=a.dst_name,
-            confirm_label="Guardar nome",
+            initial=a.dst_name,
+            ok_label="Guardar nome",
         )
         if new_name:
             self._apply_action_rename(a, new_name)

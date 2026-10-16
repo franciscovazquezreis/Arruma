@@ -67,7 +67,8 @@ class SettingsPage(Gtk.ScrolledWindow):
 
         outer.pack_start(pref_group([
             pref_row("Agrupar fotografias por ano e mês",
-                     "Ex.: Imagens/Fotografias/2024/2024-08 Agosto. Se desligares, agrupa apenas por ano.",
+                     "Ex.: Imagens/Fotografias/2024/2024-08 Agosto, quando há muitas fotografias desse ano. "
+                     "Se desligares, agrupa apenas por ano.",
                      self.photos_month),
             pref_row("Sugerir nomes claros para ficheiros com nomes vagos",
                      "Só propõe mudar nomes como «scan_003.pdf» ou «Documento (1).pdf». "

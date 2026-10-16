@@ -1,4 +1,12 @@
-"""Cliente da IA local (Ollama). Só comunica com servidores neste computador."""
+"""Cliente da IA local (Ollama). Só comunica com servidores neste computador.
+
+Modelos pequenos (3 a 4 mil milhões de parâmetros) erram pouco quando a tarefa é fechada e
+erram muito quando têm liberdade. Por isso:
+- cada pedido leva um único documento (em lotes, os modelos pequenos trocam os resultados);
+- a categoria é escolhida de uma lista fixa, imposta pelo esquema JSON (nunca há pastas com
+  nomes inventados);
+- o título e a data só são aceites se baterem certo com o texto do próprio documento.
+"""
 
 from __future__ import annotations
 
@@ -11,15 +19,16 @@ import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
+from . import taxonomy as tx
 from .fsutil import sanitize_name, strip_accents
-from .taxonomy import AREAS
 
 PREFERRED_MODELS = ["qwen2.5:3b", "qwen3:4b", "gemma3:4b", "qwen2.5:7b", "llama3.2:3b",
                     "qwen2.5:1.5b", "gemma2:2b", "llama3.1:8b", "mistral:7b"]
 RECOMMENDED_MODEL = "qwen2.5:3b"
+PROMPT_VERSION = 2  # muda sempre que o pedido muda, para não reaproveitar respostas antigas
 _NOT_CHAT = ("embed", "minilm", "bge-", "nomic", "snowflake", "all-mpnet", "whisper")
+TEXT_LIMIT = 1500
 
 
 class AIError(Exception):
@@ -47,8 +56,84 @@ def _is_loopback(host: str) -> bool:
             return False
 
 
+# --------------------------------------------------------------------------- pedido
+
+def _categories_text() -> str:
+    lines = []
+    for area, desc, subs in tx.TAXONOMY:
+        for sub, sub_desc in subs:
+            lines.append(f"- {tx.category_label(area, sub)}: {sub_desc}")
+        if subs:
+            lines.append(f"- {area}: outros documentos de {desc} que não encaixam acima")
+        else:
+            lines.append(f"- {area}: {desc}")
+    return "\n".join(lines)
+
+
+SYSTEM_PROMPT = (
+    "És um arquivista que ajuda uma pessoa em Portugal a arrumar os ficheiros do computador. "
+    "Recebes UM documento (ou uma pasta descrita pelos nomes dos ficheiros que contém) e respondes "
+    "só com JSON.\n\n"
+    "Campos:\n"
+    "- \"titulo\": o que é o documento, em 3 a 8 palavras de português de Portugal: tipo de documento, "
+    "entidade e assunto. Usa só o que está escrito no texto; nunca inventes nomes de empresas ou pessoas. "
+    "Sem datas e sem extensão. Se o texto não deixar claro o que é, escreve \"\".\n"
+    "- \"categoria\": exatamente um dos valores da lista abaixo. Decide pelo conteúdo do texto; o nome do "
+    "ficheiro é só uma pista. Na dúvida, escolhe \"Outros\": é melhor do que adivinhar.\n"
+    "- \"data\": a data de emissão do documento, no formato AAAA-MM-DD (ou AAAA-MM), só se estiver escrita "
+    "no texto; caso contrário \"\".\n"
+    "- \"confianca\": de 0 a 1, quão certo estás da categoria.\n\n"
+    f"Categorias:\n{_categories_text()}"
+)
+
+_EXAMPLES = [
+    ("Ficheiro: doc_0412.pdf\nPasta: Transferências\nTexto:\nÁguas do Planalto, E.M. Fatura n.º FA 2024/00871 "
+     "Data de emissão: 15-01-2024 Consumo de água: 12 m3 Total a pagar: 21,40 EUR",
+     {"titulo": "Fatura Águas do Planalto consumo de água", "categoria": "Finanças › Faturas e Recibos",
+      "data": "2024-01-15", "confianca": 0.95}),
+    ("Ficheiro: manual.pdf\nPasta: Transferências\nTexto:\nManual de acolhimento do colaborador. Bem-vindo à "
+     "Metalúrgica Vale do Sorraia. Horários, férias, regras de segurança no posto de trabalho e contactos "
+     "dos recursos humanos.",
+     {"titulo": "Manual de acolhimento Metalúrgica Vale do Sorraia", "categoria": "Trabalho",
+      "data": "", "confianca": 0.8}),
+    ("Ficheiro: IMG_3301.pdf\nPasta: Transferências\nTexto:\n(sem texto legível)",
+     {"titulo": "", "categoria": "Outros", "data": "", "confianca": 0.1}),
+]
+
+_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "titulo": {"type": "string"},
+        "categoria": {"type": "string", "enum": tx.CATEGORY_LABELS},
+        "data": {"type": "string"},
+        "confianca": {"type": "number"},
+    },
+    "required": ["titulo", "categoria", "data", "confianca"],
+}
+
+
+def user_message(item: dict) -> str:
+    if item.get("tipo") == "pasta":
+        return (f"Pasta: {item.get('nome', '')}\nDentro de: {item.get('pasta', '')}\n"
+                f"Ficheiros que contém: {item.get('texto', '')}")
+    text = (item.get("texto") or "").strip()[:TEXT_LIMIT] or "(sem texto legível)"
+    return f"Ficheiro: {item.get('nome', '')}\nPasta: {item.get('pasta', '')}\nTexto:\n{text}"
+
+
+def build_messages(item: dict) -> list[dict]:
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for question, answer in _EXAMPLES:
+        messages.append({"role": "user", "content": question})
+        messages.append({"role": "assistant", "content": json.dumps(answer, ensure_ascii=False)})
+    messages.append({"role": "user", "content": user_message(item)})
+    return messages
+
+
+# --------------------------------------------------------------------------- cliente
+
 class LocalAI:
     def __init__(self, url: str, model: str = ""):
+        from urllib.parse import urlparse
         parsed = urlparse(url.strip() or "http://127.0.0.1:11434")
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             raise AIError("Endereço inválido.")
@@ -57,6 +142,7 @@ class LocalAI:
                           "(localhost / 127.0.0.1).")
         self.base = f"{parsed.scheme}://{parsed.netloc}"
         self.model = model
+        self._json_only = False  # versões antigas do Ollama não aceitam esquemas JSON
 
     # ------------------------------------------------------------------ HTTP
     def _request(self, path: str, body: dict | None = None, timeout: float = 5) -> dict:
@@ -136,50 +222,16 @@ class LocalAI:
         return models[0] if models else ""
 
     # ------------------------------------------------------------------ classificação
-    def classify(self, items: list[dict], timeout: float = 300) -> dict[int, dict]:
-        """items: [{"id": int, "nome": str, "pasta": str, "texto": str, "tipo": "documento"|"pasta"}]"""
+    def classify_item(self, item: dict, timeout: float = 180) -> dict:
+        """item: {"nome", "pasta", "texto", "tipo": "documento" | "pasta"}. Devolve o resultado validado."""
         if not self.model:
             raise AIError("Nenhum modelo selecionado.")
-        areas_txt = "\n".join(
-            f"- {a}: {', '.join(subs) if subs else '(sem subáreas)'}" for a, subs in AREAS.items())
-        system = (
-            "És um arquivista que ajuda uma pessoa em Portugal a organizar os seus ficheiros pessoais.\n"
-            "Para cada item (um documento, ou uma pasta descrita pelos nomes dos ficheiros que contém), decide:\n"
-            "- \"area\": exatamente UMA das áreas da lista.\n"
-            "- \"subarea\": de preferência uma das subáreas sugeridas para essa área; se nenhuma servir, "
-            "uma subárea curta (1 a 3 palavras) ou \"\".\n"
-            "- \"titulo\": título curto e claro em português de Portugal (3 a 8 palavras) que diga o que é, "
-            "incluindo a entidade quando for evidente (ex.: \"Fatura EDP eletricidade\", "
-            "\"Análises clínicas Hospital de Santa Maria\", \"Contrato de arrendamento\"). Sem datas, sem extensão.\n"
-            "- \"data\": data principal do documento (AAAA-MM-DD ou AAAA-MM) só se aparecer claramente; senão \"\".\n"
-            "- \"confianca\": de 0 a 1, quão certo estás da área.\n"
-            "Se não houver informação suficiente, usa a área \"Outros\" e confiança baixa.\n\n"
-            f"Áreas e subáreas sugeridas:\n{areas_txt}\n\nResponde apenas com JSON."
-        )
-        payload = {"itens": [{k: v for k, v in it.items() if v} for it in items]}
-        schema = {
-            "type": "object",
-            "properties": {"itens": {"type": "array", "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "integer"},
-                    "area": {"type": "string", "enum": list(AREAS)},
-                    "subarea": {"type": "string"},
-                    "titulo": {"type": "string"},
-                    "data": {"type": "string"},
-                    "confianca": {"type": "number"},
-                },
-                "required": ["id", "area", "subarea", "titulo", "data", "confianca"],
-            }}},
-            "required": ["itens"],
-        }
         body = {
             "model": self.model,
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+            "messages": build_messages(item),
             "stream": False,
-            "format": schema,
-            "options": {"temperature": 0, "num_ctx": 6144},
+            "format": "json" if self._json_only else _SCHEMA,
+            "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 160},
             "keep_alive": "15m",
         }
         if re.search(r"qwen3|deepseek-r1|gpt-oss|magistral", self.model):
@@ -187,7 +239,8 @@ class LocalAI:
         try:
             resp = self._request("/api/chat", body, timeout=timeout)
         except AIError as e:
-            if "format" in str(e) or "schema" in str(e):  # versões antigas do Ollama
+            if not self._json_only and ("format" in str(e) or "schema" in str(e)):
+                self._json_only = True
                 body["format"] = "json"
                 resp = self._request("/api/chat", body, timeout=timeout)
             else:
@@ -199,45 +252,113 @@ class LocalAI:
             m = re.search(r"\{.*\}", content, re.S)
             if not m:
                 raise AIError("A IA devolveu uma resposta que não se consegue ler.")
-            data = json.loads(m.group(0))
-        out: dict[int, dict] = {}
-        for raw in data.get("itens", []) if isinstance(data, dict) else []:
             try:
-                out[int(raw.get("id"))] = validate_result(raw)
-            except (TypeError, ValueError):
-                continue
-        return out
+                data = json.loads(m.group(0))
+            except ValueError as e:
+                raise AIError("A IA devolveu uma resposta que não se consegue ler.") from e
+        if not isinstance(data, dict):
+            raise AIError("A IA devolveu uma resposta que não se consegue ler.")
+        if item.get("tipo") == "pasta":
+            return validate_result(data)
+        return validate_result(data, item.get("texto", ""), f"{item.get('nome', '')} {item.get('pasta', '')}")
 
+    def classify(self, items: list[dict], timeout: float = 180) -> dict[int, dict]:
+        """Compatibilidade: classifica vários itens, um pedido de cada vez."""
+        return {int(it["id"]): self.classify_item(it, timeout) for it in items}
+
+
+# --------------------------------------------------------------------------- validação
 
 def _canon(text: str) -> str:
-    return strip_accents(text.lower()).strip()
+    return strip_accents(str(text).lower()).strip()
 
 
-def validate_result(raw: dict) -> dict:
-    area = str(raw.get("area", "")).strip()
-    if area not in AREAS:
-        match = [a for a in AREAS if _canon(a) == _canon(area)]
-        area = match[0] if match else "Outros"
-    sub = str(raw.get("subarea", "")).strip()
-    canon_subs = {_canon(s): s for s in AREAS[area]}
-    if _canon(sub) in canon_subs:
-        sub = canon_subs[_canon(sub)]
-    elif sub and len(sub) <= 32 and len(sub.split()) <= 4 and _canon(sub) != _canon(area):
-        sub = sanitize_name(sub[:1].upper() + sub[1:])
-    else:
-        sub = ""
-    title = str(raw.get("titulo", "")).strip()
-    title = re.sub(r"\.(pdf|docx?|odt|xlsx?|txt)$", "", title, flags=re.I)
-    title = sanitize_name(title, 70) if title else ""
-    if title == "Sem nome":
-        title = ""
-    date = str(raw.get("data", "")).strip()
-    if not re.fullmatch(r"(19|20)\d{2}-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?", date):
-        date = ""
-    elif int(date[:4]) > datetime.now().year + 1:
-        date = ""
+_MONTHS = {_canon(m) for m in tx.MONTHS_PT}
+_ACRONYMS = {"irs", "irc", "iva", "imi", "iuc", "imt", "sns", "cv", "nif", "iban", "ufcd", "iefp",
+             "pdf", "ipo", "dua", "ppr", "cpe", "atcud"}
+_DOC_WORDS = {
+    "fatura", "faturas", "recibo", "recibos", "contrato", "relatorio", "certificado", "declaracao",
+    "extrato", "manual", "ata", "carta", "proposta", "orcamento", "receita", "analises", "exame",
+    "exames", "consulta", "seguro", "apolice", "bilhete", "reserva", "cartao", "curriculo", "procuracao",
+    "citacao", "notificacao", "garantia", "encomenda", "livro", "apresentacao", "apontamentos",
+    "comprovativo", "nota", "notas", "plano", "pedido", "aviso", "guia", "ficha", "inspecao",
+    "confirmacao", "convocatoria", "reuniao", "diploma", "liquidacao", "demonstracao", "documento",
+}
+for _area, _desc, _subs in tx.TAXONOMY:
+    for _w in re.findall(r"\w+", _canon(_area + " " + " ".join(s for s, _ in _subs))):
+        _DOC_WORDS.add(_w)
+_GENERIC_TITLE = {"documento", "documentos", "ficheiro", "arquivo", "pdf", "texto", "scan",
+                  "digitalizacao", "digitalizado", "imagem", "sem", "titulo", "desconhecido",
+                  "untitled", "outro", "outros", "nome", "dados", "informacao", "geral", "diversos",
+                  "varios", "pagina", "copia", "legivel", "conteudo", "de", "do", "da", "dos", "das"}
+
+
+def clean_title(raw, text: str = "", source: str = "") -> str:
+    """Título curto e seguro para nome de ficheiro, ou "" se for vago ou não bater com o texto."""
+    title = str(raw or "").strip().strip("\"'«»“”")
+    title = re.sub(r"\.(pdf|docx?|odt|xlsx?|pptx?|txt|eml|jpe?g|png)$", "", title, flags=re.I)
+    title = re.sub(r"\b\d{4}-\d{2}(-\d{2})?\b|\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b", " ", title)
+    title = re.sub(r"\s+", " ", title).strip(" -_,.;:")
+    words = re.findall(r"\w+", title)
+    if len(words) < 2 or len(words) > 12:
+        return ""
+    if all(_canon(w) in _GENERIC_TITLE or len(w) <= 2 or w.isdigit() for w in words):
+        return ""
+    if text or source:
+        # Nomes próprios (palavras com maiúscula a meio do título) têm de existir no documento:
+        # é assim que se apanham empresas ou pessoas inventadas pela IA.
+        hay = _canon(f"{text} {source}")
+        hay_compact = re.sub(r"\W+", "", hay)
+        for i, w in enumerate(words):
+            cw = _canon(w)
+            if i == 0 or len(w) < 3 or not w[0].isupper():
+                continue
+            if cw in _ACRONYMS or cw in _DOC_WORDS or cw in _MONTHS:
+                continue
+            if cw not in hay and cw not in hay_compact:
+                return ""
+    letters = [c for c in title if c.isalpha()]
+    if letters and sum(c.isupper() for c in letters) / len(letters) > 0.6:
+        title = " ".join(w if len(w) <= 4 else w.capitalize() for w in title.split())
+    title = title[0].upper() + title[1:]
+    title = sanitize_name(title, 70)
+    return "" if title == "Sem nome" else title
+
+
+def clean_date(raw, text: str = "", source: str = "") -> str:
+    """Data AAAA-MM-DD ou AAAA-MM plausível e cujo ano aparece no documento; senão ""."""
+    date = str(raw or "").strip()
+    m = re.fullmatch(r"((?:19|20)\d{2})-(0[1-9]|1[0-2])(?:-(0[1-9]|[12]\d|3[01]))?", date)
+    if not m:
+        return ""
+    year = int(m.group(1))
+    try:
+        datetime(year, int(m.group(2)), int(m.group(3) or 1))
+    except ValueError:
+        return ""
+    if year < 1990 or year > datetime.now().year + 1:
+        return ""
+    if (text or source) and m.group(1) not in f"{text} {source}":
+        return ""
+    return date
+
+
+def validate_result(raw: dict, text: str = "", source: str = "") -> dict:
+    """Normaliza a resposta da IA. A área e a subárea saem sempre da taxonomia fixa."""
+    if raw.get("categoria"):
+        area, sub = tx.parse_category(raw["categoria"])
+    else:  # formato antigo: {"area": ..., "subarea": ...}
+        area, sub = tx.parse_category(str(raw.get("area", "")))
+        if raw.get("subarea") and not sub:
+            area, sub = tx.parse_category(tx.category_label(area, str(raw["subarea"])))
     try:
         conf = max(0.0, min(1.0, float(raw.get("confianca", 0.5))))
     except (TypeError, ValueError):
         conf = 0.5
-    return {"area": area, "subarea": sub, "titulo": title, "data": date, "confianca": conf}
+    return {
+        "area": area,
+        "subarea": sub,
+        "titulo": clean_title(raw.get("titulo"), text, source),
+        "data": clean_date(raw.get("data"), text, source),
+        "confianca": conf,
+    }

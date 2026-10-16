@@ -240,7 +240,8 @@ class AnalysisPage(Gtk.Stack):
             r1 = Gtk.RadioButton.new_with_label(None, f"Dentro de «{name}»")
             r2 = Gtk.RadioButton.new_with_label_from_widget(
                 r1, "Nas pastas pessoais (Documentos, Imagens, Vídeos, Música…)")
-            d1 = label(f"Cria subpastas como «{name}/Documentos/Finanças» ou «{name}/Imagens/Fotografias/2024».",
+            d1 = label(f"Cria subpastas como «{name}/Documentos/Finanças» ou «{name}/Imagens/Fotografias». "
+                       "As subpastas que já têm nome próprio ficam como estão.",
                        "small", "dim", wrap=True, margin_start=26)
             d2 = label("Recomendado para Transferências e Secretária: cada ficheiro vai para a pasta pessoal certa "
                        "(ex.: «Documentos/Saúde», «Imagens/Fotografias/2024»).", "small", "dim", wrap=True, margin_start=26)
