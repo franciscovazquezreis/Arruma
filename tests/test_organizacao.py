@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import socketserver
 import sys
 import tempfile
 import threading
@@ -127,7 +128,7 @@ class ValidationTests(unittest.TestCase):
 
 class SimplifyTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-")).resolve()
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -198,7 +199,12 @@ class FakeOllama:
                 answer = outer.answers.get(name, {"titulo": "", "categoria": "Outros", "data": "", "confianca": 0.2})
                 self._send({"message": {"role": "assistant", "content": json.dumps(answer)}})
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class Server(ThreadingHTTPServer):
+            def server_bind(self):  # sem socket.getfqdn(): no macOS a consulta de DNS demora 30 s
+                socketserver.TCPServer.server_bind(self)
+                self.server_name, self.server_port = self.server_address[:2]
+
+        self.server = Server(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
@@ -208,7 +214,7 @@ class FakeOllama:
 
 class AIPlanTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-")).resolve()
         self.root = self.tmp / "Bagunça"
         write(self.root / "scan_001.txt", "LusoEnergia FATURA N.º 1 Data de emissão: 12-03-2025 Total a pagar 59,77")
         write(self.root / "doc2025.txt", "RECIBO DE VENCIMENTO Janeiro de 2025 Vencimento base 1.250,00")
@@ -268,7 +274,7 @@ class AIPlanTests(unittest.TestCase):
 
 class StructureTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-")).resolve()
         self.root = self.tmp / "Trabalho"
         write(self.root / "Clientes" / "Cliente A" / "proposta.txt", "Proposta comercial para o Cliente A")
         write(self.root / "Faturação" / "fatura_1.txt", "FATURA n.º 1 Total a pagar 100 EUR")
@@ -280,7 +286,7 @@ class StructureTests(unittest.TestCase):
 
     def test_inside_mode_keeps_named_subfolders(self):
         plan = Planner(scan(self.root), self.settings, MODE_INSIDE).build()
-        moved = {os.path.relpath(a.src, self.root) for a in plan.actions}
+        moved = {os.path.relpath(a.src, self.root).replace(os.sep, "/") for a in plan.actions}
         self.assertEqual(moved, {"solto.txt"})
         kept = {os.path.basename(p) for p, _ in plan.respected}
         self.assertEqual(kept, {"Clientes", "Faturação"})

@@ -155,6 +155,11 @@ def _protection_reason(path: str, name: str, entries: list[str], is_root: bool) 
     return None
 
 
+# No Windows o os.scandir junta caminhos com «\\», mas o Python do MSYS2 dentro do Git Bash usa «/»:
+# normalizar evita misturas que estragariam as comparações de caminhos.
+_norm = os.path.normpath if os.altsep else (lambda p: p)
+
+
 def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
          include_hidden: bool = False,
          excluded: list[str] | None = None,
@@ -198,6 +203,7 @@ def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
         subdirs: list[FolderInfo] = []
         for entry in entries:
             name = entry.name
+            entry_path = _norm(entry.path)
             if not include_hidden and name.lower() not in tx.JUNK_NAMES and is_hidden_entry(entry):
                 hidden += 1
                 continue
@@ -206,26 +212,26 @@ def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
                     links += 1
                     continue
                 if entry.is_dir(follow_symlinks=False):
-                    if any(is_within(entry.path, ex) for ex in excluded):
-                        protected.append((entry.path, "excluída nas definições"))
+                    if any(is_within(entry_path, ex) for ex in excluded):
+                        protected.append((entry_path, "excluída nas definições"))
                         continue
-                    sub = FolderInfo(path=entry.path, name=name, depth=info.depth + 1,
+                    sub = FolderInfo(path=entry_path, name=name, depth=info.depth + 1,
                                      generic=is_generic_dir_name(name))
-                    folders[entry.path] = sub
-                    info.children.append(entry.path)
+                    folders[entry_path] = sub
+                    info.children.append(entry_path)
                     subdirs.append(sub)
                 elif entry.is_file(follow_symlinks=False):
                     st = entry.stat(follow_symlinks=False)
                     _, ext = split_ext(name)
                     ext = ext.lower().lstrip(".")
                     kind = tx.kind_for(name, ext, st.st_size)
-                    files.append(FileItem(entry.path, name, ext, st.st_size, st.st_mtime, kind, info.path))
+                    files.append(FileItem(entry_path, name, ext, st.st_size, st.st_mtime, kind, info.path))
                     info.direct_files += 1
                     info.total_files += 1
                     info.total_size += st.st_size
                     info.kinds[kind] += 1
             except OSError as e:
-                errors.append((entry.path, e.strerror or str(e)))
+                errors.append((entry_path, e.strerror or str(e)))
 
         stack.extend(reversed(subdirs))
         if progress is not None and len(files) - last_report >= 250:

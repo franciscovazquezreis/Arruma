@@ -196,7 +196,7 @@ def normalize_roots(paths: str | Path | list[str | Path] | tuple[str | Path, ...
             whole_computer = True
             expanded.extend(expand_computer_roots())
         else:
-            p = str(Path(s).expanduser().resolve())
+            p = os.path.normpath(str(Path(s).expanduser().resolve()))
             if is_whole_computer_path(p):
                 whole_computer = True
                 expanded.extend(expand_computer_roots())

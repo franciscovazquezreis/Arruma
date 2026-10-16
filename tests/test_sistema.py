@@ -30,7 +30,7 @@ def recycle_index(path: str, deleted: int, version: int = 2) -> bytes:
 
 class SystemTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-")).resolve()
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -133,7 +133,7 @@ class TrashRoundTripTests(unittest.TestCase):
 
     def test_trash_and_restore(self):
         from arruma.core.trash import restore, send_to_trash
-        folder = Path(tempfile.mkdtemp(prefix="arruma-lixo-", dir=os.environ.get("ARRUMA_PASTA_LIXO") or None))
+        folder = Path(tempfile.mkdtemp(prefix="arruma-lixo-", dir=os.environ.get("ARRUMA_PASTA_LIXO") or None)).resolve()
         try:
             target = folder / "temporario.tmp"
             target.write_text("conteúdo de teste", encoding="utf-8")

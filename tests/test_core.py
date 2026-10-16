@@ -68,7 +68,7 @@ class NameTests(unittest.TestCase):
 
 class PlanTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-")).resolve()
         self.root = self.tmp / "Bagunça"
         r = self.root
         write(r / "fatura_123.txt", "FATURA nº 2025/123 NIF 501 Total a pagar 42,10 EUR")
@@ -96,7 +96,7 @@ class PlanTests(unittest.TestCase):
         out = set()
         for dp, dirs, files in os.walk(self.root):
             for f in files:
-                out.add(os.path.relpath(os.path.join(dp, f), self.root))
+                out.add(os.path.relpath(os.path.join(dp, f), self.root).replace(os.sep, "/"))
         return out
 
     def build(self):
@@ -110,8 +110,8 @@ class PlanTests(unittest.TestCase):
 
     def test_plan(self):
         _, plan = self.build()
-        by_src = {os.path.relpath(a.src, self.root): a for a in plan.actions}
-        rel = lambda a: os.path.relpath(a.dst, self.root)  # noqa: E731
+        by_src = {os.path.relpath(a.src, self.root).replace(os.sep, "/"): a for a in plan.actions}
+        rel = lambda a: os.path.relpath(a.dst, self.root).replace(os.sep, "/")  # noqa: E731
 
         # Poucos ficheiros: não se criam subpastas de subárea, ano ou mês só para um ou dois.
         self.assertEqual(rel(by_src["fatura_123.txt"]), "Documentos/Finanças/fatura_123.txt")
@@ -159,7 +159,7 @@ class PlanTests(unittest.TestCase):
         groups = find_duplicates(result.files)
         group = next(g for g in groups if any(f.name == "fatura_123.txt" for f in g.files))
         self.assertEqual(sorted(f.name for f in group.files), ["fatura_123 (1).txt", "fatura_123.txt"])
-        self.assertTrue(group.keep.endswith("/fatura_123.txt"))
+        self.assertEqual(os.path.basename(group.keep), "fatura_123.txt")
 
     def test_ai_security_and_validation(self):
         from arruma.core.ai import AIError, LocalAI, validate_result
@@ -191,7 +191,7 @@ class PlanTests(unittest.TestCase):
     def test_rename_and_move_in_plan(self):
         from arruma.core.planner import move_folder_in_plan, rename_action_in_plan, rename_folder_in_plan, retarget
         _, plan = self.build()
-        by_src = {os.path.relpath(a.src, self.root): a for a in plan.actions}
+        by_src = {os.path.relpath(a.src, self.root).replace(os.sep, "/"): a for a in plan.actions}
         fat = by_src["fatura_123.txt"]
         old_dir = os.path.dirname(fat.dst)
         # 1. Renomear pasta sugerida

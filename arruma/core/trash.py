@@ -195,7 +195,8 @@ def find_in_recycle_bin(orig: str, bin_root: Path) -> tuple[Path, Path] | None:
         candidates += [p for p in bin_root.iterdir() if p.is_dir() and p not in candidates]
     except OSError:
         pass
-    target = os.path.normcase(os.path.normpath(orig))
+    # O Windows guarda o caminho com os nomes longos (C:\Users\Ana…), nunca a forma curta 8.3 (ANA~1).
+    target = os.path.normcase(os.path.realpath(orig))
     best: tuple[int, Path] | None = None
     for folder in candidates:
         try:
@@ -207,7 +208,7 @@ def find_in_recycle_bin(orig: str, bin_root: Path) -> tuple[Path, Path] | None:
                 path, deleted = parse_recycle_index(info.read_bytes())
             except OSError:
                 continue
-            if path and os.path.normcase(os.path.normpath(path)) == target and (best is None or deleted > best[0]):
+            if path and os.path.normcase(os.path.realpath(path)) == target and (best is None or deleted > best[0]):
                 best = (deleted, info)
     if best is None:
         return None
