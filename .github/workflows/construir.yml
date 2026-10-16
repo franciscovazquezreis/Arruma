@@ -111,8 +111,11 @@ jobs:
           $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
           if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-          & $iscc "/DAppVersion=$env:VERSAO" packaging\windows\arruma.iss
+          & $iscc /Q "/DAppVersion=$env:VERSAO" packaging\windows\arruma.iss
           if ($LASTEXITCODE -ne 0) { throw "O Inno Setup falhou." }
+      - name: Relatório do autoteste
+        if: always()
+        run: cat autoteste.txt || true
       - uses: actions/upload-artifact@v4
         with:
           name: arruma-windows

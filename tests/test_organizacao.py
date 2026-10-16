@@ -263,7 +263,7 @@ class AIPlanTests(unittest.TestCase):
         # Título com empresa que não está no texto: o nome não muda.
         self.assertEqual(os.path.basename(by_name["doc2025.txt"].dst), "doc2025.txt")
         # A IA contraria pistas fortes no texto («recibo de vencimento»): prevalecem as palavras-chave.
-        self.assertIn("/Documentos/Finanças/", by_name["doc2025.txt"].dst)
+        self.assertEqual(Path(by_name["doc2025.txt"].dst).parent, self.root / "Documentos" / "Finanças")
         self.assertEqual(by_name["doc2025.txt"].source, "palavras-chave")
         # A IA contraria pistas fracas: fica onde a IA disse, mas marcado para rever.
         self.assertEqual(Path(by_name["garantia.txt"].dst).parent, self.root / "Documentos" / "Veículos")

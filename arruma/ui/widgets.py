@@ -53,6 +53,8 @@ _ICON_FALLBACKS = {
     "view-grid-symbolic": ["view-app-grid-symbolic", "view-list-symbolic"],
     "security-high-symbolic": ["security-medium-symbolic", "channel-secure-symbolic", "emblem-ok-symbolic"],
     "applications-system-symbolic": ["preferences-system-symbolic"],
+    "emblem-ok-symbolic": ["object-select-symbolic", "emblem-default-symbolic", "checkbox-checked-symbolic"],
+    "web-browser-symbolic": ["applications-internet-symbolic", "network-workgroup-symbolic"],
 }
 _RESOLVED: dict[str, str] = {}
 MISSING_ICONS: set[str] = set()
@@ -190,6 +192,19 @@ def open_path(path: str) -> None:
             subprocess.Popen(["open", path])
         else:
             Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(path).get_uri(), None)
+    except (GLib.Error, OSError):
+        pass
+
+
+def open_url(url: str) -> None:
+    """Abre um endereço da internet no navegador predefinido."""
+    try:
+        if IS_WINDOWS:
+            os.startfile(url)  # noqa: S606
+        elif IS_MAC:
+            subprocess.Popen(["open", url])
+        else:
+            Gio.AppInfo.launch_default_for_uri(url, None)
     except (GLib.Error, OSError):
         pass
 

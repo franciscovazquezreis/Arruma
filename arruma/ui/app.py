@@ -31,7 +31,7 @@ from .page_home import HomePage  # noqa: E402
 from .page_plan import PlanPage  # noqa: E402
 from .page_settings import SettingsPage  # noqa: E402
 from .widgets import (MISSING_ICONS, Throttle, Toast, add_classes, button, choose_folders, hbox, icon, label,
-                      load_css, message, run_bg, vbox)
+                      load_css, message, open_url, run_bg, vbox)
 
 ICON_PNG = Path(__file__).with_name("arruma.png")
 
@@ -226,6 +226,11 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                           on_click=lambda: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(cmds, -1))
         cmd_box.pack_end(copy_btn, False, False, 0)
         inner.pack_start(cmd_box, False, False, 4)
+        if not IS_LINUX:
+            page = button("Abrir a página de transferência do Ollama", "web-browser-symbolic",
+                          on_click=lambda: open_url("https://ollama.com/download"))
+            page.set_halign(Gtk.Align.START)
+            inner.pack_start(page, False, False, 0)
 
         inner.pack_start(label(
             "Depois de concluído, carrega em «Verificar agora». Mesmo sem o Ollama, o Arruma continua a "
@@ -510,11 +515,19 @@ class ArrumaApp(Gtk.Application):
             self.win.history_page.refresh()
             while Gtk.events_pending():
                 Gtk.main_iteration_do(False)
-            from ..core.extract import has_ocr
+            from ..core.extract import extract_text, has_ocr
             from ..core.system import find_tool
             for tool in ("pdftotext", "pdftoppm", "tesseract", "ollama"):
                 lines.append(f"{tool}: {find_tool(tool) or 'não encontrado'}")
             lines.append(f"OCR: {'sim' if has_ocr() else 'não'}")
+            # Ler PDF é essencial para classificar documentos: pdftotext ou, em alternativa, pypdf.
+            pdf = tmp / "teste.pdf"
+            pdf.write_bytes(_minimal_pdf("Fatura de teste do Arruma"))
+            text = extract_text(str(pdf), "pdf")
+            pdf_ok = "Fatura de teste do Arruma" in text
+            lines.append(f"Leitura de PDF: {'OK' if pdf_ok else 'FALHOU'} ({text[:40]!r})")
+            if not pdf_ok:
+                ok = False
             lines.append("Ícones em falta: " + (", ".join(sorted(MISSING_ICONS)) or "nenhum"))
             import shutil
             shutil.rmtree(tmp, ignore_errors=True)
@@ -530,6 +543,26 @@ class ArrumaApp(Gtk.Application):
         self.self_test_status = 0 if ok else 1
         self.quit()
         return False
+
+
+def _minimal_pdf(text: str) -> bytes:
+    """PDF de uma página com uma linha de texto, para o autoteste."""
+    stream = f"BT /F1 12 Tf 50 750 Td ({text}) Tj ET".encode("latin-1")
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> "
+            b"/Contents 5 0 R >>",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+            b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream"]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for i, obj in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % i + obj + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    out += b"".join(b"%010d 00000 n \n" % off for off in offsets)
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
+    return bytes(out)
 
 
 def main(argv: list[str] | None = None) -> int:

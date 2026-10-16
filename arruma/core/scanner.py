@@ -155,7 +155,7 @@ def _protection_reason(path: str, name: str, entries: list[str], is_root: bool) 
     return None
 
 
-# No Windows o os.scandir junta caminhos com «\\», mas o Python do MSYS2 dentro do Git Bash usa «/»:
+# No Windows o os.scandir junta caminhos com «\», mas o Python do MSYS2 dentro do Git Bash usa «/»:
 # normalizar evita misturas que estragariam as comparações de caminhos.
 _norm = os.path.normpath if os.altsep else (lambda p: p)
 
