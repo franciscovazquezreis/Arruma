@@ -7,6 +7,7 @@ on:
   push:
     branches: ["**"]
     tags: ["v*"]
+    paths-ignore: ["README.md", "tests/avaliacao/**", ".github/workflows/avaliar-ia.yml"]
   pull_request:
   workflow_dispatch:
 
@@ -22,6 +23,7 @@ jobs:
           - { os: windows-latest, python: "3.12" }
           - { os: macos-latest, python: "3.12" }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     env:
       ARRUMA_TESTAR_LIXO: ${{ startsWith(matrix.os, 'ubuntu') && '0' || '1' }}
       PYTHONIOENCODING: utf-8
@@ -69,6 +71,7 @@ jobs:
   windows:
     name: Windows (instalador)
     runs-on: windows-latest
+    timeout-minutes: 40
     defaults:
       run:
         shell: msys2 {0}
@@ -132,6 +135,7 @@ jobs:
           - { runner: macos-15, arch: apple-silicon }
           - { runner: macos-15-intel, arch: intel }
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: GTK e Python do Homebrew

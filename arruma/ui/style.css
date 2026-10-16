@@ -1,4 +1,4 @@
-/* Arruma — estilo. Usa as cores do tema (claro/escuro) do Linux Mint. */
+/* Arruma: estilo. Usa as cores do tema (claro ou escuro) do sistema; no Windows e no macOS, o Adwaita. */
 
 .sidebar {
     background-color: shade(@theme_bg_color, 0.97);

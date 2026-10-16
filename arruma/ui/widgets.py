@@ -213,7 +213,8 @@ def show_in_folder(path: str) -> None:
     """Abre o gestor de ficheiros (Nemo, Explorador, Finder) com o ficheiro selecionado."""
     try:
         if IS_WINDOWS:
-            subprocess.Popen(["explorer", f"/select,{os.path.normpath(path)}"], creationflags=NO_WINDOW)
+            # Forma documentada pela Microsoft: explorer /select,"C:\caminho\ficheiro"
+            subprocess.Popen(f'explorer /select,"{os.path.normpath(path)}"', creationflags=NO_WINDOW)
             return
         if IS_MAC:
             subprocess.Popen(["open", "-R", path])
@@ -240,7 +241,7 @@ def run_bg(fn: Callable, on_done: Callable, on_error: Callable | None = None) ->
     def worker():
         try:
             result = fn()
-        except Exception as e:  # noqa: BLE001 — mostrado ao utilizador
+        except Exception as e:  # noqa: BLE001 (o erro é mostrado ao utilizador)
             traceback.print_exc()
             if on_error:
                 # «e» deixa de existir no fim do except: passa-se o erro como argumento.
