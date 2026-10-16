@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+*.deb
+*.dmg
+*.exe
+*.msi
+*.zip
+.DS_Store
+Thumbs.db
