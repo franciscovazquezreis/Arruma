@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Página de análise: resumo da pasta, gráfico por tipo, observações e escolha do destino."""
 
 from __future__ import annotations

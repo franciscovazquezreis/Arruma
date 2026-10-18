@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Construção do plano de organização (nada é alterado aqui)."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Definições do utilizador, guardadas em definicoes.json na pasta de configuração do Arruma
 (~/.config/arruma no Linux, %APPDATA%\\Arruma no Windows, ~/Library/Application Support/Arruma no macOS)."""
 

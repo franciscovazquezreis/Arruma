@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Enviar para o Lixo (Reciclagem no Windows) e recuperar de lá, em cada sistema operativo.
 
 send_to_trash() devolve, quando o sistema o diz, onde o ficheiro ficou no Lixo; esse caminho é

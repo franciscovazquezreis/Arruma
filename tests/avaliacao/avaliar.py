@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Corre o planeador do Arruma sobre o corpus de avaliação e guarda o plano em JSON.
 
 Funciona com qualquer versão do código (antiga ou nova), porque só usa a API pública

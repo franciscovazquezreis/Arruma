@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Extração de texto e metadados de ficheiros, só com ferramentas locais."""
 
 from __future__ import annotations

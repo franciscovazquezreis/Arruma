@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Janela principal e aplicação GTK."""
 
 from __future__ import annotations

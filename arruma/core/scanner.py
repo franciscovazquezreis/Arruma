@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Análise (leitura) de uma pasta: ficheiros, subpastas, pastas protegidas."""
 
 from __future__ import annotations

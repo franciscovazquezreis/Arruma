@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Cria a imagem de disco do macOS a partir de dist/Arruma.app (PyInstaller).
 # Uso: packaging/macos/make-dmg.sh <apple-silicon|intel>
 set -euo pipefail

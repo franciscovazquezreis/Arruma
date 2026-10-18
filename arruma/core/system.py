@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Diferenças entre Linux, Windows e macOS: pastas pessoais, pastas do sistema, ficheiros ocultos,
 pastas de configuração e localização de programas auxiliares (Ollama, pdftotext, Tesseract)."""
 

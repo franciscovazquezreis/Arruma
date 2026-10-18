@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Gera uma pasta «Bagunça» realista para avaliar a organização (com e sem IA).
 
 Todos os documentos são fictícios: pessoas, empresas, números e moradas foram inventados

@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Especificação do PyInstaller para as versões de Windows e macOS.
 
 Uso, na raiz do projeto:  pyinstaller packaging/pyinstaller/arruma.spec --noconfirm

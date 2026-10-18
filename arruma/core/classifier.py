@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Regras de classificação de cada ficheiro (sem IA) e construção do destino."""
 
 from __future__ import annotations

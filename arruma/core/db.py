@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Base de dados local (SQLite): histórico de operações e cache da IA."""
 
 from __future__ import annotations

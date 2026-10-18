@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Página inicial: escolher uma ou mais pastas (ou todo o computador) e ver o estado da IA local."""
 
 from __future__ import annotations

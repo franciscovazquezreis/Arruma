@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Página de duplicados: ficheiros com conteúdo exatamente igual."""
 
 from __future__ import annotations

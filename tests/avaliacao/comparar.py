@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Compara dois planos (antes/depois) do avaliar.py e escreve um relatório em Markdown.
 
 Uso: python3 comparar.py --antes antes.json --depois depois.json --esperado esperado.json --saida relatorio.md

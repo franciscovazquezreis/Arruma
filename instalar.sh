@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Instala (ou atualiza) o Arruma para o utilizador atual no Linux Mint, sem precisar de sudo.
 # Alternativa com sudo: o pacote arruma_<versão>_all.deb (ver README).
 set -euo pipefail

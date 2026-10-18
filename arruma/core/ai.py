@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Cliente da IA local (Ollama). Só comunica com servidores neste computador.
 
 Modelos pequenos (3 a 4 mil milhões de parâmetros) erram pouco quando a tarefa é fechada e

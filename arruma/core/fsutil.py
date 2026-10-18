@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Utilitários de sistema de ficheiros: nomes, tamanhos, caminhos únicos e pastas permitidas."""
 
 from __future__ import annotations

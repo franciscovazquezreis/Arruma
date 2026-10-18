@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Categorias, extensões, áreas temáticas e palavras-chave (português de Portugal)."""
 
 from __future__ import annotations

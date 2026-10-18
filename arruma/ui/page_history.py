@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Página de histórico: arrumações anteriores, com opção de anular."""
 
 from __future__ import annotations

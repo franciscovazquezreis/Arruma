@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Página do plano: rever, ajustar e aplicar as mudanças propostas."""
 
 from __future__ import annotations

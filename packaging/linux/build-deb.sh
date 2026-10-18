@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Cria o pacote arruma_<versão>_all.deb (Linux Mint, Ubuntu, Debian).
 # Uso: packaging/linux/build-deb.sh [pasta de saída]   (por omissão: dist/)
 set -euo pipefail
@@ -29,9 +30,28 @@ install -m 644 "$ROOT/packaging/linux/arruma.nemo_action" "$PKG/usr/share/nemo/a
 install -m 644 "$ROOT/arruma/ui/arruma.svg" "$PKG/usr/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg"
 install -m 644 "$ROOT/arruma/ui/arruma.png" "$PKG/usr/share/icons/hicolor/256x256/apps/pt.arruma.Arruma.png"
 install -m 644 "$ROOT/README.md" "$PKG/usr/share/doc/arruma/README.md"
+# Formato legível por máquina do Debian (DEP-5). O pacote só contém o código do Arruma;
+# as dependências vêm do apt, cada uma com a sua licença.
 cat > "$PKG/usr/share/doc/arruma/copyright" <<EOF
-Arruma $VERSION
-Código-fonte: https://github.com/franciscovazquezreis/Arruma
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Arruma
+Source: https://github.com/franciscovazquezreis/Arruma
+
+Files: *
+Copyright: 2026 Francisco Reis
+License: GPL-3.0+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 can be found in "/usr/share/common-licenses/GPL-3".
 EOF
 
 SIZE="$(du -sk "$PKG/usr" | cut -f1)"

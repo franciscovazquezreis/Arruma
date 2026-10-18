@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Aplicação do plano com registo de cada operação, e anulação."""
 
 from __future__ import annotations

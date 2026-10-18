@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Testes das regras de organização e da IA (com um Ollama falso). Sem interface gráfica."""
 
 import json

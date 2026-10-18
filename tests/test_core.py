@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Testes do núcleo (sem interface). Executar: python3 -m unittest discover -s tests"""
 
 import os

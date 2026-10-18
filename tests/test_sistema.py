@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Testes das diferenças entre sistemas (Linux, Windows, macOS). Correm nos três no CI.
 
 A ida ao Lixo e o regresso só correm com ARRUMA_TESTAR_LIXO=1, porque mexem no Lixo real."""
