@@ -6,7 +6,7 @@ Funciona em **Linux** (pensado para o Linux Mint), **Windows 10/11** e **macOS 1
 
 ## Instalar
 
-As versões prontas a instalar são geradas automaticamente pelo GitHub a cada alteração. Ficam na página [Releases](https://github.com/franciscovazquezreis/Arruma/releases) quando é publicada uma versão, ou em [Actions → Construir e testar](https://github.com/franciscovazquezreis/Arruma/actions/workflows/construir.yml) → última execução → *Artifacts* (é preciso ter sessão iniciada no GitHub).
+As versões prontas a instalar são geradas automaticamente pelo GitHub a cada alteração no ramo `main`. Ficam na página [Releases](https://github.com/franciscovazquezreis/Arruma/releases) quando é publicada uma versão, ou em [Actions → Construir e testar](https://github.com/franciscovazquezreis/Arruma/actions/workflows/construir.yml) → última execução do `main` → *Artifacts*, durante 14 dias. Também se podem pedir à mão, para qualquer ramo, no botão *Run workflow* dessa página.
 
 ### Linux Mint, Ubuntu e Debian
 
@@ -97,7 +97,7 @@ python3 -m arruma --self-test              # verifica a interface e o plano (pre
 packaging/linux/build-deb.sh               # cria dist/arruma_<versão>_all.deb
 ```
 
-As versões de Windows e macOS são construídas com o PyInstaller (`packaging/pyinstaller/arruma.spec`) a partir do GTK do MSYS2 e do Homebrew; os passos exatos estão em `.github/workflows/construir.yml`. Para publicar uma versão, cria uma etiqueta `vX.Y.Z` igual à versão em `arruma/__init__.py`.
+As versões de Windows e macOS são construídas com o PyInstaller (`packaging/pyinstaller/arruma.spec`) a partir do GTK do MSYS2 e do Homebrew; os passos exatos estão em `.github/workflows/construir.yml`. Os testes correm em todas as alterações; as versões para instalar só no `main`, nas etiquetas e à mão, porque num repositório privado os minutos de macOS e Windows contam muito mais do que os de Linux. Para publicar uma versão, cria uma etiqueta `vX.Y.Z` igual à versão em `arruma/__init__.py`.
 
 | Pasta | Conteúdo |
 |---|---|
