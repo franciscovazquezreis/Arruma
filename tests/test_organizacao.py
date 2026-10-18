@@ -108,7 +108,7 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(clean_date("2025-03-12", self.TEXT), "2025-03-12")
         # Só o mês está escrito: o dia não se inventa.
         self.assertEqual(clean_date("2025-01-31", "Recibo de vencimento de janeiro de 2025"), "2025-01")
-        self.assertEqual(clean_date("2025-02-20", "Lourinhã, 20 de fevereiro de 2025"), "2025-02-20")
+        self.assertEqual(clean_date("2025-02-20", "Vila Exemplo, 20 de fevereiro de 2025"), "2025-02-20")
         self.assertEqual(clean_date("2023-03-12", self.TEXT), "")
         self.assertEqual(clean_date("2025-02-30"), "")
         self.assertEqual(clean_date("12/03/2025"), "")
