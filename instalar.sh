@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Instala (ou atualiza) o Arruma para o utilizador atual no Linux Mint, sem precisar de sudo.
 # Alternativa com sudo: o pacote arruma_<versão>_all.deb (ver README).
+# Com --remover, retira esta instalação (o histórico e as definições ficam).
 set -euo pipefail
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,6 +12,17 @@ DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
 PNG_ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 NEMO_ACTION_DIR="$HOME/.local/share/nemo/actions"
+
+if [ "${1:-}" = "--remover" ]; then
+    rm -rf "$APP_DIR"
+    rm -f "$BIN_DIR/arruma" "$DESKTOP_DIR/pt.arruma.Arruma.desktop" "$NEMO_ACTION_DIR/arruma.nemo_action" \
+          "$ICON_DIR/pt.arruma.Arruma.svg" "$PNG_ICON_DIR/pt.arruma.Arruma.png"
+    update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
+    echo "✓ Arruma removido da pasta pessoal."
+    echo "  O histórico e as definições ficam em ~/.local/share/arruma e ~/.config/arruma."
+    exit 0
+fi
 
 mkdir -p "$APP_DIR" "$BIN_DIR" "$DESKTOP_DIR" "$ICON_DIR" "$PNG_ICON_DIR" "$NEMO_ACTION_DIR"
 

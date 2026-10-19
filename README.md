@@ -10,11 +10,13 @@ As versões prontas a instalar são geradas automaticamente pelo GitHub a cada a
 
 ### Linux Mint, Ubuntu e Debian
 
-Com o pacote `arruma_0.2.0_all.deb`:
+Com o pacote `arruma_<versão>_all.deb` da página Releases:
 
 ```bash
-sudo apt install ./arruma_0.2.0_all.deb
+sudo apt install ./arruma_*_all.deb
 ```
+
+Cada versão nova instala-se da mesma maneira e substitui a anterior.
 
 Fica no menu de aplicações (Acessórios → Arruma) e no clique direito das pastas do Nemo («Arrumar com o Arruma»). Precisa do Python 3.10 ou mais recente (Linux Mint 21 ou mais recente).
 
@@ -24,9 +26,11 @@ Em alternativa, sem `sudo` e só para o teu utilizador, a partir do código:
 ./instalar.sh
 ```
 
+As duas formas não se misturam: a cópia do `instalar.sh` fica na tua pasta pessoal e tem prioridade sobre o pacote. Para passar para o pacote, retira-a primeiro com `./instalar.sh --remover`. O histórico e as definições ficam.
+
 ### Windows
 
-Corre `Arruma-0.2.0-windows-instalador.exe`. Não pede permissões de administrador, cria a entrada no menu Iniciar e acrescenta «Arrumar com o Arruma» ao clique direito das pastas (no Windows 11 aparece em «Mostrar mais opções»). Há também uma versão portátil em `.zip`, que não precisa de instalação.
+Corre `Arruma-<versão>-windows-instalador.exe`. Não pede permissões de administrador, cria a entrada no menu Iniciar e acrescenta «Arrumar com o Arruma» ao clique direito das pastas (no Windows 11 aparece em «Mostrar mais opções»). Há também uma versão portátil em `.zip`, que não precisa de instalação.
 
 O instalador não está assinado com um certificado de assinatura de código, por isso o Windows pode mostrar o aviso «O Windows protegeu o seu PC». Para continuar: **Mais informações → Executar mesmo assim**.
 

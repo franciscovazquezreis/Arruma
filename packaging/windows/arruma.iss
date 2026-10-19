@@ -1,6 +1,6 @@
 ; SPDX-License-Identifier: GPL-3.0-or-later
 ; Instalador do Arruma para Windows (Inno Setup 6.3 ou mais recente: lê o ficheiro em UTF-8).
-; Uso: iscc /DAppVersion=0.2.0 packaging\windows\arruma.iss
+; Uso: iscc /DAppVersion=0.2.1 packaging\windows\arruma.iss
 ; Espera a aplicação já construída em dist\Arruma (PyInstaller).
 
 #ifndef AppVersion
