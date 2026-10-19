@@ -12,9 +12,10 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 
-from .. import APP_ID, APP_NAME, __version__  # noqa: E402
+from .. import APP_ID, APP_NAME, AUTHOR, COPYRIGHT, REPO_URL, __version__  # noqa: E402
 from ..core import taxonomy as tx  # noqa: E402
 from ..core.ai import RECOMMENDED_MODEL, AIError, AIStatus, LocalAI  # noqa: E402
 from ..core.db import Database  # noqa: E402
@@ -24,7 +25,8 @@ from ..core.fsutil import COMPUTER_TOKEN, check_root_allowed, plural  # noqa: E4
 from ..core.planner import Action, PlanCancelled, Planner  # noqa: E402
 from ..core.scanner import ScanCancelled, ScanResult, scan  # noqa: E402
 from ..core.settings import Settings  # noqa: E402
-from ..core.system import IS_LINUX, IS_MAC, TRASH_TO, ollama_install_steps  # noqa: E402
+from ..core.system import (IS_LINUX, IS_MAC, TRASH_TO, license_file, ollama_install_steps,  # noqa: E402
+                           third_party_notices)
 from .page_analysis import AnalysisPage  # noqa: E402
 from .page_duplicates import DuplicatesPage  # noqa: E402
 from .page_history import HistoryPage  # noqa: E402
@@ -32,9 +34,10 @@ from .page_home import HomePage  # noqa: E402
 from .page_plan import PlanPage  # noqa: E402
 from .page_settings import SettingsPage  # noqa: E402
 from .widgets import (MISSING_ICONS, Throttle, Toast, add_classes, button, choose_folders, hbox, icon, label,
-                      load_css, message, open_url, run_bg, vbox)
+                      load_css, message, open_path, open_url, run_bg, vbox)
 
 ICON_PNG = Path(__file__).with_name("arruma.png")
+RESPONSE_NOTICES = 1
 
 NAV_ITEMS = [
     ("home", "user-home-symbolic", "Início"),
@@ -67,6 +70,10 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                           on_click=self._choose_folder_header,
                           tooltip=f"Analisar uma ou mais pastas ({'Cmd' if IS_MAC else 'Ctrl'}+O)")
         hb.pack_start(open_btn)
+        about_btn = button(icon_name="help-about-symbolic", on_click=self.show_about, tooltip="Acerca do Arruma")
+        about_btn.set_relief(Gtk.ReliefStyle.NONE)
+        about_btn.set_valign(Gtk.Align.CENTER)
+        hb.pack_end(about_btn)
         self.ai_header_pill = label("IA local", "pill", "info")
         self.ai_header_pill.set_valign(Gtk.Align.CENTER)
         hb.pack_end(self.ai_header_pill)
@@ -172,6 +179,41 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         paths = choose_folders(self, "Escolhe uma ou mais pastas a arrumar", start)
         if paths:
             self.start_scan(paths)
+
+    # ------------------------------------------------------------------ acerca
+    def build_about(self) -> Gtk.AboutDialog:
+        """Direitos de autor, ausência de garantia e licença (a GPL pede que a interface os mostre)."""
+        dialog = Gtk.AboutDialog(transient_for=self, modal=True)
+        dialog.set_program_name(APP_NAME)
+        dialog.set_version(__version__)
+        dialog.set_comments("Organizador de ficheiros local e sem internet.\n"
+                            "Software livre, distribuído sem qualquer garantia, nos termos da GNU General "
+                            "Public License, versão 3 ou (à tua escolha) qualquer versão posterior.")
+        dialog.set_copyright(COPYRIGHT)
+        dialog.set_authors([AUTHOR])
+        dialog.set_website(REPO_URL)
+        dialog.set_website_label("Código-fonte no GitHub")
+        text = license_file()
+        if text:
+            dialog.set_license(text.read_text(encoding="utf-8", errors="replace"))
+        else:
+            dialog.set_license_type(Gtk.License.GPL_3_0)
+        if ICON_PNG.exists():
+            dialog.set_logo(GdkPixbuf.Pixbuf.new_from_file_at_size(str(ICON_PNG), 96, 96))
+        notices = third_party_notices()
+        if notices:
+            dialog.add_button("Licenças de terceiros", RESPONSE_NOTICES)
+
+        def on_response(d, response):
+            if response == RESPONSE_NOTICES and notices:
+                open_path(str(notices))
+            else:
+                d.destroy()
+        dialog.connect("response", on_response)
+        return dialog
+
+    def show_about(self) -> None:
+        self.build_about().show_all()
 
     # ------------------------------------------------------------------ IA local
     def refresh_ai(self) -> None:
@@ -530,6 +572,19 @@ class ArrumaApp(Gtk.Application):
             if not pdf_ok:
                 ok = False
             lines.append("Ícones em falta: " + (", ".join(sorted(MISSING_ICONS)) or "nenhum"))
+            about = self.win.build_about()
+            about.destroy()
+            notices = third_party_notices()
+            if getattr(sys, "frozen", False):
+                import json
+                index = notices / "componentes.json" if notices else None
+                count = len(json.loads(index.read_text(encoding="utf-8"))["componentes"]) if index and \
+                    index.is_file() and (notices / "LEIA-ME.txt").is_file() else 0
+                lines.append(f"Licenças de terceiros: {count} componentes" if count else
+                             "Licenças de terceiros: EM FALTA")
+                if not count or not license_file():
+                    ok = False
+            lines.append(f"Licença: {license_file() or 'EM FALTA'}")
             import shutil
             shutil.rmtree(tmp, ignore_errors=True)
         except Exception:  # noqa: BLE001

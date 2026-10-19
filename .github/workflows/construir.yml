@@ -132,6 +132,11 @@ jobs:
           path: |
             dist/*.exe
             dist/*.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fontes-windows
+          retention-days: 14
+          path: dist/componentes-*.json
 
   macos:
     name: macOS (${{ matrix.arch }})
@@ -157,6 +162,11 @@ jobs:
           ARRUMA_TESTAR_LIXO: "1"
         run: venv/bin/python -m unittest discover -s tests
       - name: Construir com o PyInstaller
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          # A assinatura ad hoc do .app tem de cobrir tudo, incluindo as licenças de terceiros.
+          PYINSTALLER_STRICT_BUNDLE_CODESIGN_ERROR: "1"
+          PYINSTALLER_VERIFY_BUNDLE_SIGNATURE: "1"
         run: venv/bin/pyinstaller packaging/pyinstaller/arruma.spec --noconfirm --clean
       - name: Autoteste da versão empacotada
         run: |
@@ -170,20 +180,57 @@ jobs:
           name: arruma-macos-${{ matrix.arch }}
           retention-days: 14
           path: dist/*.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fontes-macos-${{ matrix.arch }}
+          retention-days: 14
+          path: dist/componentes-*.json
+
+  fontes:
+    name: Código-fonte de terceiros
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fontes-*
+          path: fontes
+          merge-multiple: true
+      - name: Confirmar que o código-fonte de cada componente está disponível
+        run: python3 packaging/licencas/fontes.py --verificar fontes/*.json
 
   publicar:
     name: Publicar versão
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [testes, linux-instalar, windows, macos]
+    needs: [testes, linux-instalar, windows, macos, fontes]
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
+          pattern: arruma-*
           path: artefactos
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fontes-*
+          path: fontes
+          merge-multiple: true
+      - name: Código-fonte dos componentes de terceiros (GPL e LGPL pedem-no no mesmo sítio)
+        run: |
+          python3 packaging/licencas/fontes.py --saida fontes-terceiros fontes/*.json
+          mv fontes-terceiros/*.tar artefactos/
       - uses: softprops/action-gh-release@v2
         with:
           files: artefactos/*
           generate_release_notes: true
+          body: |
+            Instaladores para Linux (.deb), Windows (instalador e versão portátil) e macOS (Apple Silicon e Intel).
+            O Arruma é software livre (GPL-3.0 ou posterior). Os arquivos «codigo-fonte-terceiros» contêm o
+            código-fonte dos componentes de outros autores incluídos nas versões de Windows e macOS; a lista e
+            as licenças estão dentro de cada versão, na pasta «licencas».

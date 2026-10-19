@@ -8,6 +8,7 @@ Adwaita incluídos.
 """
 
 import os
+import platform
 import shutil
 import sys
 from pathlib import Path
@@ -56,6 +57,30 @@ a = Analysis(  # noqa: F821
     excludes=["tkinter"],
     noarchive=False,
 )
+# Licenças de terceiros: lista dos componentes que o PyInstaller recolheu, com os textos das
+# licenças e as receitas de construção. Fica pronta antes do COLLECT e do BUNDLE, para que a
+# assinatura do .app no macOS cubra também estes ficheiros.
+sys.path.insert(0, str(ROOT / "packaging" / "licencas"))
+import terceiros  # noqa: E402
+
+licencas = terceiros.gerar(a, Path(workpath) / "licencas", ROOT, Path(workpath),  # noqa: F821
+                           arruma.__version__)
+print(f"Licenças de terceiros: {len(licencas.componentes)} componentes")
+for comp in sorted(licencas.componentes.values(), key=lambda c: c.nome.casefold()):
+    print(f"  {comp.nome} {comp.versao} | {comp.licenca} | {comp.ficheiros} ficheiros | "
+          f"{len(comp.textos)} textos | {len(comp.fontes)} fontes")
+for caminho, tipo in licencas.desconhecidos:
+    print(f"  SEM ORIGEM ({tipo}): {caminho}")
+sem_origem = [c for c, t in licencas.desconhecidos if t in ("BINARY", "EXTENSION")]
+if sem_origem:
+    raise SystemExit(f"{len(sem_origem)} bibliotecas sem origem conhecida: não é possível indicar a licença.")
+a.datas += licencas.entradas
+# Índice para o fontes.py juntar o código-fonte destes componentes em cada versão publicada.
+PLATAFORMA = "windows" if IS_WIN else f"macos-{'apple-silicon' if platform.machine() == 'arm64' else 'intel'}"
+Path(DISTPATH).mkdir(parents=True, exist_ok=True)  # noqa: F821
+shutil.copyfile(Path(workpath) / "licencas" / "componentes.json",  # noqa: F821
+                Path(DISTPATH) / f"componentes-{PLATAFORMA}.json")  # noqa: F821
+
 pyz = PYZ(a.pure)  # noqa: F821
 
 exe = EXE(  # noqa: F821
@@ -72,6 +97,10 @@ exe = EXE(  # noqa: F821
 )
 
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="Arruma")  # noqa: F821
+
+if IS_WIN:
+    # À vista, ao lado do Arruma.exe (no Windows nada é assinado, por isso pode juntar-se depois).
+    shutil.copyfile(ROOT / "LICENSE", Path(DISTPATH) / "Arruma" / "LICENSE.txt")  # noqa: F821
 
 if IS_MAC:
     app = BUNDLE(  # noqa: F821

@@ -14,6 +14,7 @@ trap 'rm -rf "$STAGE"' EXIT
 
 [ -d "$APP" ] || { echo "Falta $APP: corre primeiro o PyInstaller." >&2; exit 1; }
 cp -R "$APP" "$STAGE/"
+cp "$ROOT/LICENSE" "$STAGE/LICENSE.txt"
 ln -s /Applications "$STAGE/Aplicações"
 # Nos servidores macOS do GitHub, o hdiutil falha por vezes com «Resource busy» porque o
 # sistema ainda está a examinar a imagem temporária; basta tentar outra vez.

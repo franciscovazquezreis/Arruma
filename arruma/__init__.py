@@ -4,3 +4,6 @@
 __version__ = "0.2.0"
 APP_ID = "pt.arruma.Arruma"
 APP_NAME = "Arruma"
+AUTHOR = "Francisco Reis"
+COPYRIGHT = f"Copyright © 2026 {AUTHOR}"
+REPO_URL = "https://github.com/franciscovazquezreis/Arruma"

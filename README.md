@@ -105,3 +105,9 @@ As versões de Windows e macOS são construídas com o PyInstaller (`packaging/p
 | `arruma/ui` | interface GTK 3 |
 | `packaging` | pacote `.deb`, instalador do Windows, `.dmg` do macOS e ícones |
 | `tests` | testes automáticos e avaliação com a IA real (`tests/avaliacao`) |
+
+## Licença
+
+O Arruma é software livre: podes usá-lo, estudá-lo, alterá-lo e distribuí-lo nos termos da [GNU General Public License](LICENSE), versão 3 ou (à tua escolha) qualquer versão posterior. É distribuído sem qualquer garantia. Copyright © 2026 Francisco Reis.
+
+As versões para Windows e macOS incluem componentes de outros autores (Python, GTK, Poppler, mutagen, entre outros), cada um com a sua licença. A lista completa, os textos das licenças e o endereço do código-fonte de cada componente vão dentro de cada versão, na pasta `licencas` (no Windows em `_internal\licencas`, no macOS em `Arruma.app/Contents/Resources/licencas`), e abrem-se no botão «Acerca do Arruma» → «Licenças de terceiros». Cada versão publicada em Releases traz também, no mesmo sítio, o código-fonte desses componentes. O pacote `.deb` não inclui componentes de terceiros: usa os que o sistema já tem.

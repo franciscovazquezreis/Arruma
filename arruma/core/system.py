@@ -378,6 +378,29 @@ def _app_dirs() -> list[Path]:
     return dirs
 
 
+def bundled_dir(name: str) -> Path | None:
+    """Pasta incluída na versão empacotada (Windows e macOS); None ao correr a partir do código."""
+    base = getattr(sys, "_MEIPASS", None)
+    path = Path(base) / name if base else None
+    return path if path and path.is_dir() else None
+
+
+def third_party_notices() -> Path | None:
+    """Pasta com as licenças dos componentes de outros autores (só nas versões empacotadas)."""
+    return bundled_dir("licencas")
+
+
+def license_file() -> Path | None:
+    """Texto da GPL versão 3, para mostrar sem internet."""
+    candidates = []
+    notices = third_party_notices()
+    if notices:
+        candidates.append(notices / "Arruma" / "LICENSE")
+    candidates += [Path(__file__).resolve().parents[2] / "LICENSE",  # a correr a partir do código
+                   Path("/usr/share/common-licenses/GPL-3")]  # pacote .deb (Debian, Ubuntu, Mint)
+    return next((c for c in candidates if c.is_file()), None)
+
+
 def _executable_in(dirs: list[Path], exe: str) -> str | None:
     for d in dirs:
         cand = d / exe
