@@ -43,13 +43,22 @@ LICENCAS_CORRIGIDAS = {
     "adwaita-icon-theme": "LGPL-3.0-or-later OR CC-BY-SA-3.0",
     "adwaita-icon-theme-legacy": "LGPL-3.0-or-later OR CC-BY-SA-3.0",
     "libimagequant": "GPL-3.0-or-later",
+    "jbigkit": "GPL-2.0-or-later",  # cabeçalhos de libjbig/jbig.c («or any later version»)
+    "libdatrie": "LGPL-2.1-or-later",
+    "bzip2": "bzip2-1.0.6",
+    "libpng": "libpng-2.0",
+    "libjpeg-turbo": "IJG AND BSD-3-Clause AND Zlib",
+    "sqlite3": "blessing",
+    "fontconfig": "HPND-sell-variant AND Unicode-3.0 AND MIT-Modern-Variant AND MIT",
     "pyinstaller": "GPL-2.0-or-later WITH Bootloader-exception AND Apache-2.0",
+    "pyinstaller-hooks-contrib": "Apache-2.0 AND GPL-2.0-or-later",
 }
 
 # Textos-padrão que acompanham cada família de licenças (além dos ficheiros do próprio pacote).
 TEXTOS_POR_LICENCA = [
     ("LGPL-3.0", ["LGPL-3.0.txt", "GPL-3.0.txt"]),
-    ("LGPL-2.", ["LGPL-2.1.txt"]),
+    ("LGPL-2.0", ["LGPL-2.0.txt"]),
+    ("LGPL-2.1", ["LGPL-2.1.txt"]),
     ("GPL-3.0", ["GPL-3.0.txt"]),
     ("GPL-2.0", ["GPL-2.0.txt"]),
     ("MPL-2.0", ["MPL-2.0.txt"]),
@@ -202,12 +211,13 @@ class Msys2:
         versao = desc.get("VERSION", ["?"])[0]
         base = desc.get("BASE", [nome])[0]
         curto = self.curto(nome)
+        repo = "mingw" if nome.startswith("mingw-w64-") else "msys"
         licenca = _corrigir_licenca(curto, licenca_msys2(desc.get("LICENSE", [])))
         textos = [f"{self.raiz}/{f}" for f in self.ficheiros.get(nome, []) if "/share/licenses/" in f"/{f}"]
         return Componente(
             chave=f"msys2:{nome}", nome=curto, versao=versao, licenca=licenca, origem=self.origem,
             pagina=desc.get("URL", [""])[0],
-            fontes=[{"tipo": "msys2", "url": f"https://repo.msys2.org/mingw/sources/{base}-{versao}.src.tar.zst"}],
+            fontes=[{"tipo": "msys2", "url": f"https://repo.msys2.org/{repo}/sources/{base}-{versao}.src.tar.zst"}],
             textos=textos,
         )
 

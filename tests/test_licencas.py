@@ -50,7 +50,9 @@ class LicenseFieldTests(unittest.TestCase):
         self.assertEqual(terceiros._textos_padrao("LGPL-3.0-or-later OR CC-BY-SA-3.0"), ["LGPL-3.0.txt", "GPL-3.0.txt"])
         self.assertIn("LGPL-2.1.txt", terceiros._textos_padrao("LGPL-2.1-only OR MPL-1.1"))
         self.assertEqual(terceiros._textos_padrao("MIT"), [])
-        for nome in ("GPL-2.0.txt", "LGPL-2.1.txt", "LGPL-3.0.txt", "MPL-2.0.txt", "Apache-2.0.txt"):
+        self.assertIn("LGPL-2.0.txt", terceiros._textos_padrao("LGPL-2.0-only"))
+        self.assertNotIn("LGPL-2.1.txt", terceiros._textos_padrao("LGPL-2.0-or-later"))
+        for nome in ("GPL-2.0.txt", "LGPL-2.0.txt", "LGPL-2.1.txt", "LGPL-3.0.txt", "MPL-2.0.txt", "Apache-2.0.txt"):
             self.assertTrue((terceiros.TEXTOS_PADRAO / nome).is_file(), nome)
 
 

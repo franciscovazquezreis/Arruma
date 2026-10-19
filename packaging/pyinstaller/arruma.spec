@@ -27,6 +27,11 @@ datas = [
     (str(ROOT / "arruma" / "ui" / "arruma.png"), "arruma/ui"),
 ]
 
+if IS_WIN:
+    # A consola do MSYS2 define XDG_DATA_DIRS com as pastas do próprio MSYS2 (/usr/share), e a
+    # GTK recolheria de lá ícones que nada têm a ver com o Arruma (por exemplo, os do mintty).
+    os.environ.pop("XDG_DATA_DIRS", None)
+
 binaries = []
 if IS_WIN:
     # Poppler do MSYS2 para ler PDF e fazer OCR. Ficam ao lado das DLL de que precisam.
