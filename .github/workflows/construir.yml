@@ -136,7 +136,17 @@ jobs:
           grep -q "Nada foi alterado" saida.txt
           grep "__version__" "$copia"
           grep -q '"9.9.9"' "$copia"
-      - name: Atualizar a partir da 0.2.0 com uma cópia mais recente na pasta pessoal (a cópia fica)
+          if src/instalar.sh --remove; then echo "::error::Aceitou uma opção desconhecida."; exit 1; fi
+          # Cópia da 0.2.0, cujo lançador abre a pasta do código: é a versão do código que conta.
+          src/instalar.sh --remover
+          v0.2.0/instalar.sh
+          grep -q 'if \[ -d ' ~/.local/bin/arruma
+          sed -i 's/^__version__ = .*/__version__ = "9.9.9"/' v0.2.0/arruma/__init__.py
+          src/instalar.sh < /dev/null | tee saida.txt
+          grep -q "Está instalado o Arruma 9.9.9 (em $PWD/v0.2.0)" saida.txt
+          grep -q "Nada foi alterado" saida.txt
+          grep -q 'if \[ -d ' ~/.local/bin/arruma
+      - name: Atualizar a partir da 0.2.0 com a cópia da 0.2.0 a abrir código mais recente (a cópia fica)
         run: |
           sudo apt-get install -y ./deb-0.2.0/arruma_0.2.0_all.deb
           # O código compilado que o Python cria quando o Arruma corre como administrador.
@@ -147,14 +157,18 @@ jobs:
           grep "Arruma:" apt.txt
           grep -q "a versão 9.9.9, mais recente do que este pacote ($VERSAO)" apt.txt
           test "$(dpkg-query -W -f='${Version}' arruma)" = "$VERSAO"
-          grep -q '"9.9.9"' ~/.local/share/arruma-app/arruma/__init__.py
-          test -f ~/.local/bin/arruma
+          grep -q 'if \[ -d ' ~/.local/bin/arruma
+          test -f ~/.local/share/applications/pt.arruma.Arruma.desktop
+          test -f ~/.local/share/nemo/actions/arruma.nemo_action
+          if src/instalar.sh > saida.txt; then echo "::error::O instalar.sh instalou por cima do pacote."; exit 1; fi
+          cat saida.txt
+          grep -q "(9.9.9) é mais recente do que o pacote" saida.txt
           if [ -n "$(find /usr/lib/arruma -name __pycache__)" ]; then
             echo "::error::Ficou código compilado da versão anterior em /usr/lib/arruma"; exit 1
           fi
       - name: Com a cópia da pasta pessoal mais antiga, o pacote retira-a
         run: |
-          sed -i 's/^__version__ = .*/__version__ = "0.1.0"/' ~/.local/share/arruma-app/arruma/__init__.py
+          sed -i 's/^__version__ = .*/__version__ = "0.1.0"/' v0.2.0/arruma/__init__.py
           sudo apt-get install -y --reinstall "./deb/arruma_${VERSAO}_all.deb" | tee apt.txt
           grep "Arruma:" apt.txt
           grep -q "retirada a cópia antiga" apt.txt

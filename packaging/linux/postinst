@@ -41,7 +41,7 @@ limpa_pasta_pessoal() {
     tem_app=""; tem_lancador=""; atalhos=""; codigo=""
     [ -f "$casa/$app/arruma/__init__.py" ] && tem_app=1
     if [ -f "$casa/$lancador" ] && grep -q "arruma-app" "$casa/$lancador" 2>/dev/null \
-            && grep -q "python3 -m arruma" "$casa/$lancador" 2>/dev/null; then
+            && grep -Eq 'python3 -m arruma|run_module\("arruma"' "$casa/$lancador" 2>/dev/null; then
         tem_lancador=1
         # Os lançadores do instalar.sh até à 0.2.0 abrem a pasta do código, enquanto ela existir.
         codigo="$(sed -n 's/^if \[ -d "\(.*\)\/arruma" \]; then$/\1/p' "$casa/$lancador" 2>/dev/null | head -n 1)"
@@ -92,10 +92,12 @@ limpa_pasta_pessoal() {
                  .local/share/icons/hicolor/256x256/apps/pt.arruma.Arruma.png; do
         retira "$casa" "$icone" || true
     done
-    # A cache de ícones da pasta pessoal ainda indica os ícones apagados; mudar a data da pasta
-    # faz o GTK deixar de confiar nela e encontrar o ícone do pacote.
-    if [ -d "$casa/.local/share/icons/hicolor" ] && sem_ligacoes "$casa" ".local/share/icons/hicolor/x"; then
-        touch -c "$casa/.local/share/icons/hicolor" 2>/dev/null || true
+    # A cache de ícones da pasta pessoal ainda indica os ícones apagados, e o GTK não encontraria
+    # o do pacote: refaz-se ou, sem o gtk-update-icon-cache, apaga-se (o GTK passa a ler as pastas).
+    cache=".local/share/icons/hicolor/icon-theme.cache"
+    if [ -f "$casa/$cache" ] && sem_ligacoes "$casa" "$cache"; then
+        gtk-update-icon-cache -f -t -q "$casa/.local/share/icons/hicolor" >/dev/null 2>&1 \
+            || rm -f "$casa/$cache" 2>/dev/null || true
     fi
     echo "Arruma: retirada a cópia antiga em $casa/.local (o histórico e as definições ficam)."
 }

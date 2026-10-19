@@ -14,6 +14,13 @@ ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
 PNG_ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 NEMO_ACTION_DIR="$HOME/.local/share/nemo/actions"
 
+case "${1:-}" in
+    ""|--remover) ;;
+    *)  echo "Opção desconhecida: $1. Usa ./instalar.sh para instalar ou atualizar, ou ./instalar.sh --remover" >&2
+        echo "para retirar o Arruma da pasta pessoal." >&2
+        exit 2 ;;
+esac
+
 if [ "${1:-}" = "--remover" ]; then
     rm -rf "$APP_DIR"
     rm -f "$BIN_DIR/arruma" "$DESKTOP_DIR/pt.arruma.Arruma.desktop" "$NEMO_ACTION_DIR/arruma.nemo_action" \
@@ -49,6 +56,11 @@ pergunta() {
 }
 
 NOVA="$(versao_de "$SRC_DIR")"
+# Os lançadores do instalar.sh até à 0.2.0 abrem a pasta do código, enquanto ela existir: é essa
+# a versão que está a ser usada, e pode ser mais recente do que a cópia em $APP_DIR.
+CODIGO="$(sed -n 's/^if \[ -d "\(.*\)\/arruma" \]; then$/\1/p' "$BIN_DIR/arruma" 2>/dev/null | head -n 1 || true)"
+VCODIGO=""
+[ -n "$CODIGO" ] && VCODIGO="$(versao_de "$CODIGO")"
 # Com o pacote no sistema (instalado ou a meio de uma instalação), uma cópia na pasta pessoal
 # escondê-lo-ia no menu, no Nemo e no terminal.
 ESTADO_PACOTE="$(dpkg-query -W -f='${db:Status-Status}' arruma 2>/dev/null || true)"
@@ -56,6 +68,7 @@ case "$ESTADO_PACOTE" in
     ""|not-installed|config-files) ;;
     *)  PACOTE="$(dpkg-query -W -f='${Version}' arruma 2>/dev/null || true)"
         COPIA="$(versao_de "$APP_DIR")"
+        [ "$(compara "$VCODIGO" "$COPIA")" = 1 ] && COPIA="$VCODIGO"
         echo "O pacote arruma $PACOTE já está instalado no sistema."
         if [ -n "$COPIA" ] && [ "$(compara "$COPIA" "$PACOTE")" = 1 ]; then
             echo "A cópia na pasta pessoal ($COPIA) é mais recente do que o pacote e é essa que se abre."
@@ -68,7 +81,9 @@ case "$ESTADO_PACOTE" in
         fi
         exit 1 ;;
 esac
-if [ -f "$APP_DIR/arruma/__init__.py" ]; then
+if [ "$(compara "$VCODIGO" "$NOVA")" = 1 ]; then
+    pergunta "Está instalado o Arruma $VCODIGO (em $CODIGO), mais recente do que a versão desta cópia ($NOVA)."
+elif [ -f "$APP_DIR/arruma/__init__.py" ]; then
     ATUAL="$(versao_de "$APP_DIR")"
     case "$(compara "$ATUAL" "$NOVA")" in
         0)  echo "O Arruma $NOVA já está instalado. Não há nada a atualizar."
@@ -85,11 +100,11 @@ rm -rf "$APP_DIR/arruma"
 cp -r "$SRC_DIR/arruma" "$APP_DIR/arruma"
 
 # O lançador abre sempre a cópia instalada, e não a pasta do código: assim abre-se a versão que
-# foi escolhida acima, mesmo que o código mude depois.
+# foi escolhida acima, mesmo que o código mude depois. Não usa «python3 -m arruma», que abriria
+# primeiro um Arruma que estivesse na pasta atual.
 cat > "$BIN_DIR/arruma" <<EOF
 #!/usr/bin/env bash
-export PYTHONPATH="$APP_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
-exec python3 -m arruma "\$@"
+exec python3 -c 'import runpy, sys; sys.path[0] = sys.argv.pop(1); runpy.run_module("arruma", run_name="__main__", alter_sys=True)' "$APP_DIR" "\$@"
 EOF
 chmod +x "$BIN_DIR/arruma"
 

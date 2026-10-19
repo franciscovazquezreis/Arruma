@@ -18,10 +18,10 @@ install -d "$PKG/DEBIAN" "$PKG/usr/bin" "$PKG/usr/lib/arruma" "$PKG/usr/share/ap
 cp -r "$ROOT/arruma" "$PKG/usr/lib/arruma/"
 find "$PKG/usr/lib/arruma" -name '__pycache__' -prune -exec rm -rf {} +
 
+# Não usa «python3 -m arruma», que abriria primeiro um Arruma que estivesse na pasta atual.
 cat > "$PKG/usr/bin/arruma" <<'EOF'
 #!/bin/sh
-export PYTHONPATH="/usr/lib/arruma${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 -m arruma "$@"
+exec python3 -c 'import runpy, sys; sys.path[0] = sys.argv.pop(1); runpy.run_module("arruma", run_name="__main__", alter_sys=True)' /usr/lib/arruma "$@"
 EOF
 chmod 755 "$PKG/usr/bin/arruma"
 
