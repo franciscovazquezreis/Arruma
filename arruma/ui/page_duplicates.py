@@ -10,7 +10,7 @@ from gi.repository import Gtk, Pango
 
 from ..core.duplicates import DupGroup
 from ..core.fsutil import display_path, human_count, human_size, plural
-from ..core.system import TRASH_IN, TRASH_TO
+from ..core.system import TRASH_IN, TRASH_TO, folder_display_name
 from .widgets import (Placeholder, ProgressPanel, button, confirm, esc, hbox, kind_icon, label,
                       open_path, resolve_icon, show_in_folder, vbox)
 
@@ -131,9 +131,13 @@ class DuplicatesPage(Gtk.Stack):
                                            "", f.path, True])
         self.tv.expand_all()
         wasted = sum(g.wasted for g in groups)
-        self.summary.set_markup(f"{plural(len(groups), 'grupo', 'grupos')} de ficheiros iguais. Podes libertar até "
-                                f"<b>{human_size(wasted)}</b>. O Arruma sugere manter a cópia com melhor nome e local; "
-                                "as outras ficam marcadas.")
+        caixas = f"{esc(folder_display_name('DOWNLOAD'))} e {esc(folder_display_name('DESKTOP'))}"
+        self.summary.set_markup(
+            f"{plural(len(groups), 'grupo', 'grupos')} de ficheiros com conteúdo exatamente igual, byte a byte "
+            f"(o nome não conta). Podes libertar até <b>{human_size(wasted)}</b>.\n"
+            "Como as cópias são iguais, qualquer uma serve. Em cada grupo, o Arruma sugere manter a que tem o nome "
+            f"sem «(1)» ou «cópia», fora de {caixas} e, em caso de empate, a mais antiga; as outras ficam marcadas "
+            "e podes trocar as marcas antes de as enviar " + TRASH_TO + ".")
         self._update_label()
         self.set_visible_child_name("content")
 
