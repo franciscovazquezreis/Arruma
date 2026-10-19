@@ -16,13 +16,16 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
 gi.require_version("PangoCairo", "1.0")
-from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 
 from ..core import taxonomy as tx  # noqa: E402
 from ..core.system import IS_MAC, IS_WINDOWS, NO_WINDOW  # noqa: E402
 
 CSS_PATH = Path(__file__).with_name("style.css")
+LOGO_SVG = Path(__file__).with_name("arruma.svg")
+LOGO_PNG = Path(__file__).with_name("arruma.png")
 
 # Alternativas para ícones que nem todos os temas têm (no Windows e no macOS o Arruma leva o
 # tema Adwaita, que só tem parte dos ícones coloridos do Linux Mint).
@@ -126,6 +129,29 @@ def label(text: str = "", *classes: str, xalign: float = 0.0, wrap: bool = False
 def icon(name: str, size: int = 16, *classes: str) -> Gtk.Image:
     img = Gtk.Image.new_from_icon_name(resolve_icon(name), Gtk.IconSize.BUTTON)
     img.set_pixel_size(size)
+    add_classes(img, *classes)
+    return img
+
+
+def logo_pixbuf(size: int) -> GdkPixbuf.Pixbuf | None:
+    """Logótipo do Arruma com size×size píxeis (do SVG; do PNG se faltar o leitor de SVG)."""
+    for origem in (LOGO_SVG, LOGO_PNG):
+        try:
+            return GdkPixbuf.Pixbuf.new_from_file_at_size(str(origem), size, size)
+        except GLib.Error:
+            continue
+    return None
+
+
+def logo(size: int, *classes: str) -> Gtk.Image:
+    """Logótipo do Arruma, desenhado com o dobro dos píxeis para ficar nítido em ecrãs de alta densidade."""
+    pixbuf = logo_pixbuf(size * 2)
+    if pixbuf is None:
+        return icon("folder", size, *classes)
+    try:
+        img = Gtk.Image.new_from_surface(Gdk.cairo_surface_create_from_pixbuf(pixbuf, 2, None))
+    except (TypeError, ValueError):  # sem o pycairo: imagem normal, com o tamanho certo
+        img = Gtk.Image.new_from_pixbuf(logo_pixbuf(size))
     add_classes(img, *classes)
     return img
 

@@ -12,8 +12,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from .. import APP_ID, APP_NAME, AUTHOR, COPYRIGHT, REPO_URL, __version__  # noqa: E402
 from ..core import taxonomy as tx  # noqa: E402
@@ -34,7 +33,7 @@ from .page_home import HomePage  # noqa: E402
 from .page_plan import PlanPage  # noqa: E402
 from .page_settings import SettingsPage  # noqa: E402
 from .widgets import (MISSING_ICONS, Throttle, Toast, add_classes, button, choose_folders, hbox, icon, label,
-                      load_css, message, open_path, open_url, run_bg, vbox)
+                      load_css, logo, logo_pixbuf, message, open_path, open_url, run_bg, vbox)
 
 ICON_PNG = Path(__file__).with_name("arruma.png")
 RESPONSE_NOTICES = 1
@@ -122,7 +121,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         side.set_size_request(215, -1)
 
         brand = hbox(10, margin_top=18, margin_bottom=10, margin_start=18, margin_end=14)
-        brand.pack_start(icon("folder", 32), False, False, 0)
+        brand.pack_start(logo(32), False, False, 0)
         col = vbox(0)
         col.pack_start(label("Arruma", "brand"), False, False, 0)
         col.pack_start(label("100\u00a0% local · sem internet", "brand-sub"), False, False, 0)
@@ -198,8 +197,9 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             dialog.set_license(text.read_text(encoding="utf-8", errors="replace"))
         else:
             dialog.set_license_type(Gtk.License.GPL_3_0)
-        if ICON_PNG.exists():
-            dialog.set_logo(GdkPixbuf.Pixbuf.new_from_file_at_size(str(ICON_PNG), 96, 96))
+        pixbuf = logo_pixbuf(96)
+        if pixbuf is not None:
+            dialog.set_logo(pixbuf)
         notices = third_party_notices()
         if notices:
             dialog.add_button("Licenças de terceiros", RESPONSE_NOTICES)
@@ -572,6 +572,15 @@ class ArrumaApp(Gtk.Application):
             if not pdf_ok:
                 ok = False
             lines.append("Ícones em falta: " + (", ".join(sorted(MISSING_ICONS)) or "nenhum"))
+            # O logótipo da barra lateral e da janela «Acerca» vem dos ficheiros do próprio Arruma.
+            logo_ok = logo_pixbuf(64) is not None
+            lines.append(f"Logótipo: {'OK' if logo_ok else 'EM FALTA'}")
+            ok = ok and logo_ok
+            if IS_LINUX and Path(__file__).resolve().is_relative_to("/usr"):
+                # Instalado pelo .deb: o menu e a barra de tarefas procuram o ícone no tema do sistema.
+                no_tema = Gtk.IconTheme.get_default().has_icon(APP_ID)
+                lines.append(f"Ícone no tema do sistema: {'OK' if no_tema else 'EM FALTA'}")
+                ok = ok and no_tema
             about = self.win.build_about()
             about.destroy()
             notices = third_party_notices()
