@@ -1,0 +1,8 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Antes de remover ou atualizar o pacote: apaga o código compilado que o Python cria em
+# /usr/lib/arruma quando o Arruma corre como administrador; o dpkg não o conhece e deixaria
+# as pastas para trás.
+set -e
+find /usr/lib/arruma -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+exit 0

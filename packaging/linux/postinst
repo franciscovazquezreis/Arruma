@@ -1,0 +1,39 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Depois de instalar ou atualizar o pacote: retira as cópias do Arruma que o instalar.sh pôs na
+# pasta pessoal de cada utilizador. Essas cópias têm prioridade sobre o pacote no menu, no Nemo e
+# no terminal, e o utilizador continuaria a abrir a versão antiga sem dar por isso.
+# Só se retiram ficheiros com as marcas do instalar.sh; o histórico e as definições
+# (~/.local/share/arruma e ~/.config/arruma) ficam como estão.
+set -e
+
+if [ "$1" = "configure" ]; then
+    for casa in /root /home/*; do
+        [ -d "$casa/.local" ] || continue
+        retirada=""
+        app="$casa/.local/share/arruma-app"
+        if [ -f "$app/arruma/__init__.py" ]; then
+            rm -rf "$app"
+            retirada=1
+        fi
+        lancador="$casa/.local/bin/arruma"
+        if [ -f "$lancador" ] && grep -q "arruma-app" "$lancador" && grep -q "python3 -m arruma" "$lancador"; then
+            rm -f "$lancador"
+            retirada=1
+        fi
+        for ficheiro in "$casa/.local/share/applications/pt.arruma.Arruma.desktop" \
+                        "$casa/.local/share/nemo/actions/arruma.nemo_action"; do
+            if [ -f "$ficheiro" ] && grep -q "/.local/bin/arruma" "$ficheiro"; then
+                rm -f "$ficheiro"
+                retirada=1
+            fi
+        done
+        if [ -n "$retirada" ]; then
+            rm -f "$casa/.local/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg" \
+                  "$casa/.local/share/icons/hicolor/256x256/apps/pt.arruma.Arruma.png"
+            echo "Arruma: retirada a cópia antiga em $casa/.local (o histórico e as definições ficam)."
+        fi
+    done
+fi
+
+exit 0

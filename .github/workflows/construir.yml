@@ -83,13 +83,28 @@ jobs:
         os: [ubuntu-22.04, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
+      - uses: actions/checkout@v7  # para o instalar.sh
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           name: arruma-linux-deb
+      - name: Cópia antiga na pasta pessoal (instalar.sh), que o pacote tem de retirar
+        run: |
+          ./instalar.sh
+          ./instalar.sh | grep -q "já está instalado"  # a mesma versão não se reinstala
+          test -f ~/.local/bin/arruma
       - name: Instalar como no Linux Mint
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ./arruma_*.deb xvfb
+          test ! -e ~/.local/bin/arruma && test ! -e ~/.local/share/arruma-app
+          test "$(command -v arruma)" = /usr/bin/arruma
+      - name: A mesma versão não se reinstala, e o instalar.sh não esconde o pacote
+        run: |
+          sudo apt-get install -y ./arruma_*.deb | tee apt.txt
+          grep -q "already the newest version" apt.txt
+          if ./instalar.sh; then echo "::error::O instalar.sh instalou por cima do pacote."; exit 1; fi
       - name: Autoteste da aplicação instalada
         run: |
           xvfb-run -a arruma --self-test="$PWD/autoteste.txt"
@@ -151,6 +166,29 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
           & $iscc /Q "/DAppVersion=$env:VERSAO" packaging\windows\arruma.iss
           if ($LASTEXITCODE -ne 0) { throw "O Inno Setup falhou." }
+      - name: Instalar, não reinstalar a mesma versão, atualizar e não descer de versão
+        shell: pwsh
+        run: |
+          $instalador = (Get-Item "dist\Arruma-$env:VERSAO-windows-instalador.exe").FullName
+          $chave = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{18C83DB7-5EF6-4B5E-B0F4-8D1E10EE1738}_is1'
+          function Instalar { (Start-Process $instalador -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru).ExitCode }
+          function Versao { (Get-ItemProperty $chave).DisplayVersion }
+          $c = Instalar
+          if ($c -ne 0 -or (Versao) -ne $env:VERSAO) { throw "Primeira instalação falhou ($c, $(Versao))." }
+          $exe = Join-Path (Get-ItemProperty $chave).InstallLocation 'Arruma.exe'
+          $p = Start-Process $exe -ArgumentList "--self-test=$PWD\autoteste-instalado.txt" -Wait -PassThru
+          Get-Content autoteste-instalado.txt
+          if ($p.ExitCode -ne 0) { throw "O autoteste da aplicação instalada falhou." }
+          $antes = (Get-Item $exe).LastWriteTimeUtc
+          $c = Instalar
+          if ($c -eq 0) { throw "A mesma versão foi reinstalada." }
+          Set-ItemProperty $chave DisplayVersion '0.1.0'
+          $c = Instalar
+          if ($c -ne 0 -or (Versao) -ne $env:VERSAO) { throw "A atualização falhou ($c, $(Versao))." }
+          Set-ItemProperty $chave DisplayVersion '9.9.9'
+          $c = Instalar
+          if ($c -eq 0 -or (Versao) -ne '9.9.9') { throw "Desceu de versão sem confirmação ($c, $(Versao))." }
+          Write-Output "Mesma versão: recusada. Versão anterior: atualizada. Versão mais recente: mantida."
       - name: Relatório do autoteste
         if: always()
         run: cat autoteste.txt || true
@@ -208,13 +246,34 @@ jobs:
           dist/Arruma.app/Contents/MacOS/Arruma --self-test="$PWD/autoteste.txt"
           cat autoteste.txt
           grep -q "RESULTADO: OK" autoteste.txt
-      - name: Imagem de disco (.dmg)
-        run: packaging/macos/make-dmg.sh ${{ matrix.arch }}
+      - name: Instalador (.pkg)
+        run: packaging/macos/make-pkg.sh ${{ matrix.arch }}
+      - name: Instalar, não reinstalar a mesma versão, atualizar e avisar antes de descer de versão
+        run: |
+          VERSAO="$(python3 -c 'import arruma; print(arruma.__version__)')"
+          PKG="dist/Arruma-$VERSAO-macos-${{ matrix.arch }}.pkg"
+          PLIST=/Applications/Arruma.app/Contents/Info.plist
+          versao() { /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$PLIST"; }
+          instalar() { sudo installer -pkg "$PKG" -target / ; }
+          sudo rm -rf /Applications/Arruma.app
+          instalar
+          test "$(versao)" = "$VERSAO"
+          /Applications/Arruma.app/Contents/MacOS/Arruma --self-test="$PWD/autoteste-instalado.txt"
+          cat autoteste-instalado.txt
+          grep -q "RESULTADO: OK" autoteste-instalado.txt
+          if instalar; then echo "::error::A mesma versão foi reinstalada."; exit 1; fi
+          sudo plutil -replace CFBundleShortVersionString -string 0.1.0 "$PLIST"
+          instalar
+          test "$(versao)" = "$VERSAO"
+          sudo plutil -replace CFBundleShortVersionString -string 9.9.9 "$PLIST"
+          if instalar; then echo "Versão mais recente: o instalador avisou e continuou (na linha de comandos não há pergunta)."
+          else echo "Versão mais recente: o instalador recusou."; fi
+          echo "Versão instalada no fim: $(versao)"
       - uses: actions/upload-artifact@v7
         with:
           name: arruma-macos-${{ matrix.arch }}
           retention-days: 14
-          path: dist/*.dmg
+          path: dist/*.pkg
       - uses: actions/upload-artifact@v7
         with:
           name: fontes-macos-${{ matrix.arch }}

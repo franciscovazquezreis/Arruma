@@ -36,13 +36,17 @@ O instalador não está assinado com um certificado de assinatura de código, po
 
 ### macOS
 
-Abre o `.dmg` certo para o teu Mac (`apple-silicon` para os modelos M1, M2, M3… e `intel` para os mais antigos) e arrasta o Arruma para a pasta Aplicações.
+Abre o instalador `.pkg` certo para o teu Mac (`apple-silicon` para os modelos M1, M2, M3… e `intel` para os mais antigos). O Arruma fica na pasta Aplicações; o instalador pede a palavra-passe de administrador.
 
-A aplicação não está assinada com um certificado de programador da Apple nem passou pela notarização da Apple, por isso na primeira vez o macOS recusa abri-la. Para autorizar: **Definições do Sistema → Privacidade e segurança → Abrir mesmo assim**. Em alternativa, no Terminal:
+O instalador não está assinado com um certificado de programador da Apple nem passou pela notarização da Apple, por isso na primeira vez o macOS recusa abri-lo. Para autorizar: **Definições do Sistema → Privacidade e segurança → Abrir mesmo assim**. Em alternativa, no Terminal (com o nome do ficheiro que descarregaste):
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Arruma.app
+xattr -d com.apple.quarantine ~/Downloads/Arruma-*-macos-*.pkg
 ```
+
+### Atualizar
+
+Em qualquer sistema, basta instalar a versão nova da mesma maneira. O instalador vê se o Arruma já está instalado e em que versão: se não estiver, instala; se a instalada for mais antiga, atualiza; se for a mesma, avisa que não há nada a atualizar; se for mais recente, pede confirmação antes de a substituir. O histórico e as definições ficam sempre. No Linux, o pacote retira também as cópias antigas que o `instalar.sh` tenha posto na pasta pessoal.
 
 ## Ativar a IA local (opcional)
 
@@ -107,7 +111,7 @@ As versões de Windows e macOS são construídas com o PyInstaller (`packaging/p
 |---|---|
 | `arruma/core` | análise, regras, IA local, plano, execução e anulação (sem interface) |
 | `arruma/ui` | interface GTK 3 |
-| `packaging` | pacote `.deb`, instalador do Windows, `.dmg` do macOS e ícones |
+| `packaging` | pacote `.deb`, instalador do Windows, instalador `.pkg` do macOS e ícones |
 | `tests` | testes automáticos e avaliação com a IA real (`tests/avaliacao`) |
 
 ## Licença
