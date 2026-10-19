@@ -162,6 +162,25 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(sorted(f.name for f in group.files), ["fatura_123 (1).txt", "fatura_123.txt"])
         self.assertEqual(os.path.basename(group.keep), "fatura_123.txt")
 
+    def test_duplicates_compare_the_whole_content(self):
+        from arruma.core.duplicates import CHUNK
+        from arruma.core.scanner import FileItem
+        comum = bytes(range(256)) * (CHUNK // 256)
+        casos = {  # tamanhos à volta dos limites de leitura parcial
+            "pequeno": (comum[:1000] + b"A", comum[:1000] + b"B"),
+            "medio": (comum + b"A" * 36000, comum + b"B" * 36000),  # iguais nos primeiros 64 KB
+            "grande": (comum + b"A" * CHUNK * 2 + comum, comum + b"B" * CHUNK * 2 + comum),  # início e fim iguais
+        }
+        for nome, (a, b) in casos.items():
+            itens = []
+            for sufixo, dados in (("a", a), ("b", b), ("c", a)):
+                p = self.root / f"{nome}-{sufixo}.bin"
+                p.write_bytes(dados)
+                itens.append(FileItem(str(p), p.name, "bin", len(dados), p.stat().st_mtime, tx.OTHER, str(self.root)))
+            grupos = find_duplicates(itens)
+            self.assertEqual([sorted(f.name for f in g.files) for g in grupos],
+                             [[f"{nome}-a.bin", f"{nome}-c.bin"]], nome)
+
     def test_ai_security_and_validation(self):
         from arruma.core.ai import AIError, LocalAI, validate_result
         with self.assertRaises(AIError):

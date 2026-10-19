@@ -30,10 +30,14 @@ class DupGroup:
 
 
 def _partial_hash(path: str, size: int) -> str:
+    """Resumo rápido: o ficheiro inteiro até 2×CHUNK; acima disso, só o início e o fim (os que
+    coincidem são depois comparados por inteiro em _full_hash)."""
     h = hashlib.blake2b(digest_size=16)
     with open(path, "rb") as fh:
-        h.update(fh.read(CHUNK))
-        if size > 2 * CHUNK:
+        if size <= 2 * CHUNK:
+            h.update(fh.read())
+        else:
+            h.update(fh.read(CHUNK))
             fh.seek(-CHUNK, os.SEEK_END)
             h.update(fh.read(CHUNK))
     return h.hexdigest()
@@ -91,7 +95,7 @@ def find_duplicates(files: list[FileItem], min_size: int = 1,
         for same_partial in by_partial.values():
             if len(same_partial) < 2:
                 continue
-            if same_partial[0].size <= 2 * CHUNK:
+            if same_partial[0].size <= 2 * CHUNK:  # o resumo parcial já leu o ficheiro inteiro
                 full_groups = {"x": same_partial}
             else:
                 full_groups = defaultdict(list)
