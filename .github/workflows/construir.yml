@@ -7,10 +7,12 @@
 # criar uma etiqueta vX.Y.Z, são também publicados numa versão (Releases) do GitHub, onde
 # não expiram.
 #
-# A GPL e a LGPL pedem que o código-fonte dos componentes de terceiros fique no mesmo sítio
-# que os instaladores. Por isso, sempre que outras pessoas os podem descarregar (repositório
-# público ou versão publicada), o trabalho «fontes» junta esse código-fonte à mesma execução,
-# no artefacto arruma-codigo-fonte-terceiros. Num repositório privado só confirma que existe.
+# Para cumprir a GPL e a LGPL sem ter de prometer o envio do código-fonte mais tarde, o
+# código-fonte dos componentes de terceiros fica no mesmo sítio que os instaladores: sempre
+# que outras pessoas os podem descarregar (repositório público ou versão publicada), o
+# trabalho «fontes» junta-o à mesma execução, no artefacto arruma-codigo-fonte-terceiros, e o
+# trabalho «limpar» retira os instaladores se isso falhar. Num repositório privado só se
+# confirma que o código-fonte existe.
 name: Construir e testar
 
 on:
@@ -230,7 +232,7 @@ jobs:
       - name: Confirmar que o código-fonte de cada componente está disponível
         if: env.ARRUMA_FONTES_NA_EXECUCAO != 'true'
         run: python3 packaging/licencas/fontes.py --verificar fontes/*.json
-      - name: Juntar o código-fonte de cada componente (GPL e LGPL pedem-no no mesmo sítio)
+      - name: Juntar o código-fonte de cada componente, no mesmo sítio que os instaladores
         if: env.ARRUMA_FONTES_NA_EXECUCAO == 'true'
         run: python3 packaging/licencas/fontes.py --saida fontes-terceiros fontes/*.json
       - uses: actions/upload-artifact@v7
@@ -240,6 +242,31 @@ jobs:
           retention-days: 14
           compression-level: 0  # são arquivos já comprimidos
           path: fontes-terceiros/*.tar
+
+  limpar:
+    name: Retirar instaladores sem código-fonte
+    needs: [windows, macos, fontes]
+    # Só quando os instaladores foram construídos para outras pessoas e o código-fonte não ficou junto.
+    if: >-
+      always() && needs.fontes.result != 'success' &&
+      (needs.windows.result != 'skipped' || needs.macos.result != 'skipped') &&
+      (!github.event.repository.private || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Apagar os instaladores de Windows e macOS desta execução
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate \
+            --jq '.artifacts[] | select(.name | test("^arruma-(windows|macos-)")) | "\(.id) \(.name)"' |
+          while read -r id nome; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"
+            echo "Retirado: $nome"
+          done
+          echo "::error::O código-fonte de terceiros não ficou junto desta execução, por isso os instaladores de Windows e macOS foram retirados."
+          exit 1
 
   publicar:
     name: Publicar versão

@@ -234,6 +234,10 @@ class ChoiceAndNoticeTests(unittest.TestCase):
             "OpenSSL OR MIT": "MIT",
             "MIT OR MPL-2.0 OR LGPL-2.1-or-later OR GPL-2.0-or-later": "MIT",
             "GPL-2.0-only": "GPL-2.0-only",  # sem escolha fica como está
+            "Artistic-1.0-Perl OR GPL-1.0-or-later": "GPL-1.0-or-later",
+            "CC-BY-SA-3.0-DE OR MIT": "MIT",
+            "CDDL-1.0+ OR BSD-2-Clause": "BSD-2-Clause",
+            "MPL-1.1+ OR CDDL-1.0": "MPL-1.1+",  # a MPL-2.0 já é compatível
         }
         for licenca, esperada in casos.items():
             self.assertEqual(terceiros.escolher_licenca(licenca), esperada, licenca)
@@ -248,9 +252,19 @@ class ChoiceAndNoticeTests(unittest.TestCase):
             comp("hicolor-icon-theme", "GPL-2.0-only"),  # só dados: agregado
             comp("biblioteca", "MIT AND GPL-2.0-only"),
             comp("outra", "MPL-1.1"),
+            comp("sem-licenca", "não indicada"),
+            comp("texto-livre", "GNU General Public License v2 (GPLv2)"),
+            comp("propria", "LicenseRef-Proprietaria"),
+            comp("minusculas", "gpl-2.0-only"),
         )}
         self.assertEqual(terceiros.incompativeis(componentes),
-                         ["biblioteca 1 (MIT AND GPL-2.0-only)", "outra 1 (MPL-1.1)"])
+                         ["biblioteca 1 (MIT AND GPL-2.0-only)", "minusculas 1 (gpl-2.0-only)",
+                          "outra 1 (MPL-1.1)", "propria 1 (LicenseRef-Proprietaria)",
+                          "sem-licenca 1 (não indicada)", "texto-livre 1 (GNU General Public License v2 (GPLv2))"])
+        agregado = {"h": comp("hicolor-icon-theme", "GPL-2.0-only OR MPL-1.1")}
+        self.assertEqual(terceiros.incompativeis(agregado), [])
+        with self.assertRaisesRegex(ValueError, "^outra 1:"):
+            terceiros.escolha_do_componente(comp("outra", "GPL-2.0-only OR MPL-1.1"))
 
     def test_freetype_credit_year_comes_from_its_header(self):
         tmp = Path(tempfile.mkdtemp(prefix="arruma-freetype-")).resolve()
@@ -272,7 +286,7 @@ class ChoiceAndNoticeTests(unittest.TestCase):
         terceiros.escrever({"msys2:x": comp}, tmp / "a", "0.2.0", "windows", projeto,
                            "commit 2feff1e49b17, versão de teste", False)
         teste = (tmp / "a" / "LEIA-ME.txt").read_text(encoding="utf-8")
-        self.assertIn("construída sem o código-fonte dos componentes", teste)
+        self.assertIn("não é acompanhada do código-fonte dos componentes", teste)
         self.assertIn("Distribuído nos termos de: LGPL-2.1-only", teste)
         self.assertNotIn("três anos", teste)
         execucao = "https://github.com/franciscovazquezreis/Arruma/actions/runs/1"
@@ -280,7 +294,7 @@ class ChoiceAndNoticeTests(unittest.TestCase):
                            "commit 2feff1e49b17, versão de teste", False, execucao)
         com_fontes = " ".join((tmp / "c" / "LEIA-ME.txt").read_text(encoding="utf-8").split())
         self.assertIn("Esta é uma versão de teste, que não foi publicada em Releases", com_fontes)
-        self.assertIn(f"({execucao}), no artefacto «{terceiros.ARTEFACTO_FONTES}»", com_fontes)
+        self.assertIn(f"no artefacto «{terceiros.ARTEFACTO_FONTES}»: {execucao}", com_fontes)
         terceiros.escrever({"msys2:x": comp}, tmp / "b", "0.2.0", "macos", projeto, "etiqueta v0.2.0", True)
         publicada = (tmp / "b" / "LEIA-ME.txt").read_text(encoding="utf-8")
         self.assertIn("Esta versão está publicada", publicada)

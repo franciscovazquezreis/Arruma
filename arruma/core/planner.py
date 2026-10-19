@@ -673,7 +673,7 @@ def rename_folder_in_plan(plan: Plan, old_dir: str, new_name: str) -> str:
     clean = sanitize_name(new_name)
     parent = os.path.dirname(os.path.normpath(old_dir))
     new_dir = os.path.join(parent, clean)
-    _rewrite_prefix(plan, old_dir, new_dir, f"Pasta renomeada por ti para «{clean}».")
+    _rewrite_prefix(plan, old_dir, new_dir, f"Nome da pasta alterado por ti para «{clean}».")
     return new_dir
 
 

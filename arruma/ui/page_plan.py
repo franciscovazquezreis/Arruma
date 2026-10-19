@@ -9,7 +9,7 @@ from gi.repository import Gdk, GLib, Gtk, Pango
 
 from ..core import taxonomy as tx
 from ..core.executor import Result
-from ..core.fsutil import HOME, display_path, human_size, is_within, plural
+from ..core.fsutil import HOME, display_path, human_count, human_size, is_within, plural
 from ..core.planner import (Action, Plan, move_folder_in_plan, rebase_document,
                             rename_action_in_plan, rename_folder_in_plan, retarget)
 from ..core.system import TRASH_NAME, TRASH_TO
@@ -347,7 +347,7 @@ class PlanPage(Gtk.Stack):
         en = self.plan.enabled()
         size = sum(a.size for a in en if a.op != "rmdir")
         total = plural(len(self.plan.actions), "alteração selecionada", "alterações selecionadas")
-        self.sel_label.set_markup(f"<b>{len(en)}</b> de {total}"
+        self.sel_label.set_markup(f"<b>{human_count(len(en))}</b> de {total}"
                                   f"  <span alpha='60%'>· {human_size(size)}</span>")
         self.apply_btn.set_sensitive(bool(en))
 
@@ -663,7 +663,7 @@ class PlanPage(Gtk.Stack):
         new_dir = rename_folder_in_plan(self.plan, folder_path, new_name)
         if new_dir != folder_path:
             self._repopulate(select_folder=new_dir)
-            self.win.toast.show(f"Nome da pasta mudado para «{os.path.basename(new_dir)}».")
+            self.win.toast.show(f"Nome da pasta alterado para «{os.path.basename(new_dir)}».")
 
     def _choose_folder_dest(self, folder_path: str) -> None:
         if not self.plan:

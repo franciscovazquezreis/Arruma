@@ -5,7 +5,8 @@ Lê os componentes-*.json gerados pelas construções de Windows e macOS (tercei
 descarrega o código-fonte exato de cada componente: o arquivo .src.tar.zst do MSYS2, o arquivo
 original, os remendos e a receita do Homebrew, ou o sdist do PyPI. O resultado é um ficheiro .tar
 por sistema, que acompanha os instaladores (na mesma execução do GitHub Actions e, nas versões
-publicadas, na mesma página de Releases), como pedem a GPL e a LGPL.
+publicadas, na mesma página de Releases): é assim que se cumpre a GPL e a LGPL sem ter de
+prometer o envio do código-fonte mais tarde.
 
 Uso:
   python fontes.py --verificar componentes-*.json        só confirma que cada endereço existe

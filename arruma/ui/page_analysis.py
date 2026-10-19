@@ -202,7 +202,7 @@ class AnalysisPage(Gtk.Stack):
                                                              "ficheiros com mais de 1 GB."), huge, "info"))
         if scan.protected:
             names = ", ".join(f"«{esc(os.path.basename(p))}»" for p, _ in scan.protected[:3])
-            more = f" e mais {len(scan.protected) - 3}" if len(scan.protected) > 3 else ""
+            more = f" e mais {human_count(len(scan.protected) - 3)}" if len(scan.protected) > 3 else ""
             out.append(("security-high-symbolic",
                         _contagem(len(scan.protected), "pasta protegida que não vai ser alterada",
                                   "pastas protegidas que não vão ser alteradas") + f": {names}{more} "

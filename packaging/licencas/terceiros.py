@@ -5,7 +5,8 @@ O arruma.spec chama gerar() depois do Analysis do PyInstaller. Cada ficheiro rec
 atribuído ao pacote de onde vem (MSYS2 no Windows; Homebrew ou pip no macOS) e, numa pasta
 própria, ficam a lista dos componentes (LEIA-ME.txt e componentes.json), os textos das
 licenças e as receitas de construção. O fontes.py usa o componentes.json para juntar o
-código-fonte correspondente a cada versão publicada.
+código-fonte correspondente, que acompanha os instaladores sempre que outras pessoas os podem
+descarregar (ver .github/workflows/construir.yml).
 """
 
 from __future__ import annotations
@@ -112,21 +113,40 @@ def _corrigir_licenca(nome: str, licenca: str) -> str:
 
 # Licenças que não se podem combinar com a GPL versão 3 ou posterior, segundo a lista da FSF
 # (https://www.gnu.org/licenses/license-list.html). No SPDX, os identificadores antigos sem
-# -only/-or-later (GPL-2.0, GPL-1.0) valem como -only.
-_INCOMPATIVEIS = {
-    "GPL-1.0", "GPL-1.0-only", "GPL-2.0", "GPL-2.0-only", "MPL-1.0", "MPL-1.1", "CDDL-1.0", "CDDL-1.1",
-    "EPL-1.0", "EPL-2.0", "CPL-1.0", "IPL-1.0", "OpenSSL", "BSD-4-Clause", "BSD-4-Clause-UC", "Apache-1.0",
-    "Apache-1.1", "PHP-3.0", "PHP-3.01", "QPL-1.0", "Artistic-1.0", "OSL-1.0", "OSL-1.1", "OSL-2.0",
-    "OSL-2.1", "OSL-3.0", "AFL-1.1", "AFL-1.2", "AFL-2.0", "AFL-2.1", "AFL-3.0", "EUPL-1.0", "EUPL-1.1",
-    "CC-BY-SA-1.0", "CC-BY-SA-2.0", "CC-BY-SA-2.5", "CC-BY-SA-3.0",
-}
+# -only/-or-later (GPL-2.0, GPL-1.0) valem como -only. As exceções de ligação (WITH) não contam:
+# por prudência, uma GPL-2.0-only com exceção também para a construção.
+_INCOMPATIVEIS = {i.casefold() for i in (
+    "GPL-1.0", "GPL-1.0-only", "GPL-2.0", "GPL-2.0-only", "GPL-2.0-with-autoconf-exception",
+    "GPL-2.0-with-bison-exception", "GPL-2.0-with-classpath-exception", "GPL-2.0-with-font-exception",
+    "GPL-2.0-with-GCC-exception", "AGPL-1.0", "AGPL-1.0-only", "MPL-1.0", "MPL-1.1",
+    "MPL-2.0-no-copyleft-exception", "NPL-1.0", "NPL-1.1", "CDDL-1.0", "CDDL-1.1", "EPL-1.0", "EPL-2.0",
+    "CPL-1.0", "IPL-1.0", "CPAL-1.0", "OpenSSL", "BSD-4-Clause", "BSD-4-Clause-UC", "Apache-1.0",
+    "Apache-1.1", "PHP-3.0", "PHP-3.01", "QPL-1.0", "Artistic-1.0", "Artistic-1.0-Perl", "Artistic-1.0-cl8",
+    "OSL-1.0", "OSL-1.1", "OSL-2.0", "OSL-2.1", "OSL-3.0", "AFL-1.1", "AFL-1.2", "AFL-2.0", "AFL-2.1",
+    "AFL-3.0", "EUPL-1.0", "EUPL-1.1", "MS-PL", "MS-RL", "OFL-1.0", "OFL-1.1", "LPPL-1.2", "LPPL-1.3a",
+    "SISSL", "SPL-1.0", "RPSL-1.0", "Condor-1.1", "gnuplot", "xinetd", "YPL-1.1", "CNRI-Python",
+)}
+# Famílias em que uma versão posterior já é compatível, para os identificadores com «+».
+_FAMILIAS_COM_VERSAO_COMPATIVEL = {f.casefold() for f in (
+    "GPL", "LGPL", "AGPL", "MPL", "Apache", "CC-BY-SA", "EUPL", "Artistic")}
+_ID_SPDX = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+-]*")
 
 
 def _compativel(termo: str) -> bool:
-    licenca = termo.split(" WITH ")[0].strip()
+    licenca = termo.split(" WITH ")[0].strip().casefold()
     if licenca.endswith("+"):  # «+» no SPDX: esta versão ou qualquer posterior
-        licenca = licenca[:-1] + "-or-later"
-    return licenca not in _INCOMPATIVEIS and not licenca.startswith(("CC-BY-NC", "CC-BY-ND"))
+        base = licenca[:-1]
+        familia = re.sub(r"-\d.*$", "", base)
+        return familia in _FAMILIAS_COM_VERSAO_COMPATIVEL or _compativel(base)
+    # CC-BY-SA até à 3.0, incluindo as adaptações a cada país (CC-BY-SA-3.0-DE…); a 4.0 é compatível.
+    return licenca not in _INCOMPATIVEIS and not licenca.startswith(
+        ("cc-by-nc", "cc-by-nd", "cc-by-sa-1", "cc-by-sa-2", "cc-by-sa-3"))
+
+
+def _conhecida(termo: str) -> bool:
+    """O termo é um identificador SPDX (e não texto livre, «não indicada» ou LicenseRef-…)."""
+    licenca = termo.split(" WITH ")[0].strip()
+    return bool(_ID_SPDX.fullmatch(licenca)) and not licenca.casefold().startswith(("licenseref-", "documentref-"))
 
 
 def _dividir(expr: str, operador: str) -> list[str]:
@@ -193,13 +213,26 @@ def escolher_licenca(licenca: str) -> str:
 AGREGADOS = {"hicolor-icon-theme"}
 
 
+def escolha_do_componente(comp: Componente) -> str:
+    """A licença usada para o componente (ver escolher_licenca), com o nome dele em caso de erro."""
+    try:
+        return escolher_licenca(comp.licenca)
+    except ValueError as e:
+        if comp.nome in AGREGADOS:
+            return comp.licenca
+        raise ValueError(f"{comp.nome} {comp.versao}: {e}") from None
+
+
 def incompativeis(componentes: dict[str, Componente]) -> list[str]:
-    """Componentes cuja licença, já com a escolha feita, não se pode combinar com a GPL-3.0 ou posterior."""
+    """Componentes cuja licença, já com a escolha feita, não se pode combinar com a GPL-3.0 ou posterior
+    ou não é um identificador SPDX conhecido (texto livre, «não indicada», LicenseRef-…)."""
     maus = []
     for comp in sorted(componentes.values(), key=lambda c: c.nome.casefold()):
-        escolha = escolher_licenca(comp.licenca)
+        if comp.nome in AGREGADOS:
+            continue
+        escolha = escolha_do_componente(comp)
         termos = re.split(r"\s+AND\s+", re.sub(r"[()]", " ", escolha).strip())
-        if comp.nome not in AGREGADOS and not all(_compativel(t) for t in termos):
+        if not all(_conhecida(t) and _compativel(t) for t in termos):
             maus.append(f"{comp.nome} {comp.versao} ({escolha})")
     return maus
 
@@ -630,11 +663,7 @@ class Inventario:
                     comp.notas.append(f"Portions of this software are copyright © {_ano_freetype(comp)} "
                                       "The FreeType Project (https://freetype.org). All rights reserved.")
                 if comp.nome in COMPILADOS_COM_CARGO:
-                    comp.cargo = True
-                    comp.notas.append(f"Inclui bibliotecas Rust (crates) ligadas estaticamente, listadas no Cargo.lock "
-                                      f"do código-fonte do {comp.nome}; cada uma tem a sua licença (sobretudo MIT, "
-                                      "Apache-2.0 e MPL-2.0). O código-fonte de terceiros que acompanha esta versão "
-                                      "traz o código e os textos das licenças de todas elas.")
+                    comp.cargo = True  # a nota sobre as crates depende da versão (ver escrever())
                 resultado[comp.chave] = comp
         return resultado
 
@@ -700,7 +729,7 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
         fontes = [f["url"] if "url" in f else f"https://pypi.org/project/{f['nome']}/{f['versao']}/#files"
                   for f in comp.fontes]
         bloco = [f"{comp.nome} {comp.versao}", f"  Licença: {comp.licenca}"]
-        escolha = escolher_licenca(comp.licenca)
+        escolha = escolha_do_componente(comp)
         if escolha != comp.licenca:
             bloco.append(f"  Distribuído nos termos de: {escolha}")
         if comp.pagina:
@@ -708,12 +737,24 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
         bloco += [f"  Código-fonte: {u}" for u in fontes]
         if copiados:
             bloco.append("  Textos: " + ", ".join(copiados))
-        bloco += [f"  Nota: {n}" for n in comp.notas]
+        notas = list(comp.notas)
+        if comp.cargo:
+            arquivo = re.sub(r"[^A-Za-z0-9.+-]+", "-", f"{comp.nome} {comp.versao}")  # como no fontes.py
+            onde = (f"O código-fonte de terceiros que acompanha esta versão traz o código e os textos das "
+                    f"licenças de todas elas (ficheiro {arquivo}-crates.tar.gz)." if publicada or execucao else
+                    "O código e os textos das licenças de todas elas estão no código-fonte de terceiros das "
+                    "versões publicadas (o packaging/licencas/fontes.py do Arruma junta-os).")
+            notas.append(f"Inclui bibliotecas Rust (crates) ligadas estaticamente, listadas no Cargo.lock do "
+                         f"código-fonte do {comp.nome}; cada uma tem a sua licença (sobretudo MIT, Apache-2.0 "
+                         f"e MPL-2.0). {onde}")
+        bloco += [f"  Nota: {n}" for n in notas]
         linhas_comp.append("\n".join(bloco))
     for nome in sorted(precisos):
         shutil.copyfile(projeto / "LICENSE" if nome == "GPL-3.0.txt" else TEXTOS_PADRAO / nome, padrao / nome)
-    origem_txt = {"windows": "pelo MSYS2 (https://www.msys2.org)",
-                  "macos": "pelo Homebrew (https://brew.sh) e pelo PyPI (https://pypi.org)"}[sistema]
+    origem_txt, distribuidor = {
+        "windows": ("pelo MSYS2 (https://www.msys2.org)", "o MSYS2"),
+        "macos": ("pelo Homebrew (https://brew.sh) e pelo PyPI (https://pypi.org)", "o Homebrew"),
+    }[sistema]
     if sistema == "macos":
         alteracoes = ("O Arruma usa-os sem os alterar, exceto no que o PyInstaller faz em qualquer aplicação para\n"
                       "macOS: reescreve os caminhos das bibliotecas dinâmicas e a assinatura de cada binário e\n"
@@ -724,20 +765,22 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
     referencia = referencia or f"etiqueta v{versao}"
     tar = f"Arruma-{versao}-codigo-fonte-terceiros-{sistema}.tar"
     if publicada:
-        fontes_txt = (f"- Esta versão está publicada em {REPOSITORIO}/releases. Na mesma página está\n"
-                      f"  o ficheiro {tar}, com o código-fonte correspondente de todos os\n"
-                      "  componentes desta lista.")
+        fontes_txt = ("- Esta versão está publicada em\n"
+                      f"  {REPOSITORIO}/releases/tag/v{versao}.\n"
+                      f"  Na mesma página está o ficheiro {tar},\n"
+                      "  com o código-fonte correspondente de todos os componentes desta lista.")
     elif execucao:
         fontes_txt = ("- Esta é uma versão de teste, que não foi publicada em Releases. O código-fonte\n"
                       "  correspondente de todos os componentes desta lista está na mesma execução do\n"
-                      f"  GitHub Actions que a construiu ({execucao}), no artefacto\n"
-                      f"  «{ARTEFACTO_FONTES}», e fica disponível durante o mesmo tempo que os\n"
-                      "  instaladores.")
+                      f"  GitHub Actions que a construiu, no artefacto «{ARTEFACTO_FONTES}»:\n"
+                      f"  {execucao}\n"
+                      "  e fica disponível durante o mesmo tempo que os instaladores.")
     else:
-        fontes_txt = ("- Esta versão foi construída sem o código-fonte dos componentes: está no endereço\n"
-                      "  indicado para cada um na lista abaixo, e quem distribuir esta versão tem de o\n"
-                      "  juntar, como pedem a GPL e a LGPL. As versões publicadas em\n"
-                      f"  {REPOSITORIO}/releases trazem-no na mesma página.")
+        fontes_txt = ("- Esta versão não é acompanhada do código-fonte dos componentes, que está no\n"
+                      "  endereço indicado para cada um na lista abaixo. Quem a distribuir tem de cumprir\n"
+                      "  a GPL e a LGPL, por exemplo disponibilizando esse código-fonte no mesmo sítio.\n"
+                      f"  As versões publicadas em {REPOSITORIO}/releases\n"
+                      "  trazem-no na mesma página.")
     cabecalho = f"""Arruma {versao}: componentes de outros autores
 (Third-party components included in this build, their licenses and where to get their source code.)
 
@@ -748,7 +791,7 @@ qualquer garantia. O texto da licença está em Arruma/LICENSE. Código-fonte do
 
 Esta versão para {'Windows' if sistema == 'windows' else 'macOS'} inclui os componentes abaixo, de outros autores, tal como
 são distribuídos {origem_txt}.
-As alterações que estes tenham aplicado estão incluídas no código-fonte de cada
+As alterações que {distribuidor} tenha aplicado estão incluídas no código-fonte de cada
 componente. {alteracoes}
 A combinação é distribuída nos termos da GPL versão 3 ou posterior. Cada componente mantém
 a sua licença; os textos estão na pasta com o nome do componente e, para as licenças mais
@@ -760,7 +803,7 @@ a licença do Arruma não se estende.
 
 Código-fonte dos componentes
 {fontes_txt}
-- Se algum destes ficheiros deixar de estar disponível, abre um pedido em
+- Se o código-fonte de algum componente deixar de estar disponível, abre um pedido em
   {REPOSITORIO}/issues.
 
 Componentes ({len(componentes)}):

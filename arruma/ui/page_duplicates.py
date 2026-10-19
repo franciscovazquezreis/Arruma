@@ -9,7 +9,7 @@ from datetime import datetime
 from gi.repository import Gtk, Pango
 
 from ..core.duplicates import DupGroup
-from ..core.fsutil import display_path, human_size, plural
+from ..core.fsutil import display_path, human_count, human_size, plural
 from ..core.system import TRASH_IN, TRASH_TO
 from .widgets import (Placeholder, ProgressPanel, button, confirm, esc, hbox, kind_icon, label,
                       open_path, resolve_icon, show_in_folder, vbox)
@@ -160,7 +160,8 @@ class DuplicatesPage(Gtk.Stack):
         sizes = {f.path: f.size for g in self.groups for f in g.files}
         sel = self._selected_paths()
         escolhidas = "selecionada" if len(sel) == 1 else "selecionadas"
-        self.sel_label.set_markup(f"<b>{len(sel)}</b> {escolhidas} · {human_size(sum(sizes.get(p, 0) for p in sel))}")
+        self.sel_label.set_markup(f"<b>{human_count(len(sel))}</b> {escolhidas} · "
+                                  f"{human_size(sum(sizes.get(p, 0) for p in sel))}")
         self.trash_btn.set_sensitive(bool(sel))
 
     def _on_toggled(self, _r, path: str) -> None:
@@ -193,7 +194,8 @@ class DuplicatesPage(Gtk.Stack):
 
     def _on_trash(self) -> None:
         sel = self._selected_paths()
+        fica, a = ("Fica", "a") if len(sel) == 1 else ("Ficam", "as")
         if sel and confirm(self.win, f"Enviar {plural(len(sel), 'cópia', 'cópias')} {TRASH_TO}?",
-                           f"Ficam {TRASH_IN} do sistema, de onde as podes recuperar. Também podes anular no Histórico.",
+                           f"{fica} {TRASH_IN} do sistema, de onde {a} podes recuperar. Também podes anular no Histórico.",
                            f"Enviar {TRASH_TO}", destructive=True):
             self.win.trash_duplicates(sel)

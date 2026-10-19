@@ -82,7 +82,9 @@ else:
 # instaladores ficam à vista de outras pessoas: repositório público ou versão publicada.
 EXECUCAO = ""
 if os.environ.get("ARRUMA_FONTES_NA_EXECUCAO") == "true" and os.environ.get("GITHUB_RUN_ID"):
-    EXECUCAO = f"{terceiros.REPOSITORIO}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    EXECUCAO = (f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/"
+                f"{os.environ.get('GITHUB_REPOSITORY', 'franciscovazquezreis/Arruma')}/actions/runs/"
+                f"{os.environ['GITHUB_RUN_ID']}")
 licencas = terceiros.gerar(a, Path(workpath) / "licencas", ROOT, Path(workpath),  # noqa: F821
                            arruma.__version__, REFERENCIA, PUBLICADA, EXECUCAO)
 print(f"Licenças de terceiros: {len(licencas.componentes)} componentes")
@@ -99,7 +101,7 @@ if incompativeis:
     raise SystemExit("Componentes com licença que não se combina com a GPL-3.0 ou posterior: "
                      + "; ".join(incompativeis))
 a.datas += licencas.entradas
-# Índice para o fontes.py juntar o código-fonte destes componentes em cada versão publicada.
+# Índice para o fontes.py juntar o código-fonte destes componentes (trabalho «fontes» do construir.yml).
 PLATAFORMA = "windows" if IS_WIN else f"macos-{'apple-silicon' if platform.machine() == 'arm64' else 'intel'}"
 Path(DISTPATH).mkdir(parents=True, exist_ok=True)  # noqa: F821
 shutil.copyfile(Path(workpath) / "licencas" / "componentes.json",  # noqa: F821
