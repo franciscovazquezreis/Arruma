@@ -54,10 +54,17 @@ NOVA="$(versao_de "$SRC_DIR")"
 ESTADO_PACOTE="$(dpkg-query -W -f='${db:Status-Status}' arruma 2>/dev/null || true)"
 case "$ESTADO_PACOTE" in
     ""|not-installed|config-files) ;;
-    *)  echo "O pacote arruma $(dpkg-query -W -f='${Version}' arruma 2>/dev/null) já está instalado no sistema."
-        echo "Uma cópia na pasta pessoal teria prioridade sobre ele. Para atualizar, instala o .deb mais recente."
-        if [ -e "$APP_DIR" ] || [ -e "$BIN_DIR/arruma" ]; then
-            echo "Ainda há uma cópia antiga na pasta pessoal; retira-a com ./instalar.sh --remover."
+    *)  PACOTE="$(dpkg-query -W -f='${Version}' arruma 2>/dev/null || true)"
+        COPIA="$(versao_de "$APP_DIR")"
+        echo "O pacote arruma $PACOTE já está instalado no sistema."
+        if [ -n "$COPIA" ] && [ "$(compara "$COPIA" "$PACOTE")" = 1 ]; then
+            echo "A cópia na pasta pessoal ($COPIA) é mais recente do que o pacote e é essa que se abre."
+            echo "Para a continuar a atualizar com o instalar.sh, remove primeiro o pacote: sudo apt remove arruma"
+        else
+            echo "Uma cópia na pasta pessoal teria prioridade sobre ele. Para atualizar, instala o .deb mais recente."
+            if [ -e "$APP_DIR" ] || [ -e "$BIN_DIR/arruma" ]; then
+                echo "Ainda há uma cópia antiga na pasta pessoal; retira-a com ./instalar.sh --remover."
+            fi
         fi
         exit 1 ;;
 esac

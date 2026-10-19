@@ -45,13 +45,14 @@ if pgrep -f "\$APP/Contents/MacOS/Arruma" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Pela linha de comandos ninguém vê o aviso do verificar_versao(): uma versão mais recente fica.
+# Pela linha de comandos, o aviso do verificar_versao() não para a instalação e ninguém pode
+# responder: uma versão mais recente fica como está.
 if [ -n "\${COMMAND_LINE_INSTALL:-}" ] && [ -f "\$APP/Contents/Info.plist" ]; then
     INSTALADA="\$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "\$APP/Contents/Info.plist" 2>/dev/null || true)"
     MAIS_RECENTE="\$(printf '%s\\n%s\\n' "\$INSTALADA" "\$NOVA" | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)"
     if [ -n "\$INSTALADA" ] && [ "\$INSTALADA" != "\$NOVA" ] && [ "\$MAIS_RECENTE" = "\$INSTALADA" ]; then
         echo "Está instalado o Arruma \$INSTALADA, mais recente do que a versão deste instalador (\$NOVA); fica como está." >&2
-        echo "Para o substituir, abre o instalador no Finder, ou põe primeiro o Arruma no Lixo." >&2
+        echo "Para o substituir, põe primeiro o Arruma no Lixo." >&2
         exit 1
     fi
 fi
@@ -70,7 +71,9 @@ cat > "$STAGE/distribution.xml" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
   <title>Arruma $VERSION</title>
-  <options customize="never" require-scripts="false" hostArchitectures="$HOST"/>
+  <!-- O instalador Intel declara também arm64 para correr sem o Rosetta num Mac com processador
+       Apple, e assim recusar logo, em vez de pedir primeiro para instalar o Rosetta. -->
+  <options customize="never" require-scripts="false" hostArchitectures="$( [ "$HOST" = arm64 ] && echo arm64 || echo x86_64,arm64 )"/>
   <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
 $( [ -n "$MIN" ] && printf '  <allowed-os-versions><os-version min="%s"/></allowed-os-versions>\n' "$MIN" )
   <installation-check script="verificar_versao()"/>
@@ -107,7 +110,8 @@ function verificar_versao() {
     my.result.type = 'Warning';
     my.result.title = 'Está instalada uma versão mais recente';
     my.result.message = 'Está instalado o Arruma ' + instalada + ', mais recente do que a versão deste instalador (' +
-        nova + '). Se continuares, será substituído pela versão mais antiga.';
+        nova + '). Se continuares nesta janela, será substituído pela versão mais antiga. Pela linha de ' +
+        'comandos fica como está; para o substituir, põe primeiro o Arruma no Lixo.';
     return false;
   }
   return true;  // atualização

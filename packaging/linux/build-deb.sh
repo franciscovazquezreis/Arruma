@@ -25,8 +25,10 @@ exec python3 -m arruma "$@"
 EOF
 chmod 755 "$PKG/usr/bin/arruma"
 
-# Retira as cópias antigas do instalar.sh, que esconderiam este pacote (ver o próprio script).
+# Retira as cópias antigas do instalar.sh, que esconderiam este pacote, e o código compilado pelo
+# Python, que o dpkg não conhece (ver cada script).
 install -m 755 "$ROOT/packaging/linux/postinst" "$PKG/DEBIAN/postinst"
+install -m 755 "$ROOT/packaging/linux/preinst" "$PKG/DEBIAN/preinst"
 install -m 755 "$ROOT/packaging/linux/prerm" "$PKG/DEBIAN/prerm"
 install -m 644 "$ROOT/packaging/linux/pt.arruma.Arruma.desktop" "$PKG/usr/share/applications/"
 install -m 644 "$ROOT/packaging/linux/arruma.nemo_action" "$PKG/usr/share/nemo/actions/"

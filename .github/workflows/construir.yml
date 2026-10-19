@@ -92,24 +92,28 @@ jobs:
         with:
           path: src
           persist-credentials: false
+      # A versão publicada anterior, para testar a atualização verdadeira (a 0.2.0 ainda não
+      # tinha preinst, postinst nem prerm).
+      - uses: actions/checkout@v7
+        with:
+          ref: v0.2.0
+          path: v0.2.0
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           name: arruma-linux-deb
           path: deb
-      - name: Preparar (Xvfb, histórico e definições de teste, versões 0.1.0 e 9.9.9)
+      - name: Preparar (Xvfb, histórico e definições de teste, versões 0.2.0 e 9.9.9)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb
           mkdir -p ~/.config/arruma ~/.local/share/arruma
           echo teste > ~/.config/arruma/marca && echo teste > ~/.local/share/arruma/marca
-          # Pacotes iguais ao verdadeiro, só com outro número de versão; o 0.1.0 leva também um
-          # ficheiro que a versão nova já não tem.
-          for v in 0.1.0 9.9.9; do
-            cp -r src "$RUNNER_TEMP/v$v"
-            sed -i "s/^__version__ = .*/__version__ = \"$v\"/" "$RUNNER_TEMP/v$v/arruma/__init__.py"
-            [ "$v" = 0.1.0 ] && echo "# obsoleto" > "$RUNNER_TEMP/v$v/arruma/obsoleto.py"
-            "$RUNNER_TEMP/v$v/packaging/linux/build-deb.sh" "$PWD/deb-$v"
-          done
+          v0.2.0/packaging/linux/build-deb.sh "$PWD/deb-0.2.0"
+          # Um pacote igual ao verdadeiro, só com outro número de versão.
+          cp -r src "$RUNNER_TEMP/v9.9.9"
+          sed -i 's/^__version__ = .*/__version__ = "9.9.9"/' "$RUNNER_TEMP/v9.9.9/arruma/__init__.py"
+          "$RUNNER_TEMP/v9.9.9/packaging/linux/build-deb.sh" "$PWD/deb-9.9.9"
           echo "VERSAO=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/arruma/__init__.py)" >> "$GITHUB_ENV"
       - name: instalar.sh (instala, não repete a mesma versão, atualiza a antiga, pergunta antes de descer)
         run: |
@@ -117,38 +121,48 @@ jobs:
           muda() { sed -i "s/^__version__ = .*/__version__ = \"$1\"/" "$copia"; }
           src/instalar.sh
           test -f ~/.local/bin/arruma
+          # Sem o gtk-update-icon-cache não haveria cache de ícones, e o autoteste do fim não
+          # mostraria se o pacote a invalida.
+          test -f ~/.local/share/icons/hicolor/icon-theme.cache
           src/instalar.sh | tee saida.txt
           grep -q "Não há nada a atualizar" saida.txt
           muda 0.1.0
           src/instalar.sh | tee saida.txt
           grep -q "A atualizar o Arruma de 0.1.0 para $VERSAO" saida.txt
+          grep "__version__" "$copia"
           grep -q "\"$VERSAO\"" "$copia"
           muda 9.9.9
           src/instalar.sh < /dev/null | tee saida.txt
           grep -q "Nada foi alterado" saida.txt
+          grep "__version__" "$copia"
           grep -q '"9.9.9"' "$copia"
-      - name: Pacote 0.1.0 com uma cópia mais recente na pasta pessoal (a cópia fica)
+      - name: Atualizar a partir da 0.2.0 com uma cópia mais recente na pasta pessoal (a cópia fica)
         run: |
-          sudo apt-get install -y ./deb-0.1.0/arruma_0.1.0_all.deb | tee apt.txt
-          grep -q "mais recente do que este pacote" apt.txt
+          sudo apt-get install -y ./deb-0.2.0/arruma_0.2.0_all.deb
+          # O código compilado que o Python cria quando o Arruma corre como administrador.
+          (cd / && sudo env PYTHONPATH=/usr/lib/arruma python3 -c "import arruma.core.planner")
+          find /usr/lib/arruma -name __pycache__ | tee pycache.txt
+          test -s pycache.txt
+          sudo apt-get install -y "./deb/arruma_${VERSAO}_all.deb" | tee apt.txt
+          grep "Arruma:" apt.txt
+          grep -q "a versão 9.9.9, mais recente do que este pacote ($VERSAO)" apt.txt
+          test "$(dpkg-query -W -f='${Version}' arruma)" = "$VERSAO"
           grep -q '"9.9.9"' ~/.local/share/arruma-app/arruma/__init__.py
           test -f ~/.local/bin/arruma
-          # O código compilado que o Python cria quando o Arruma corre como administrador.
-          sudo env PYTHONPATH=/usr/lib/arruma python3 -c "import arruma.core.planner"
-          test -n "$(find /usr/lib/arruma -name __pycache__)"
-      - name: Atualizar o pacote (retira a cópia antiga da pasta pessoal e os ficheiros da versão anterior)
+          if [ -n "$(find /usr/lib/arruma -name __pycache__)" ]; then
+            echo "::error::Ficou código compilado da versão anterior em /usr/lib/arruma"; exit 1
+          fi
+      - name: Com a cópia da pasta pessoal mais antiga, o pacote retira-a
         run: |
           sed -i 's/^__version__ = .*/__version__ = "0.1.0"/' ~/.local/share/arruma-app/arruma/__init__.py
-          sudo apt-get install -y "./deb/arruma_${VERSAO}_all.deb" | tee apt.txt
+          sudo apt-get install -y --reinstall "./deb/arruma_${VERSAO}_all.deb" | tee apt.txt
+          grep "Arruma:" apt.txt
           grep -q "retirada a cópia antiga" apt.txt
-          test "$(dpkg-query -W -f='${Version}' arruma)" = "$VERSAO"
           for f in ~/.local/bin/arruma ~/.local/share/arruma-app \
-                   ~/.local/share/applications/pt.arruma.Arruma.desktop ~/.local/share/nemo/actions/arruma.nemo_action; do
+                   ~/.local/share/applications/pt.arruma.Arruma.desktop ~/.local/share/nemo/actions/arruma.nemo_action \
+                   ~/.local/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg; do
             if [ -e "$f" ]; then echo "::error::Ficou $f"; exit 1; fi
           done
-          if [ -n "$(find /usr/lib/arruma -name __pycache__ -o -name obsoleto.py)" ]; then
-            echo "::error::Ficaram ficheiros da versão anterior em /usr/lib/arruma"; exit 1
-          fi
           grep -q teste ~/.config/arruma/marca
           grep -q teste ~/.local/share/arruma/marca
           test "$(command -v arruma)" = /usr/bin/arruma
@@ -177,6 +191,9 @@ jobs:
           grep -q "RESULTADO: OK" autoteste.txt
           grep -q "Ícone no tema do sistema: OK" autoteste.txt
           grep -q "^Licença: /usr/" autoteste.txt
+          grep -q teste ~/.config/arruma/marca
+          grep -q teste ~/.local/share/arruma/marca
+          echo "O histórico e as definições de teste continuam lá."
 
   windows:
     name: Windows (instalador)
@@ -242,9 +259,13 @@ jobs:
             (Start-Process $instalador -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$PWD\$nome.log" -Wait -PassThru).ExitCode
           }
           function Versao { (Get-ItemProperty $chave).DisplayVersion }
-          function Recusou($nome) {
-            if (-not (Select-String -Path "$nome.log" -SimpleMatch 'InitializeSetup returned False' -Quiet)) {
-              Get-Content "$nome.log"; throw "O instalador não recusou ($nome)."
+          # O registo do instalador mostra a mensagem (suprimida) e a recusa.
+          function Recusou($nome, $motivo) {
+            $linhas = Select-String -Path "$nome.log" -SimpleMatch $motivo, 'InitializeSetup returned False'
+            $linhas | ForEach-Object { $_.Line }
+            if (-not ($linhas | Where-Object { $_.Line -like "*$motivo*" }) -or
+                -not ($linhas | Where-Object { $_.Line -like '*InitializeSetup returned False*' })) {
+              Get-Content "$nome.log"; throw "O instalador não recusou pelo motivo esperado ($nome)."
             }
           }
           function Autoteste($nome) {
@@ -258,6 +279,11 @@ jobs:
               Where-Object { $_ -notlike '\unins000.*' } | Sort-Object
           }
 
+          # Histórico e definições de teste, que têm de ficar
+          $dados = Join-Path $env:APPDATA 'Arruma'
+          New-Item -ItemType Directory -Force $dados | Out-Null
+          Set-Content (Join-Path $dados 'marca') 'teste'
+
           # Primeira instalação
           $c = Instalar 'primeira'
           if ($c -ne 0 -or (Versao) -ne $env:VERSAO) { throw "Primeira instalação falhou ($c, $(Versao))." }
@@ -268,7 +294,7 @@ jobs:
           # A mesma versão não se reinstala
           $c = Instalar 'mesma'
           if ($c -eq 0) { throw "A mesma versão foi reinstalada." }
-          Recusou 'mesma'
+          Recusou 'mesma' 'nada a atualizar'
 
           # Uma versão anterior é atualizada, sem deixar ficheiros dela
           Set-ItemProperty $chave DisplayVersion '0.1.0'
@@ -283,14 +309,17 @@ jobs:
           Set-ItemProperty $chave DisplayVersion '9.9.9'
           $c = Instalar 'recente'
           if ($c -eq 0 -or (Versao) -ne '9.9.9') { throw "Desceu de versão sem confirmação ($c, $(Versao))." }
-          Recusou 'recente'
+          Recusou 'recente' 'mais recente do que a vers'
 
           # Um registo de instalação sem o Arruma.exe conta como não instalado
           Set-ItemProperty $chave DisplayVersion $env:VERSAO
           Remove-Item $exe
           $c = Instalar 'sem-exe'
-          if ($c -ne 0 -or -not (Test-Path $exe)) { throw "Não reinstalou o Arruma em falta ($c)." }
-          Write-Output "Mesma versão: recusada. Anterior: atualizada. Mais recente: mantida. Sem o Arruma.exe: reinstalada."
+          if ($c -ne 0 -or -not (Test-Path $exe) -or (Versao) -ne $env:VERSAO) { throw "Não reinstalou o Arruma em falta ($c, $(Versao))." }
+          Autoteste 'autoteste-reinstalado'
+
+          if ((Get-Content (Join-Path $dados 'marca')) -ne 'teste') { throw "O histórico e as definições não ficaram." }
+          Write-Output "Mesma versão: recusada. Anterior: atualizada. Mais recente: mantida. Sem o Arruma.exe: reinstalada. Histórico e definições: ficaram."
       - name: Relatório do autoteste
         if: always()
         run: cat autoteste.txt || true
@@ -379,6 +408,10 @@ jobs:
             grep -q "RESULTADO: OK" "$1.txt"
           }
 
+          # Histórico e definições de teste, que têm de ficar
+          DADOS="$HOME/Library/Application Support/Arruma"
+          mkdir -p "$DADOS" && echo teste > "$DADOS/marca"
+
           echo "::group::Primeira instalação"
           sudo rm -rf "$APP"
           instalar
@@ -406,7 +439,8 @@ jobs:
           muda 9.9.9
           recusa "Desceu de versão sem confirmação."
           grep -q "Warning - Está instalado o Arruma 9.9.9" saida.txt
-          sudo grep -qF "9.9.9, mais recente do que a versão deste instalador ($VERSAO); fica como está" /var/log/install.log
+          sudo grep -F "9.9.9, mais recente do que a versão deste instalador ($VERSAO); fica como está" /var/log/install.log > motivo.txt
+          tail -n 1 motivo.txt
           test "$(versao)" = 9.9.9
           echo "::endgroup::"
 
@@ -417,9 +451,11 @@ jobs:
           instalar
           "$APP/Contents/MacOS/Arruma" & pid=$!
           for i in $(seq 30); do pgrep -f "$APP/Contents/MacOS/Arruma" >/dev/null && break; sleep 1; done
+          pgrep -fl "$APP/Contents/MacOS/Arruma" || { echo "::error::O Arruma não chegou a abrir."; exit 1; }
           muda 0.1.0
           recusa "Substituiu o Arruma aberto."
-          sudo grep -qF "O Arruma está aberto" /var/log/install.log
+          sudo grep -F "O Arruma está aberto" /var/log/install.log > motivo.txt
+          tail -n 1 motivo.txt
           kill "$pid"; wait "$pid" || true
           test "$(versao)" = 0.1.0
           echo "::endgroup::"
@@ -437,6 +473,20 @@ jobs:
           if xattr -p com.apple.quarantine "$APP" 2>/dev/null; then echo "::error::Ficou em quarentena."; exit 1; fi
           autoteste autoteste-dmg
           echo "::endgroup::"
+
+          if [ "${{ matrix.arch }}" = apple-silicon ]; then
+            echo "::group::O instalador Intel recusa um Mac com processador Apple"
+            packaging/macos/make-pkg.sh intel
+            mv "dist/Arruma-$VERSAO-macos-intel.pkg" "$RUNNER_TEMP/intel.pkg"
+            PKG="$RUNNER_TEMP/intel.pkg"
+            recusa "O instalador Intel instalou num Mac com processador Apple."
+            grep -q "Este Mac tem um processador Apple" saida.txt
+            test "$(versao)" = "$VERSAO"
+            echo "::endgroup::"
+          fi
+
+          grep -q teste "$DADOS/marca"
+          echo "O histórico e as definições de teste continuam lá."
       - uses: actions/upload-artifact@v7
         with:
           name: arruma-macos-${{ matrix.arch }}

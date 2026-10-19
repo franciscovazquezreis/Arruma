@@ -3,14 +3,13 @@
 # Depois de instalar ou atualizar o pacote: retira as cópias do Arruma que o instalar.sh pôs na
 # pasta pessoal de cada utilizador. Essas cópias têm prioridade sobre o pacote no menu, no Nemo e
 # no terminal, e o utilizador continuaria a abrir a versão antiga sem dar por isso.
+# - Cada pasta pessoal é tratada com a conta do dono, e não como administrador: assim ninguém
+#   consegue, trocando pastas por ligações simbólicas a meio, levar o administrador a apagar
+#   ficheiros noutro sítio.
 # - Só se retiram ficheiros com as marcas do instalar.sh, e nunca através de ligações simbólicas.
 # - Uma cópia mais recente do que o pacote fica onde está, com um aviso.
 # - O histórico e as definições (~/.local/share/arruma e ~/.config/arruma) ficam como estão.
 # - É tudo feito na medida do possível: uma pasta que não se consiga alterar não impede a instalação.
-
-[ "$1" = "configure" ] || exit 0
-
-NOVA="$(dpkg-query -W -f='${Version}' arruma 2>/dev/null || true)"
 
 # Verdadeiro se nenhuma das pastas entre $1 e o ficheiro $1/$2 for uma ligação simbólica.
 sem_ligacoes() {
@@ -31,32 +30,37 @@ retira() {  # $1 = pasta pessoal, $2 = caminho relativo
     rm -rf "$1/$2" 2>/dev/null
 }
 
-getent passwd | awk -F: '$3 == 0 || $3 >= 1000 { print $6 }' | sort -u | while read -r casa; do
-    [ -d "$casa/.local" ] && [ ! -L "$casa/.local" ] || continue
+versao_em() { sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$1/arruma/__init__.py" 2>/dev/null; }
+
+# Trata a pasta pessoal $1; $2 é a versão deste pacote.
+limpa_pasta_pessoal() {
+    casa="$1"
+    NOVA="$2"
     app=".local/share/arruma-app"
     lancador=".local/bin/arruma"
-    tem_app=""; tem_lancador=""; atalhos=""
+    tem_app=""; tem_lancador=""; atalhos=""; codigo=""
     [ -f "$casa/$app/arruma/__init__.py" ] && tem_app=1
     if [ -f "$casa/$lancador" ] && grep -q "arruma-app" "$casa/$lancador" 2>/dev/null \
             && grep -q "python3 -m arruma" "$casa/$lancador" 2>/dev/null; then
         tem_lancador=1
+        # Os lançadores do instalar.sh até à 0.2.0 abrem a pasta do código, enquanto ela existir.
+        codigo="$(sed -n 's/^if \[ -d "\(.*\)\/arruma" \]; then$/\1/p' "$casa/$lancador" 2>/dev/null | head -n 1)"
     fi
     for ficheiro in .local/share/applications/pt.arruma.Arruma.desktop .local/share/nemo/actions/arruma.nemo_action; do
         if [ -f "$casa/$ficheiro" ] && grep -q "/.local/bin/arruma" "$casa/$ficheiro" 2>/dev/null; then
             atalhos="$atalhos $ficheiro"
         fi
     done
-    [ -n "$tem_app$tem_lancador" ] || continue
+    [ -n "$tem_app$tem_lancador" ] || return 0
 
-    if [ -n "$tem_app" ]; then
-        copia="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$casa/$app/arruma/__init__.py" 2>/dev/null)"
+    for copia in "$([ -n "$tem_app" ] && versao_em "$casa/$app")" "$([ -n "$codigo" ] && versao_em "$codigo")"; do
         if [ -n "$copia" ] && [ -n "$NOVA" ] && dpkg --compare-versions "$copia" gt "$NOVA" 2>/dev/null; then
             echo "Arruma: a cópia em $casa/.local é a versão $copia, mais recente do que este pacote ($NOVA)."
             echo "        Fica onde está e continua a ter prioridade; para usar o pacote, retira-a com"
             echo "        ./instalar.sh --remover (o histórico e as definições ficam)."
-            continue
+            return 0
         fi
-    fi
+    done
 
     # Ou se retira tudo o que abre a cópia, ou nada: retirar só uma parte deixaria no menu um
     # atalho a apontar para código já apagado.
@@ -69,16 +73,21 @@ getent passwd | awk -F: '$3 == 0 || $3 >= 1000 { print $6 }' | sort -u | while r
     if [ -n "$bloqueado" ]; then
         echo "Arruma: a cópia antiga em $casa/.local está numa pasta ligada a outro sítio e ficou onde está."
         echo "        Para usar o pacote, retira-a com ./instalar.sh --remover (o histórico e as definições ficam)."
-        continue
+        return 0
     fi
 
-    # Primeiro o que abre o Arruma, para nunca ficar um atalho a apontar para código já apagado.
+    # Primeiro o que abre o Arruma; o código só sai depois de isso ter saído todo, para nunca
+    # ficar um atalho a apontar para código já apagado.
     falhou=""
     [ -n "$tem_lancador" ] && { retira "$casa" "$lancador" || falhou=1; }
     for ficheiro in $atalhos; do
         retira "$casa" "$ficheiro" || falhou=1
     done
-    [ -n "$tem_app" ] && { retira "$casa" "$app" || falhou=1; }
+    [ -z "$falhou" ] && [ -n "$tem_app" ] && { retira "$casa" "$app" || falhou=1; }
+    if [ -n "$falhou" ]; then
+        echo "Arruma: não foi possível retirar toda a cópia antiga em $casa/.local; retira-a com ./instalar.sh --remover."
+        return 0
+    fi
     for icone in .local/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg \
                  .local/share/icons/hicolor/256x256/apps/pt.arruma.Arruma.png; do
         retira "$casa" "$icone" || true
@@ -88,11 +97,36 @@ getent passwd | awk -F: '$3 == 0 || $3 >= 1000 { print $6 }' | sort -u | while r
     if [ -d "$casa/.local/share/icons/hicolor" ] && sem_ligacoes "$casa" ".local/share/icons/hicolor/x"; then
         touch -c "$casa/.local/share/icons/hicolor" 2>/dev/null || true
     fi
-    if [ -n "$falhou" ]; then
-        echo "Arruma: não foi possível retirar toda a cópia antiga em $casa/.local; retira-a com ./instalar.sh --remover."
-    else
-        echo "Arruma: retirada a cópia antiga em $casa/.local (o histórico e as definições ficam)."
-    fi
+    echo "Arruma: retirada a cópia antiga em $casa/.local (o histórico e as definições ficam)."
+}
+
+case "$1" in
+    configure) ;;
+    --pasta-pessoal) limpa_pasta_pessoal "$2" "$3"; exit 0 ;;  # chamado por este script, abaixo
+    *) exit 0 ;;
+esac
+
+NOVA="$(dpkg-query -W -f='${Version}' arruma 2>/dev/null || true)"
+
+# As contas do sistema e, para as de um domínio (que o getent nem sempre lista), as pastas em /home.
+{
+    getent passwd | awk -F: '$3 == 0 || $3 >= 1000 { print $6 }'
+    for casa in /root /home/*; do
+        [ -d "$casa" ] && echo "$casa"
+    done
+} | sort -u | while read -r casa; do
+    [ -d "$casa/.local" ] || continue
+    # Quem pode mexer nas pastas é quem faz o trabalho: o dono da .local (sem seguir uma ligação
+    # simbólica) ou, se esse for o administrador, o dono da pasta pessoal.
+    dono="$(stat -c '%u %g' "$casa/.local" 2>/dev/null)"
+    [ "${dono%% *}" = 0 ] && dono="$(stat -L -c '%u %g' "$casa" 2>/dev/null)"
+    case "$dono" in
+        "") ;;
+        "0 "*) limpa_pasta_pessoal "$casa" "$NOVA" ;;
+        *)  setpriv --reuid="${dono%% *}" --regid="${dono#* }" --clear-groups -- \
+                /bin/sh "$0" --pasta-pessoal "$casa" "$NOVA" < /dev/null \
+                || echo "Arruma: não foi possível procurar uma cópia antiga em $casa/.local." ;;
+    esac
 done
 
 exit 0
