@@ -54,10 +54,15 @@ Para voltar a instalar a mesma versão (por exemplo, para reparar a instalação
 
 Sem IA, o Arruma usa regras, metadados (datas das fotografias, etiquetas da música) e palavras-chave. Com a IA local, lê o texto dos documentos para escolher a área certa e propor nomes claros. Tudo continua a correr no computador: o Arruma recusa ligar-se a uma IA que não esteja em `localhost`.
 
-1. Instala o [Ollama](https://ollama.com/download) (no Linux: `curl -fsSL https://ollama.com/install.sh | sh`).
-2. Descarrega o modelo recomendado, cerca de 2 GB, uma única vez: `ollama pull qwen2.5:3b`
+Funciona em Linux, Windows e macOS. Em qualquer deles são dois passos, e só precisam de internet da primeira vez: instalar o [Ollama](https://ollama.com/download) e descarregar o modelo recomendado (`qwen2.5:3b`, cerca de 2 GB).
 
-Depois disso funciona sem internet. O botão «Como ativar» na página inicial mostra os passos para o teu sistema.
+| Sistema | 1. Instalar o Ollama | 2. Descarregar o modelo |
+|---|---|---|
+| Linux | No Terminal: `curl -fsSL https://ollama.com/install.sh \| sh` | No Terminal: `ollama pull qwen2.5:3b` |
+| Windows | Instalador em [ollama.com/download/windows](https://ollama.com/download/windows) | No PowerShell: `ollama pull qwen2.5:3b` |
+| macOS | Aplicação em [ollama.com/download/mac](https://ollama.com/download/mac): arrasta-a para Aplicações e abre-a uma vez | No Terminal: `ollama pull qwen2.5:3b` |
+
+Depois disso funciona sem internet. O botão «Como ativar», na página inicial do Arruma, mostra os mesmos passos para o sistema onde está a correr.
 
 Para ler PDF digitalizados (OCR), instala o Tesseract com o idioma português: `sudo apt install tesseract-ocr-por` no Linux, `brew install tesseract tesseract-lang poppler` no macOS, ou o instalador do Tesseract para Windows.
 
