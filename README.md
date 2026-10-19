@@ -26,7 +26,7 @@ Em alternativa, sem `sudo` e só para o teu utilizador, a partir do código:
 ./instalar.sh
 ```
 
-As duas formas não se misturam: a cópia do `instalar.sh` fica na tua pasta pessoal e tem prioridade sobre o pacote. Para passar para o pacote, retira-a primeiro com `./instalar.sh --remover`. O histórico e as definições ficam.
+As duas formas não se misturam. A cópia do `instalar.sh` fica na tua pasta pessoal e teria prioridade sobre o pacote, por isso o pacote retira-a quando é instalado; se essa cópia for mais recente do que o pacote, fica onde está e o pacote avisa. Com o pacote instalado, o `instalar.sh` recusa-se a instalar. Para retirar a cópia à mão: `./instalar.sh --remover`. O histórico e as definições ficam sempre.
 
 ### Windows
 
@@ -46,7 +46,9 @@ xattr -d com.apple.quarantine ~/Downloads/Arruma-*-macos-*.pkg
 
 ### Atualizar
 
-Em qualquer sistema, basta instalar a versão nova da mesma maneira. O instalador vê se o Arruma já está instalado e em que versão: se não estiver, instala; se a instalada for mais antiga, atualiza; se for a mesma, avisa que não há nada a atualizar; se for mais recente, pede confirmação antes de a substituir. O histórico e as definições ficam sempre. No Linux, o pacote retira também as cópias antigas que o `instalar.sh` tenha posto na pasta pessoal.
+Em qualquer sistema, basta instalar a versão nova da mesma maneira. O instalador vê se o Arruma já está instalado e em que versão: se não estiver, instala; se a instalada for mais antiga, atualiza; se for a mesma, avisa que não há nada a atualizar; se for mais recente, pede confirmação antes de a substituir e, numa instalação sem perguntas (pela linha de comandos), deixa-a como está. O histórico e as definições ficam sempre. No macOS, se o Arruma estiver aberto, o instalador pede para o fechar primeiro. No Linux, o pacote retira também as cópias antigas que o `instalar.sh` tenha posto na pasta pessoal.
+
+Para voltar a instalar a mesma versão (por exemplo, para reparar a instalação ou, no Windows, escolher outras opções), desinstala primeiro o Arruma: no Windows em Definições → Aplicações, no macOS pondo-o no Lixo. No Linux basta `sudo apt install --reinstall ./arruma_*_all.deb`.
 
 ## Ativar a IA local (opcional)
 

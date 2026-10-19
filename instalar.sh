@@ -19,31 +19,56 @@ if [ "${1:-}" = "--remover" ]; then
     rm -f "$BIN_DIR/arruma" "$DESKTOP_DIR/pt.arruma.Arruma.desktop" "$NEMO_ACTION_DIR/arruma.nemo_action" \
           "$ICON_DIR/pt.arruma.Arruma.svg" "$PNG_ICON_DIR/pt.arruma.Arruma.png"
     update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+    # Sem o gtk-update-icon-cache, a cache antiga continuaria a indicar os ícones apagados; mudar
+    # a data da pasta faz o GTK deixar de confiar nela.
+    touch -c "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
     gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
     echo "✓ Arruma removido da pasta pessoal."
     echo "  O histórico e as definições ficam em ~/.local/share/arruma e ~/.config/arruma."
     exit 0
 fi
 
-versao_de() { sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$1/arruma/__init__.py"; }
-# -1, 0 ou 1, conforme a primeira versão é anterior, igual ou posterior à segunda.
-compara() { python3 -c 'import sys; a, b = (tuple(int(p) for p in v.split(".")) for v in sys.argv[1:]); print((a > b) - (a < b))' "$1" "$2"; }
+versao_de() { sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$1/arruma/__init__.py" 2>/dev/null || true; }
+# Escreve -1, 0 ou 1, conforme a primeira versão (X.Y.Z) é anterior, igual ou posterior à
+# segunda; não escreve nada se alguma delas não tiver esse formato.
+compara() {
+    local formato='^[0-9]+(\.[0-9]+)*$' a b i
+    [[ $1 =~ $formato && $2 =~ $formato ]] || return 0
+    IFS=. read -ra a <<<"$1"
+    IFS=. read -ra b <<<"$2"
+    for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
+        if ((10#${a[i]:-0} < 10#${b[i]:-0})); then echo -1; return 0; fi
+        if ((10#${a[i]:-0} > 10#${b[i]:-0})); then echo 1; return 0; fi
+    done
+    echo 0
+}
+pergunta() {
+    printf "%s Substituir? [s/N] " "$1"
+    read -r resposta || resposta=""
+    case "$resposta" in s|S|sim|Sim) ;; *) echo "Nada foi alterado."; exit 0 ;; esac
+}
 
 NOVA="$(versao_de "$SRC_DIR")"
-if command -v dpkg-query >/dev/null 2>&1 && dpkg-query -W -f='${Status}' arruma 2>/dev/null | grep -q "install ok installed"; then
-    echo "O pacote arruma $(dpkg-query -W -f='${Version}' arruma) já está instalado no sistema."
-    echo "Uma cópia na pasta pessoal teria prioridade sobre ele. Para atualizar, instala o .deb mais recente."
-    exit 1
-fi
+# Com o pacote no sistema (instalado ou a meio de uma instalação), uma cópia na pasta pessoal
+# escondê-lo-ia no menu, no Nemo e no terminal.
+ESTADO_PACOTE="$(dpkg-query -W -f='${db:Status-Status}' arruma 2>/dev/null || true)"
+case "$ESTADO_PACOTE" in
+    ""|not-installed|config-files) ;;
+    *)  echo "O pacote arruma $(dpkg-query -W -f='${Version}' arruma 2>/dev/null) já está instalado no sistema."
+        echo "Uma cópia na pasta pessoal teria prioridade sobre ele. Para atualizar, instala o .deb mais recente."
+        if [ -e "$APP_DIR" ] || [ -e "$BIN_DIR/arruma" ]; then
+            echo "Ainda há uma cópia antiga na pasta pessoal; retira-a com ./instalar.sh --remover."
+        fi
+        exit 1 ;;
+esac
 if [ -f "$APP_DIR/arruma/__init__.py" ]; then
     ATUAL="$(versao_de "$APP_DIR")"
     case "$(compara "$ATUAL" "$NOVA")" in
         0)  echo "O Arruma $NOVA já está instalado. Não há nada a atualizar."
             exit 0 ;;
-        1)  printf "Está instalado o Arruma %s, mais recente do que esta cópia (%s). Substituir? [s/N] " "$ATUAL" "$NOVA"
-            read -r resposta || resposta=""
-            case "$resposta" in s|S|sim|Sim) ;; *) echo "Nada foi alterado."; exit 0 ;; esac ;;
-        *)  echo "A atualizar o Arruma de $ATUAL para $NOVA (o histórico e as definições ficam)." ;;
+        1)  pergunta "Está instalado o Arruma $ATUAL, mais recente do que a versão desta cópia ($NOVA)." ;;
+        -1) echo "A atualizar o Arruma de $ATUAL para $NOVA (o histórico e as definições ficam)." ;;
+        *)  pergunta "Está instalado o Arruma ${ATUAL:-de versão desconhecida}, que não se consegue comparar com esta cópia ($NOVA)." ;;
     esac
 fi
 
@@ -52,13 +77,11 @@ mkdir -p "$APP_DIR" "$BIN_DIR" "$DESKTOP_DIR" "$ICON_DIR" "$PNG_ICON_DIR" "$NEMO
 rm -rf "$APP_DIR/arruma"
 cp -r "$SRC_DIR/arruma" "$APP_DIR/arruma"
 
+# O lançador abre sempre a cópia instalada, e não a pasta do código: assim abre-se a versão que
+# foi escolhida acima, mesmo que o código mude depois.
 cat > "$BIN_DIR/arruma" <<EOF
 #!/usr/bin/env bash
-if [ -d "$SRC_DIR/arruma" ]; then
-    export PYTHONPATH="$SRC_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
-else
-    export PYTHONPATH="$APP_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
-fi
+export PYTHONPATH="$APP_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
 exec python3 -m arruma "\$@"
 EOF
 chmod +x "$BIN_DIR/arruma"

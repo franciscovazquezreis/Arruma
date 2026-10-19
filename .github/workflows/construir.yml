@@ -82,34 +82,101 @@ jobs:
       matrix:
         os: [ubuntu-22.04, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v7  # para o instalar.sh
+      # O código fica em src/: o «python3 -m arruma» lê primeiro a pasta atual, e o autoteste
+      # tem de abrir o Arruma instalado, não o do código.
+      - uses: actions/checkout@v7
         with:
+          path: src
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           name: arruma-linux-deb
-      - name: Cópia antiga na pasta pessoal (instalar.sh), que o pacote tem de retirar
-        run: |
-          ./instalar.sh
-          ./instalar.sh | grep -q "já está instalado"  # a mesma versão não se reinstala
-          test -f ~/.local/bin/arruma
-      - name: Instalar como no Linux Mint
+          path: deb
+      - name: Preparar (Xvfb, histórico e definições de teste, versões 0.1.0 e 9.9.9)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ./arruma_*.deb xvfb
-          test ! -e ~/.local/bin/arruma && test ! -e ~/.local/share/arruma-app
+          sudo apt-get install -y -qq xvfb
+          mkdir -p ~/.config/arruma ~/.local/share/arruma
+          echo teste > ~/.config/arruma/marca && echo teste > ~/.local/share/arruma/marca
+          # Pacotes iguais ao verdadeiro, só com outro número de versão; o 0.1.0 leva também um
+          # ficheiro que a versão nova já não tem.
+          for v in 0.1.0 9.9.9; do
+            cp -r src "$RUNNER_TEMP/v$v"
+            sed -i "s/^__version__ = .*/__version__ = \"$v\"/" "$RUNNER_TEMP/v$v/arruma/__init__.py"
+            [ "$v" = 0.1.0 ] && echo "# obsoleto" > "$RUNNER_TEMP/v$v/arruma/obsoleto.py"
+            "$RUNNER_TEMP/v$v/packaging/linux/build-deb.sh" "$PWD/deb-$v"
+          done
+          echo "VERSAO=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/arruma/__init__.py)" >> "$GITHUB_ENV"
+      - name: instalar.sh (instala, não repete a mesma versão, atualiza a antiga, pergunta antes de descer)
+        run: |
+          copia=~/.local/share/arruma-app/arruma/__init__.py
+          muda() { sed -i "s/^__version__ = .*/__version__ = \"$1\"/" "$copia"; }
+          src/instalar.sh
+          test -f ~/.local/bin/arruma
+          src/instalar.sh | tee saida.txt
+          grep -q "Não há nada a atualizar" saida.txt
+          muda 0.1.0
+          src/instalar.sh | tee saida.txt
+          grep -q "A atualizar o Arruma de 0.1.0 para $VERSAO" saida.txt
+          grep -q "\"$VERSAO\"" "$copia"
+          muda 9.9.9
+          src/instalar.sh < /dev/null | tee saida.txt
+          grep -q "Nada foi alterado" saida.txt
+          grep -q '"9.9.9"' "$copia"
+      - name: Pacote 0.1.0 com uma cópia mais recente na pasta pessoal (a cópia fica)
+        run: |
+          sudo apt-get install -y ./deb-0.1.0/arruma_0.1.0_all.deb | tee apt.txt
+          grep -q "mais recente do que este pacote" apt.txt
+          grep -q '"9.9.9"' ~/.local/share/arruma-app/arruma/__init__.py
+          test -f ~/.local/bin/arruma
+          # O código compilado que o Python cria quando o Arruma corre como administrador.
+          sudo env PYTHONPATH=/usr/lib/arruma python3 -c "import arruma.core.planner"
+          test -n "$(find /usr/lib/arruma -name __pycache__)"
+      - name: Atualizar o pacote (retira a cópia antiga da pasta pessoal e os ficheiros da versão anterior)
+        run: |
+          sed -i 's/^__version__ = .*/__version__ = "0.1.0"/' ~/.local/share/arruma-app/arruma/__init__.py
+          sudo apt-get install -y "./deb/arruma_${VERSAO}_all.deb" | tee apt.txt
+          grep -q "retirada a cópia antiga" apt.txt
+          test "$(dpkg-query -W -f='${Version}' arruma)" = "$VERSAO"
+          for f in ~/.local/bin/arruma ~/.local/share/arruma-app \
+                   ~/.local/share/applications/pt.arruma.Arruma.desktop ~/.local/share/nemo/actions/arruma.nemo_action; do
+            if [ -e "$f" ]; then echo "::error::Ficou $f"; exit 1; fi
+          done
+          if [ -n "$(find /usr/lib/arruma -name __pycache__ -o -name obsoleto.py)" ]; then
+            echo "::error::Ficaram ficheiros da versão anterior em /usr/lib/arruma"; exit 1
+          fi
+          grep -q teste ~/.config/arruma/marca
+          grep -q teste ~/.local/share/arruma/marca
           test "$(command -v arruma)" = /usr/bin/arruma
       - name: A mesma versão não se reinstala, e o instalar.sh não esconde o pacote
         run: |
-          sudo apt-get install -y ./arruma_*.deb | tee apt.txt
+          sudo apt-get install -y "./deb/arruma_${VERSAO}_all.deb" | tee apt.txt
           grep -q "already the newest version" apt.txt
-          if ./instalar.sh; then echo "::error::O instalar.sh instalou por cima do pacote."; exit 1; fi
-      - name: Autoteste da aplicação instalada
+          if src/instalar.sh > saida.txt; then echo "::error::O instalar.sh instalou por cima do pacote."; exit 1; fi
+          cat saida.txt
+          grep -q "já está instalado no sistema" saida.txt
+          test ! -e ~/.local/share/arruma-app
+      - name: Com uma versão mais recente instalada, o apt não desce sem confirmação
         run: |
-          xvfb-run -a arruma --self-test="$PWD/autoteste.txt"
+          sudo apt-get install -y ./deb-9.9.9/arruma_9.9.9_all.deb
+          if sudo apt-get install -y "./deb/arruma_${VERSAO}_all.deb"; then
+            echo "::error::Desceu de versão sem confirmação."; exit 1
+          fi
+          test "$(dpkg-query -W -f='${Version}' arruma)" = 9.9.9
+          sudo apt-get install -y --allow-downgrades "./deb/arruma_${VERSAO}_all.deb"
+          test "$(dpkg-query -W -f='${Version}' arruma)" = "$VERSAO"
+      - name: Autoteste da aplicação instalada
+        working-directory: ${{ runner.temp }}
+        run: |
+          xvfb-run -a arruma --self-test="$RUNNER_TEMP/autoteste.txt"
           cat autoteste.txt
           grep -q "RESULTADO: OK" autoteste.txt
+          grep -q "Ícone no tema do sistema: OK" autoteste.txt
+          grep -q "^Licença: /usr/" autoteste.txt
 
   windows:
     name: Windows (instalador)
@@ -171,24 +238,59 @@ jobs:
         run: |
           $instalador = (Get-Item "dist\Arruma-$env:VERSAO-windows-instalador.exe").FullName
           $chave = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{18C83DB7-5EF6-4B5E-B0F4-8D1E10EE1738}_is1'
-          function Instalar { (Start-Process $instalador -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru).ExitCode }
+          function Instalar($nome) {
+            (Start-Process $instalador -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$PWD\$nome.log" -Wait -PassThru).ExitCode
+          }
           function Versao { (Get-ItemProperty $chave).DisplayVersion }
-          $c = Instalar
+          function Recusou($nome) {
+            if (-not (Select-String -Path "$nome.log" -SimpleMatch 'InitializeSetup returned False' -Quiet)) {
+              Get-Content "$nome.log"; throw "O instalador não recusou ($nome)."
+            }
+          }
+          function Autoteste($nome) {
+            $p = Start-Process $exe -ArgumentList "--self-test=$PWD\$nome.txt" -Wait -PassThru
+            Get-Content "$nome.txt"
+            if ($p.ExitCode -ne 0) { throw "O autoteste da aplicação instalada falhou ($nome)." }
+          }
+          function Ficheiros($raiz) {
+            $raiz = $raiz.TrimEnd('\')
+            Get-ChildItem $raiz -Recurse -File | ForEach-Object { $_.FullName.Substring($raiz.Length) } |
+              Where-Object { $_ -notlike '\unins000.*' } | Sort-Object
+          }
+
+          # Primeira instalação
+          $c = Instalar 'primeira'
           if ($c -ne 0 -or (Versao) -ne $env:VERSAO) { throw "Primeira instalação falhou ($c, $(Versao))." }
-          $exe = Join-Path (Get-ItemProperty $chave).InstallLocation 'Arruma.exe'
-          $p = Start-Process $exe -ArgumentList "--self-test=$PWD\autoteste-instalado.txt" -Wait -PassThru
-          Get-Content autoteste-instalado.txt
-          if ($p.ExitCode -ne 0) { throw "O autoteste da aplicação instalada falhou." }
-          $antes = (Get-Item $exe).LastWriteTimeUtc
-          $c = Instalar
+          $pasta = (Get-ItemProperty $chave).InstallLocation
+          $exe = Join-Path $pasta 'Arruma.exe'
+          Autoteste 'autoteste-instalado'
+
+          # A mesma versão não se reinstala
+          $c = Instalar 'mesma'
           if ($c -eq 0) { throw "A mesma versão foi reinstalada." }
+          Recusou 'mesma'
+
+          # Uma versão anterior é atualizada, sem deixar ficheiros dela
           Set-ItemProperty $chave DisplayVersion '0.1.0'
-          $c = Instalar
+          Set-Content (Join-Path $pasta '_internal\obsoleto.txt') 'da versão anterior'
+          $c = Instalar 'anterior'
           if ($c -ne 0 -or (Versao) -ne $env:VERSAO) { throw "A atualização falhou ($c, $(Versao))." }
+          $diferencas = Compare-Object (Ficheiros $pasta) (Ficheiros (Resolve-Path 'dist\Arruma').Path)
+          if ($diferencas) { $diferencas | Out-String | Write-Output; throw "A pasta instalada não ficou igual à versão nova." }
+          Autoteste 'autoteste-atualizado'
+
+          # Uma versão mais recente não é substituída sem confirmação
           Set-ItemProperty $chave DisplayVersion '9.9.9'
-          $c = Instalar
+          $c = Instalar 'recente'
           if ($c -eq 0 -or (Versao) -ne '9.9.9') { throw "Desceu de versão sem confirmação ($c, $(Versao))." }
-          Write-Output "Mesma versão: recusada. Versão anterior: atualizada. Versão mais recente: mantida."
+          Recusou 'recente'
+
+          # Um registo de instalação sem o Arruma.exe conta como não instalado
+          Set-ItemProperty $chave DisplayVersion $env:VERSAO
+          Remove-Item $exe
+          $c = Instalar 'sem-exe'
+          if ($c -ne 0 -or -not (Test-Path $exe)) { throw "Não reinstalou o Arruma em falta ($c)." }
+          Write-Output "Mesma versão: recusada. Anterior: atualizada. Mais recente: mantida. Sem o Arruma.exe: reinstalada."
       - name: Relatório do autoteste
         if: always()
         run: cat autoteste.txt || true
@@ -248,36 +350,93 @@ jobs:
           grep -q "RESULTADO: OK" autoteste.txt
       - name: Instalador (.pkg)
         run: packaging/macos/make-pkg.sh ${{ matrix.arch }}
-      - name: Instalar, não reinstalar a mesma versão, atualizar e avisar antes de descer de versão
+      - name: Instalar, não reinstalar a mesma versão, atualizar e não descer de versão
         run: |
           VERSAO="$(python3 -c 'import arruma; print(arruma.__version__)')"
           PKG="dist/Arruma-$VERSAO-macos-${{ matrix.arch }}.pkg"
-          PLIST=/Applications/Arruma.app/Contents/Info.plist
+          APP=/Applications/Arruma.app
+          PLIST="$APP/Contents/Info.plist"
           versao() { /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$PLIST"; }
-          instalar() { sudo installer -pkg "$PKG" -target / ; }
-          # A aplicação instalada tem de ter os mesmos ficheiros que a construída (fora o Info.plist alterado).
-          completa() { test "$(cd /Applications/Arruma.app && find . -type f | sort | shasum)" = \
-                            "$(cd dist/Arruma.app && find . -type f | sort | shasum)"; }
-          sudo rm -rf /Applications/Arruma.app
+          muda() { sudo plutil -replace CFBundleShortVersionString -string "$1" "$PLIST"; }
+          instalar() { local c=0; sudo installer -pkg "$PKG" -target / > saida.txt 2>&1 || c=$?; cat saida.txt; return $c; }
+          recusa() {
+            if instalar; then echo "::error::$1"; exit 1; fi
+          }
+          # A aplicação instalada tem de ser igual à construída: os mesmos ficheiros e ligações, com
+          # o mesmo conteúdo (fora o Info.plist, cuja versão os testes alteram).
+          inventario() {
+            (cd "$1" && find . -type f ! -path ./Contents/Info.plist -print0 | sort -z | xargs -0 shasum -a 256 &&
+               find . -type l -print0 | sort -z | xargs -0 stat -f '%N -> %Y') | shasum
+          }
+          completa() {
+            if [ "$(inventario "$APP")" != "$(inventario dist/Arruma.app)" ]; then
+              echo "::error::A aplicação instalada não é igual à construída."; exit 1
+            fi
+          }
+          autoteste() {
+            "$APP/Contents/MacOS/Arruma" --self-test="$PWD/$1.txt"
+            cat "$1.txt"
+            grep -q "RESULTADO: OK" "$1.txt"
+          }
+
+          echo "::group::Primeira instalação"
+          sudo rm -rf "$APP"
           instalar
           test "$(versao)" = "$VERSAO"
-          /Applications/Arruma.app/Contents/MacOS/Arruma --self-test="$PWD/autoteste-instalado.txt"
-          cat autoteste-instalado.txt
-          grep -q "RESULTADO: OK" autoteste-instalado.txt
-          if instalar; then echo "::error::A mesma versão foi reinstalada."; exit 1; fi
           completa
-          sudo plutil -replace CFBundleShortVersionString -string 0.1.0 "$PLIST"
+          autoteste autoteste-instalado
+          echo "::endgroup::"
+
+          echo "::group::A mesma versão não se reinstala"
+          recusa "A mesma versão foi reinstalada."
+          grep -q "Não há nada a atualizar" saida.txt
+          completa
+          echo "::endgroup::"
+
+          echo "::group::Uma versão anterior é atualizada, sem deixar ficheiros dela"
+          muda 0.1.0
+          sudo touch "$APP/Contents/Frameworks/obsoleto.txt"
           instalar
           test "$(versao)" = "$VERSAO"
           completa
-          # Versão mais recente instalada: na janela do instalador aparece o aviso e a pessoa decide;
-          # na linha de comandos não há pergunta, por isso o aviso fica no registo e a instalação segue.
-          sudo plutil -replace CFBundleShortVersionString -string 9.9.9 "$PLIST"
+          autoteste autoteste-atualizado
+          echo "::endgroup::"
+
+          echo "::group::Uma versão mais recente não é substituída pela linha de comandos"
+          muda 9.9.9
+          recusa "Desceu de versão sem confirmação."
+          grep -q "Warning - Está instalado o Arruma 9.9.9" saida.txt
+          sudo grep -qF "9.9.9, mais recente do que a versão deste instalador ($VERSAO); fica como está" /var/log/install.log
+          test "$(versao)" = 9.9.9
+          echo "::endgroup::"
+
+          echo "::group::Com o Arruma aberto, não instala"
+          # Abre-se uma instalação intacta e só depois se muda a versão, para não abrir uma
+          # aplicação com a assinatura estragada pelo Info.plist alterado.
+          sudo rm -rf "$APP"
+          instalar
+          "$APP/Contents/MacOS/Arruma" & pid=$!
+          for i in $(seq 30); do pgrep -f "$APP/Contents/MacOS/Arruma" >/dev/null && break; sleep 1; done
+          muda 0.1.0
+          recusa "Substituiu o Arruma aberto."
+          sudo grep -qF "O Arruma está aberto" /var/log/install.log
+          kill "$pid"; wait "$pid" || true
+          test "$(versao)" = 0.1.0
+          echo "::endgroup::"
+
+          echo "::group::Cópia da versão 0.2.0 (.dmg): do utilizador, sem recibo e em quarentena"
+          sudo rm -rf "$APP"
+          sudo pkgutil --forget pt.arruma.Arruma
+          ditto dist/Arruma.app "$APP"
+          plutil -replace CFBundleShortVersionString -string 0.2.0 "$PLIST"
+          touch "$APP/Contents/Frameworks/obsoleto.txt"
+          xattr -w com.apple.quarantine '0081;00000000;Safari;' "$APP"
           instalar
           test "$(versao)" = "$VERSAO"
           completa
-          /Applications/Arruma.app/Contents/MacOS/Arruma --self-test="$PWD/autoteste-depois.txt"
-          grep -q "RESULTADO: OK" autoteste-depois.txt
+          if xattr -p com.apple.quarantine "$APP" 2>/dev/null; then echo "::error::Ficou em quarentena."; exit 1; fi
+          autoteste autoteste-dmg
+          echo "::endgroup::"
       - uses: actions/upload-artifact@v7
         with:
           name: arruma-macos-${{ matrix.arch }}

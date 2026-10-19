@@ -3,37 +3,96 @@
 # Depois de instalar ou atualizar o pacote: retira as cópias do Arruma que o instalar.sh pôs na
 # pasta pessoal de cada utilizador. Essas cópias têm prioridade sobre o pacote no menu, no Nemo e
 # no terminal, e o utilizador continuaria a abrir a versão antiga sem dar por isso.
-# Só se retiram ficheiros com as marcas do instalar.sh; o histórico e as definições
-# (~/.local/share/arruma e ~/.config/arruma) ficam como estão.
-set -e
+# - Só se retiram ficheiros com as marcas do instalar.sh, e nunca através de ligações simbólicas.
+# - Uma cópia mais recente do que o pacote fica onde está, com um aviso.
+# - O histórico e as definições (~/.local/share/arruma e ~/.config/arruma) ficam como estão.
+# - É tudo feito na medida do possível: uma pasta que não se consiga alterar não impede a instalação.
 
-if [ "$1" = "configure" ]; then
-    for casa in /root /home/*; do
-        [ -d "$casa/.local" ] || continue
-        retirada=""
-        app="$casa/.local/share/arruma-app"
-        if [ -f "$app/arruma/__init__.py" ]; then
-            rm -rf "$app"
-            retirada=1
-        fi
-        lancador="$casa/.local/bin/arruma"
-        if [ -f "$lancador" ] && grep -q "arruma-app" "$lancador" && grep -q "python3 -m arruma" "$lancador"; then
-            rm -f "$lancador"
-            retirada=1
-        fi
-        for ficheiro in "$casa/.local/share/applications/pt.arruma.Arruma.desktop" \
-                        "$casa/.local/share/nemo/actions/arruma.nemo_action"; do
-            if [ -f "$ficheiro" ] && grep -q "/.local/bin/arruma" "$ficheiro"; then
-                rm -f "$ficheiro"
-                retirada=1
-            fi
-        done
-        if [ -n "$retirada" ]; then
-            rm -f "$casa/.local/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg" \
-                  "$casa/.local/share/icons/hicolor/256x256/apps/pt.arruma.Arruma.png"
-            echo "Arruma: retirada a cópia antiga em $casa/.local (o histórico e as definições ficam)."
+[ "$1" = "configure" ] || exit 0
+
+NOVA="$(dpkg-query -W -f='${Version}' arruma 2>/dev/null || true)"
+
+# Verdadeiro se nenhuma das pastas entre $1 e o ficheiro $1/$2 for uma ligação simbólica.
+sem_ligacoes() {
+    caminho="$1"
+    resto="${2%/*}"
+    while [ -n "$resto" ]; do
+        parte="${resto%%/*}"
+        caminho="$caminho/$parte"
+        [ -L "$caminho" ] && return 1
+        [ "$resto" = "$parte" ] && break
+        resto="${resto#*/}"
+    done
+    return 0
+}
+
+retira() {  # $1 = pasta pessoal, $2 = caminho relativo
+    sem_ligacoes "$1" "$2" || return 1
+    rm -rf "$1/$2" 2>/dev/null
+}
+
+getent passwd | awk -F: '$3 == 0 || $3 >= 1000 { print $6 }' | sort -u | while read -r casa; do
+    [ -d "$casa/.local" ] && [ ! -L "$casa/.local" ] || continue
+    app=".local/share/arruma-app"
+    lancador=".local/bin/arruma"
+    tem_app=""; tem_lancador=""; atalhos=""
+    [ -f "$casa/$app/arruma/__init__.py" ] && tem_app=1
+    if [ -f "$casa/$lancador" ] && grep -q "arruma-app" "$casa/$lancador" 2>/dev/null \
+            && grep -q "python3 -m arruma" "$casa/$lancador" 2>/dev/null; then
+        tem_lancador=1
+    fi
+    for ficheiro in .local/share/applications/pt.arruma.Arruma.desktop .local/share/nemo/actions/arruma.nemo_action; do
+        if [ -f "$casa/$ficheiro" ] && grep -q "/.local/bin/arruma" "$casa/$ficheiro" 2>/dev/null; then
+            atalhos="$atalhos $ficheiro"
         fi
     done
-fi
+    [ -n "$tem_app$tem_lancador" ] || continue
+
+    if [ -n "$tem_app" ]; then
+        copia="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$casa/$app/arruma/__init__.py" 2>/dev/null)"
+        if [ -n "$copia" ] && [ -n "$NOVA" ] && dpkg --compare-versions "$copia" gt "$NOVA" 2>/dev/null; then
+            echo "Arruma: a cópia em $casa/.local é a versão $copia, mais recente do que este pacote ($NOVA)."
+            echo "        Fica onde está e continua a ter prioridade; para usar o pacote, retira-a com"
+            echo "        ./instalar.sh --remover (o histórico e as definições ficam)."
+            continue
+        fi
+    fi
+
+    # Ou se retira tudo o que abre a cópia, ou nada: retirar só uma parte deixaria no menu um
+    # atalho a apontar para código já apagado.
+    bloqueado=""
+    [ -n "$tem_app" ] && { sem_ligacoes "$casa" "$app/arruma" || bloqueado=1; }
+    [ -n "$tem_lancador" ] && { sem_ligacoes "$casa" "$lancador" || bloqueado=1; }
+    for ficheiro in $atalhos; do
+        sem_ligacoes "$casa" "$ficheiro" || bloqueado=1
+    done
+    if [ -n "$bloqueado" ]; then
+        echo "Arruma: a cópia antiga em $casa/.local está numa pasta ligada a outro sítio e ficou onde está."
+        echo "        Para usar o pacote, retira-a com ./instalar.sh --remover (o histórico e as definições ficam)."
+        continue
+    fi
+
+    # Primeiro o que abre o Arruma, para nunca ficar um atalho a apontar para código já apagado.
+    falhou=""
+    [ -n "$tem_lancador" ] && { retira "$casa" "$lancador" || falhou=1; }
+    for ficheiro in $atalhos; do
+        retira "$casa" "$ficheiro" || falhou=1
+    done
+    [ -n "$tem_app" ] && { retira "$casa" "$app" || falhou=1; }
+    for icone in .local/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg \
+                 .local/share/icons/hicolor/256x256/apps/pt.arruma.Arruma.png; do
+        retira "$casa" "$icone" || true
+    done
+    # A cache de ícones da pasta pessoal ainda indica os ícones apagados; mudar a data da pasta
+    # faz o GTK deixar de confiar nela e encontrar o ícone do pacote.
+    if [ -d "$casa/.local/share/icons/hicolor" ] && sem_ligacoes "$casa" ".local/share/icons/hicolor/x"; then
+        touch -c "$casa/.local/share/icons/hicolor" 2>/dev/null || true
+    fi
+    if [ -n "$falhou" ]; then
+        echo "Arruma: não foi possível retirar toda a cópia antiga em $casa/.local; retira-a com ./instalar.sh --remover."
+    else
+        echo "Arruma: retirada a cópia antiga em $casa/.local (o histórico e as definições ficam)."
+    fi
+done
 
 exit 0

@@ -72,15 +72,20 @@ const
   ChaveDesinstalacao = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#StringChange(SetupSetting("AppId"), "{{", "{")}_is1';
   VersaoNova = '{#AppVersion}';
 
-{ Versão registada pela instalação anterior (vazia se o Arruma não estiver instalado). }
+{ Versão registada pela instalação anterior, no mesmo modo (só para este utilizador ou para
+  todos) em que esta vai instalar. Fica vazia se o Arruma não estiver instalado, ou se a
+  instalação anterior tiver ficado sem o Arruma.exe: nesse caso instala-se de novo. }
 function VersaoInstalada(): String;
 var
-  Versao: String;
+  Versao, Pasta: String;
 begin
-  if not RegQueryStringValue(HKCU, ChaveDesinstalacao, 'DisplayVersion', Versao) then
-    if not RegQueryStringValue(HKLM, ChaveDesinstalacao, 'DisplayVersion', Versao) then
-      Versao := '';
-  Result := Versao;
+  Result := '';
+  if not RegQueryStringValue(HKA, ChaveDesinstalacao, 'DisplayVersion', Versao) then
+    Exit;
+  if not RegQueryStringValue(HKA, ChaveDesinstalacao, 'InstallLocation', Pasta) then
+    Exit;
+  if FileExists(AddBackslash(Pasta) + 'Arruma.exe') then
+    Result := Versao;
 end;
 
 { Tira o número seguinte de uma versão como 0.2.1. }
@@ -123,19 +128,20 @@ begin
   if Instalada = '' then
     Exit;  { primeira instalação }
   case ComparaVersoes(Instalada, VersaoNova) of
+    { Nenhuma linha pode começar por #: o pré-processador do Inno Setup lê-a como uma diretiva. }
     0: begin
-         SuppressibleMsgBox('O Arruma ' + VersaoNova + ' já está instalado. Não há nada a atualizar.',
+         SuppressibleMsgBox('O Arruma ' + VersaoNova + ' já está instalado. Não há nada a atualizar.' + #13#10#13#10 +
+                            'Para o reinstalar, desinstala-o primeiro.',
                             mbInformation, MB_OK, IDOK);
          Result := False;
        end;
-    1: Result := SuppressibleMsgBox('Está instalado o Arruma ' + Instalada + ', mais recente do que este ' +
-                                    'instalador (' + VersaoNova + ').' + #13#10#13#10 +
+    1: Result := SuppressibleMsgBox('Está instalado o Arruma ' + Instalada + ', mais recente do que a ' +
+                                    'versão deste instalador (' + VersaoNova + ').' + #13#10#13#10 +
                                     'Queres mesmo substituí-lo pela versão mais antiga?',
                                     mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
   else
-    { Nenhuma linha pode começar por #: o pré-processador do Inno Setup lê-a como uma diretiva. }
-    Result := SuppressibleMsgBox('Vai atualizar o Arruma da versão ' + Instalada + ' para a ' + VersaoNova +
-                                 '.' + #13#10 + 'O histórico e as definições ficam.',
+    Result := SuppressibleMsgBox('O Arruma vai ser atualizado da versão ' + Instalada + ' para a ' +
+                                 VersaoNova + '.' + #13#10 + 'O histórico e as definições ficam.',
                                  mbInformation, MB_OKCANCEL, IDOK) = IDOK;
   end;
 end;

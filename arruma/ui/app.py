@@ -578,7 +578,15 @@ class ArrumaApp(Gtk.Application):
             ok = ok and logo_ok
             if IS_LINUX and Path(__file__).resolve().is_relative_to("/usr"):
                 # Instalado pelo .deb: o menu e a barra de tarefas procuram o ícone no tema do sistema.
-                no_tema = Gtk.IconTheme.get_default().has_icon(APP_ID)
+                # O has_icon() fia-se na cache do tema, que pode indicar um ficheiro já apagado, por
+                # isso o ícone tem mesmo de abrir.
+                no_tema = False
+                info = Gtk.IconTheme.get_default().lookup_icon(APP_ID, 64, 0)
+                if info is not None:
+                    try:
+                        no_tema = info.load_icon() is not None
+                    except GLib.Error:
+                        pass
                 lines.append(f"Ícone no tema do sistema: {'OK' if no_tema else 'EM FALTA'}")
                 ok = ok and no_tema
             about = self.win.build_about()
