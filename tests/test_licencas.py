@@ -183,6 +183,24 @@ class InventoryTests(unittest.TestCase):
         self.assertIn("GPL", comp.licenca)
         self.assertEqual(comp.fontes[0]["tipo"], "pypi")
 
+    def test_pip_finds_dist_info_next_to_the_real_file(self):
+        tmp = Path(tempfile.mkdtemp(prefix="arruma-site-")).resolve()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        site = tmp / "Cellar" / "pydantic" / "2.13.5" / "lib" / "python3.14" / "site-packages"
+        modulo = escrever(site / "typing_extensions.py", "# módulo")
+        info = site / "typing_extensions-4.15.0.dist-info"
+        escrever(info / "METADATA", "Metadata-Version: 2.4\nName: typing_extensions\nVersion: 4.15.0\n"
+                                    "License-Expression: PSF-2.0\nLicense-File: LICENSE\n")
+        escrever(info / "licenses" / "LICENSE", "A. HISTORY OF THE SOFTWARE")
+        escrever(info / "RECORD", "typing_extensions.py,,\ntyping_extensions-4.15.0.dist-info/METADATA,,\n"
+                                  "typing_extensions-4.15.0.dist-info/licenses/LICENSE,,\n")
+        r = terceiros.Pip()
+        chave = r.pacote_de(str(modulo))
+        self.assertEqual(chave, "typing_extensions/4.15.0")
+        comp = r.componente(chave)
+        self.assertEqual(comp.licenca, "PSF-2.0")
+        self.assertEqual([Path(t).name for t in comp.textos], ["LICENSE"])
+
 
 class ChoiceAndNoticeTests(unittest.TestCase):
     def test_license_choice_is_gpl3_compatible(self):

@@ -369,20 +369,47 @@ class Pip:
 
     def __init__(self):
         self.dono: dict[str, importlib.metadata.Distribution] = {}
+        self.por_chave: dict[str, importlib.metadata.Distribution] = {}
+        self.sites: set[str] = set()
         for dist in importlib.metadata.distributions():
-            for f in dist.files or []:
-                try:
-                    self.dono.setdefault(_normalizar(str(dist.locate_file(f))), dist)
-                except (OSError, ValueError):
-                    continue
+            self._registar(dist)
+
+    def _registar(self, dist: importlib.metadata.Distribution) -> None:
+        for f in dist.files or []:
+            try:
+                self.dono.setdefault(_normalizar(str(dist.locate_file(f))), dist)
+            except (OSError, ValueError):
+                continue
+
+    def _site_de(self, real: str) -> None:
+        """Lê os .dist-info da pasta site-packages onde o ficheiro está de facto. Há fórmulas do
+        Homebrew que instalam pacotes Python cujo registo não fica visível no sys.path (por
+        exemplo, o typing_extensions dentro da fórmula pydantic)."""
+        partes = real.split("/")
+        if "site-packages" not in partes:
+            return
+        site = "/".join(partes[:len(partes) - partes[::-1].index("site-packages")])
+        if site in self.sites:
+            return
+        self.sites.add(site)
+        for info in sorted(Path(site).glob("*.dist-info")):
+            self._registar(importlib.metadata.PathDistribution(info))
 
     def pacote_de(self, caminho: str) -> str | None:
-        dist = self.dono.get(_normalizar(caminho))
-        return f"{dist.metadata['Name']}/{dist.version}" if dist else None
+        real = _normalizar(caminho)
+        dist = self.dono.get(real)
+        if dist is None:
+            self._site_de(real)
+            dist = self.dono.get(real)
+        if dist is None:
+            return None
+        chave = f"{dist.metadata['Name']}/{dist.version}"
+        self.por_chave.setdefault(chave, dist)
+        return chave
 
     def componente(self, chave: str) -> Componente:
         nome, versao = chave.split("/", 1)
-        dist = importlib.metadata.distribution(nome)
+        dist = self.por_chave.get(chave) or importlib.metadata.distribution(nome)
         meta = dist.metadata
         licenca = meta.get("License-Expression") or ""
         if not licenca:
