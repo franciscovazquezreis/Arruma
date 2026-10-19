@@ -184,5 +184,88 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(comp.fontes[0]["tipo"], "pypi")
 
 
+class ChoiceAndNoticeTests(unittest.TestCase):
+    def test_license_choice_is_gpl3_compatible(self):
+        casos = {
+            "(GPL-2.0-only OR GPL-3.0-only) AND GPL-2.0-or-later": "GPL-3.0-only AND GPL-2.0-or-later",
+            "LGPL-2.1-only OR MPL-1.1": "LGPL-2.1-only",
+            "(BSD-3-Clause OR GPL-2.0-only) AND BSD-2-Clause AND MIT": "BSD-3-Clause AND BSD-2-Clause AND MIT",
+            "LGPL-3.0-or-later OR CC-BY-SA-3.0": "LGPL-3.0-or-later",
+            "FTL OR GPL-2.0-or-later": "FTL",
+            "GPL-2.0-or-later WITH Bootloader-exception AND Apache-2.0":
+                "GPL-2.0-or-later WITH Bootloader-exception AND Apache-2.0",
+        }
+        for licenca, esperada in casos.items():
+            self.assertEqual(terceiros.escolher_licenca(licenca), esperada, licenca)
+        for comp, licenca in terceiros.LICENCAS_CORRIGIDAS.items():
+            self.assertNotRegex(terceiros.escolher_licenca(licenca), r"(?<!L)GPL-2\.0-only", comp)
+
+    def test_test_build_and_release_notices(self):
+        tmp = Path(tempfile.mkdtemp(prefix="arruma-aviso-")).resolve()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        projeto = tmp / "projeto"
+        shutil.copyfile(RAIZ / "LICENSE", escrever(projeto / "LICENSE"))
+        comp = terceiros.Componente(chave="msys2:x", nome="cairo", versao="1.18.6-2",
+                                    licenca="LGPL-2.1-only OR MPL-1.1", origem="msys2")
+        terceiros.escrever({"msys2:x": comp}, tmp / "a", "0.2.0", "windows", projeto,
+                           "commit 2feff1e49b17, versão de teste", False)
+        teste = (tmp / "a" / "LEIA-ME.txt").read_text(encoding="utf-8")
+        self.assertIn("versão de teste", teste)
+        self.assertIn("Distribuído nos termos de: LGPL-2.1-only", teste)
+        terceiros.escrever({"msys2:x": comp}, tmp / "b", "0.2.0", "macos", projeto, "etiqueta v0.2.0", True)
+        publicada = (tmp / "b" / "LEIA-ME.txt").read_text(encoding="utf-8")
+        self.assertIn("Esta versão está publicada", publicada)
+        self.assertIn("reescreve os caminhos das bibliotecas", publicada)
+        self.assertEqual(json.loads((tmp / "b" / "componentes.json").read_text(encoding="utf-8"))["publicada"], True)
+
+    def test_compiled_schemas_credit_every_package(self):
+        tmp = Path(tempfile.mkdtemp(prefix="arruma-esquemas-")).resolve()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        prefixo, cellar = tmp / "brew", tmp / "brew" / "Cellar"
+        escrever(cellar / "glib" / "2.88.3" / "lib" / "libglib-2.0.dylib")
+        fontes = {"org.gtk.Settings.FileChooser.gschema.xml": "gtk+3/3.24.52",
+                  "org.gnome.desktop.a11y.gschema.xml": "gsettings-desktop-schemas/50.1"}
+        trabalho = tmp / "build"
+        compilado = escrever(trabalho / "_pyi_gschema_compilation" / "gschemas.compiled")
+        for nome, keg in fontes.items():
+            original = escrever(cellar / keg / "share" / "glib-2.0" / "schemas" / nome)
+            ligacao = prefixo / "share" / "glib-2.0" / "schemas" / nome
+            ligacao.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                ligacao.symlink_to(original)
+            except (OSError, NotImplementedError):
+                self.skipTest("este sistema não permite ligações simbólicas")
+            escrever(compilado.parent / nome)
+        r = terceiros.Homebrew(str(prefixo), str(cellar))
+        inv = terceiros.Inventario([r], tmp / "projeto", trabalho)
+        inv.atribuir(str(compilado), "DATA")
+        self.assertEqual(inv.desconhecidos, [])
+        contados = {chave for (_i, chave) in inv.contagem}
+        self.assertEqual(contados, {"glib/2.88.3", "gtk+3/3.24.52", "gsettings-desktop-schemas/50.1"})
+
+
+class SourceDownloadTests(unittest.TestCase):
+    def test_download_writes_checkable_sums(self):
+        import hashlib
+        import tarfile
+        import fontes
+        tmp = Path(tempfile.mkdtemp(prefix="arruma-fontes-")).resolve()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        origem = escrever(tmp / "origem" / "exemplo-1.0.tar.gz", "conteúdo")
+        url = origem.as_uri()
+        lista = {"windows": [("exemplo 1.0", url), ("falta 1", (tmp / "nao-existe.tar").as_uri())]}
+        from unittest import mock
+        with mock.patch.object(fontes.time, "sleep"):
+            falhas = fontes.descarregar(lista, tmp / "saida", "0.2.0")
+        self.assertEqual(falhas, 1)
+        somas = (tmp / "saida" / "fontes-windows" / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
+        linhas = [l for l in somas if l and not l.startswith("#")]
+        self.assertEqual(linhas, [f"{hashlib.sha256(origem.read_bytes()).hexdigest()}  exemplo-1.0.tar.gz"])
+        self.assertIn(f"# exemplo 1.0; {url}", somas)
+        with tarfile.open(tmp / "saida" / "Arruma-0.2.0-codigo-fonte-terceiros-windows.tar") as tar:
+            self.assertIn("Arruma-0.2.0-codigo-fonte-terceiros-windows/exemplo-1.0.tar.gz", tar.getnames())
+        self.assertFalse(list((tmp / "saida").rglob("*.part")))
+
+
 if __name__ == "__main__":
     unittest.main()

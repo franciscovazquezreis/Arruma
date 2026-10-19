@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import importlib.util
+import datetime
 import json
 import os
 import re
@@ -44,6 +45,7 @@ LICENCAS_CORRIGIDAS = {
     "adwaita-icon-theme-legacy": "LGPL-3.0-or-later OR CC-BY-SA-3.0",
     "libimagequant": "GPL-3.0-or-later",
     "jbigkit": "GPL-2.0-or-later",  # cabeçalhos de libjbig/jbig.c («or any later version»)
+    "freetype": "FTL OR GPL-2.0-or-later",  # LICENSE.TXT do próprio FreeType
     "libdatrie": "LGPL-2.1-or-later",
     "bzip2": "bzip2-1.0.6",
     "libpng": "libpng-2.0",
@@ -64,6 +66,9 @@ TEXTOS_POR_LICENCA = [
     ("MPL-2.0", ["MPL-2.0.txt"]),
     ("Apache-2.0", ["Apache-2.0.txt"]),
 ]
+
+# Componentes que incluem bibliotecas Rust (crates) descarregadas durante a compilação.
+COMPILADOS_COM_CARGO = {"librsvg", "rav1e"}
 
 # Ficheiros criados durante a instalação ou a construção, que nenhum pacote declara.
 GERADOS = {
@@ -89,6 +94,7 @@ class Componente:
     textos: list[str] = field(default_factory=list)
     notas: list[str] = field(default_factory=list)
     ficheiros: int = 0
+    cargo: bool = False  # inclui bibliotecas Rust (crates) cujo código-fonte o fontes.py junta à parte
 
 
 @dataclass
@@ -100,6 +106,54 @@ class Resultado:
 
 def _corrigir_licenca(nome: str, licenca: str) -> str:
     return LICENCAS_CORRIGIDAS.get(nome, licenca) or "não indicada"
+
+
+_INCOMPATIVEL = re.compile(r"(?<!L)GPL-2\.0-only|MPL-1\.1")
+
+
+def _dividir(expr: str, operador: str) -> list[str]:
+    """Divide uma expressão SPDX pelo operador, só ao nível de topo (fora de parênteses)."""
+    partes, nivel, inicio, i, alvo = [], 0, 0, 0, f" {operador} "
+    while i < len(expr):
+        if expr[i] == "(":
+            nivel += 1
+        elif expr[i] == ")":
+            nivel -= 1
+        elif nivel == 0 and expr.startswith(alvo, i):
+            partes.append(expr[inicio:i].strip())
+            i += len(alvo)
+            inicio = i
+            continue
+        i += 1
+    partes.append(expr[inicio:].strip())
+    return partes
+
+
+def _sem_parenteses(expr: str) -> str:
+    expr = expr.strip()
+    while expr.startswith("(") and expr.endswith(")"):
+        interior, nivel = expr[1:-1], 0
+        for c in interior:
+            nivel += (c == "(") - (c == ")")
+            if nivel < 0:
+                return expr
+        expr = interior.strip()
+    return expr
+
+
+def escolher_licenca(licenca: str) -> str:
+    """Opção usada quando a licença deixa escolher: a primeira compatível com a GPL-3.0 ou posterior."""
+    expr = _sem_parenteses(licenca)
+    termos = _dividir(expr, "AND")
+    if len(termos) > 1:
+        return " AND ".join(escolher_licenca(t) for t in termos)
+    alternativas = _dividir(expr, "OR")
+    if len(alternativas) == 1:
+        return expr
+    for alternativa in alternativas:
+        if not _INCOMPATIVEL.search(alternativa):
+            return escolher_licenca(alternativa)
+    return escolher_licenca(alternativas[0])
 
 
 def _textos_padrao(licenca: str) -> list[str]:
@@ -187,6 +241,9 @@ class Msys2:
             pass
         return str(Path(sys.prefix).parent)  # sys.prefix é <raiz>/ucrt64
 
+    def pastas_dados(self) -> list[str]:
+        return [f"{self.raiz}/ucrt64/share"]
+
     @staticmethod
     def curto(nome: str) -> str:
         return nome[len(PREFIXO_MSYS2):] if nome.startswith(PREFIXO_MSYS2) else nome
@@ -235,6 +292,9 @@ class Homebrew:
         self.prefixo = _normalizar(prefixo or _executar(["brew", "--prefix"]).strip())
         self.cellar = _normalizar(cellar or _executar(["brew", "--cellar"]).strip())
         self.info: dict[str, dict] = {}
+
+    def pastas_dados(self) -> list[str]:
+        return [f"{self.prefixo}/share"]
 
     def keg_de(self, caminho: str) -> tuple[str, str] | None:
         normal = _normalizar(caminho)
@@ -383,6 +443,8 @@ class Inventario:
                 self._contar(i, chave)
                 return
         nome = os.path.basename(normal)
+        if nome == "gschemas.compiled" and self._esquemas(normal):
+            return
         if nome in GERADOS:
             achado = self._por_nome(GERADOS[nome])
             if achado:
@@ -400,6 +462,36 @@ class Inventario:
                 self._contar(*achado)
                 return
         self.desconhecidos.append((caminho, tipo))
+
+    def _esquemas(self, compilado: str) -> bool:
+        """O gschemas.compiled que o PyInstaller compila junta os esquemas de vários pacotes
+        (glib, gtk3, gsettings-desktop-schemas...): conta cada pacote que forneceu um esquema."""
+        pasta = Path(compilado).parent
+        for antecessor in Path(compilado).parents:
+            if antecessor.name == "_pyi_gschema_compilation":
+                pasta = antecessor
+                break
+        donos: set[tuple[int, str]] = set()
+        for fonte in sorted(pasta.rglob("*")) if pasta.is_dir() else []:
+            if not fonte.is_file() or not fonte.name.endswith((".gschema.xml", ".gschema.override", ".enums.xml")):
+                continue
+            for i, r in enumerate(self.resolvedores):
+                for dados in getattr(r, "pastas_dados", lambda: [])():
+                    original = Path(dados) / "glib-2.0" / "schemas" / fonte.name
+                    chave = r.pacote_de(str(original)) if original.exists() else None
+                    if chave:
+                        donos.add((i, chave))
+                        break
+                else:
+                    continue
+                break
+        if donos:
+            glib = self._por_nome(GERADOS["gschemas.compiled"])  # o compilador vem do glib
+            if glib:
+                donos.add(glib)
+        for dono in donos:
+            self._contar(*dono)
+        return bool(donos)
 
     def _pyinstaller(self) -> tuple[int, str] | None:
         try:
@@ -431,10 +523,15 @@ class Inventario:
                     comp.licenca = LICENCAS_CORRIGIDAS["pyinstaller"]
                     comp.notas.append("O carregador (bootloader) do PyInstaller vai dentro do Arruma.exe / "
                                       "Arruma.app; a exceção da sua licença permite distribuí-lo assim.")
-                if comp.nome in ("librsvg",):
-                    comp.notas.append("Inclui bibliotecas Rust (crates) ligadas estaticamente, listadas no "
-                                      "Cargo.lock do código-fonte do librsvg; cada uma tem a sua licença "
-                                      "(sobretudo MIT, Apache-2.0 e MPL-2.0) e pode ser obtida em https://crates.io.")
+                if comp.nome == "freetype" and escolher_licenca(comp.licenca).startswith("FTL"):
+                    comp.notas.append(f"Portions of this software are copyright © {datetime.date.today().year} "
+                                      "The FreeType Project (https://freetype.org). All rights reserved.")
+                if comp.nome in COMPILADOS_COM_CARGO:
+                    comp.cargo = True
+                    comp.notas.append(f"Inclui bibliotecas Rust (crates) ligadas estaticamente, listadas no Cargo.lock "
+                                      f"do código-fonte do {comp.nome}; cada uma tem a sua licença (sobretudo MIT, "
+                                      "Apache-2.0 e MPL-2.0). O arquivo de código-fonte de cada versão publicada traz "
+                                      "o código e os textos das licenças de todas elas.")
                 resultado[comp.chave] = comp
         return resultado
 
@@ -449,7 +546,7 @@ def _pasta_segura(nome: str, usadas: set[str]) -> str:
 
 
 def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sistema: str,
-             projeto: Path) -> list[tuple[str, str, str]]:
+             projeto: Path, referencia: str = "", publicada: bool = False) -> list[tuple[str, str, str]]:
     """Escreve a pasta de licenças e devolve as entradas a juntar ao a.datas do PyInstaller."""
     if destino.exists():
         shutil.rmtree(destino)
@@ -479,6 +576,9 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
         fontes = [f["url"] if "url" in f else f"https://pypi.org/project/{f['nome']}/{f['versao']}/#files"
                   for f in comp.fontes]
         bloco = [f"{comp.nome} {comp.versao}", f"  Licença: {comp.licenca}"]
+        escolha = escolher_licenca(comp.licenca)
+        if escolha != comp.licenca:
+            bloco.append(f"  Distribuído nos termos de: {escolha}")
         if comp.pagina:
             bloco.append(f"  Página: {comp.pagina}")
         bloco += [f"  Código-fonte: {u}" for u in fontes]
@@ -489,25 +589,42 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
     for nome in sorted(precisos):
         shutil.copyfile(projeto / "LICENSE" if nome == "GPL-3.0.txt" else TEXTOS_PADRAO / nome, padrao / nome)
     origem_txt = {"windows": "MSYS2 (https://www.msys2.org)", "macos": "Homebrew (https://brew.sh) e PyPI"}[sistema]
+    if sistema == "macos":
+        alteracoes = ("O Arruma usa-os sem os alterar, exceto no que o PyInstaller faz em qualquer aplicação para\n"
+                      "macOS: reescreve os caminhos das bibliotecas dinâmicas e a assinatura de cada binário e\n"
+                      "volta a gerar os typelibs e as caches do GTK (ver packaging/pyinstaller/arruma.spec no\n"
+                      "código-fonte do Arruma).")
+    else:
+        alteracoes = "O Arruma usa-os sem os alterar."
+    referencia = referencia or f"etiqueta v{versao}"
+    if publicada:
+        fontes_txt = (f"- Esta versão está publicada em {REPOSITORIO}/releases, onde está também, no\n"
+                      "  mesmo sítio, um arquivo com o código-fonte correspondente de todos os componentes\n"
+                      "  desta lista.")
+    else:
+        fontes_txt = ("- Esta é uma versão de teste, que não foi publicada em Releases: o código-fonte de\n"
+                      "  cada componente está no endereço indicado na lista abaixo. As versões publicadas\n"
+                      f"  em {REPOSITORIO}/releases trazem também esse código-fonte no mesmo sítio.")
     cabecalho = f"""Arruma {versao}: componentes de outros autores
 (Third-party components included in this build, with their licenses and source code.)
 
 O Arruma é software livre: podes redistribuí-lo e alterá-lo nos termos da GNU General
 Public License, versão 3 ou (à tua escolha) qualquer versão posterior. É distribuído sem
-qualquer garantia. O texto da licença está em Arruma/LICENSE e o código-fonte do Arruma em
-{REPOSITORIO} (etiqueta v{versao}).
+qualquer garantia. O texto da licença está em Arruma/LICENSE. Código-fonte do Arruma:
+{REPOSITORIO} ({referencia}).
 
 Esta versão para {'Windows' if sistema == 'windows' else 'macOS'} inclui os componentes abaixo, de outros autores, tal como
 são distribuídos pelo {origem_txt}, que podem ter aplicado as suas próprias alterações
-(incluídas no código-fonte de cada componente). O Arruma usa-os sem os alterar e a
-combinação é distribuída nos termos da GPL versão 3 ou posterior. Cada componente mantém a
-sua licença; os textos estão na pasta com o nome do componente e, para as licenças mais
-comuns, em textos-padrao. Quando uma licença deixa escolher (por exemplo «LGPL-2.1-only OR
-MPL-1.1»), o componente é distribuído nos termos da primeira licença GNU indicada.
+(incluídas no código-fonte de cada componente). {alteracoes}
+A combinação é distribuída nos termos da GPL versão 3 ou posterior. Cada componente mantém
+a sua licença; os textos estão na pasta com o nome do componente e, para as licenças mais
+comuns, em textos-padrao. Quando uma licença deixa escolher, a opção usada aparece em
+«Distribuído nos termos de» e é sempre compatível com a GPL versão 3 ou posterior. Os
+programas que o Arruma apenas executa (no Windows, pdftotext e pdftoppm) e os ficheiros de
+dados (temas de ícones) ficam apenas agregados à combinação.
 
 Código-fonte dos componentes
-- Cada versão publicada em {REPOSITORIO}/releases inclui, no mesmo sítio, um arquivo com o
-  código-fonte correspondente de todos os componentes desta lista.
+{fontes_txt}
 - Durante pelo menos três anos a contar da data desta versão, qualquer pessoa pode pedir
   uma cópia completa desse código-fonte, sem custos, em {REPOSITORIO}/issues.
 
@@ -515,7 +632,8 @@ Componentes ({len(componentes)}):
 """
     (destino / "LEIA-ME.txt").write_text(cabecalho + "\n\n".join(linhas_comp) + "\n", encoding="utf-8")
     (destino / "componentes.json").write_text(json.dumps(
-        {"versao": versao, "sistema": sistema, "componentes": [asdict(c) for c in componentes.values()]},
+        {"versao": versao, "sistema": sistema, "referencia": referencia, "publicada": publicada,
+         "componentes": [asdict(c) for c in componentes.values()]},
         ensure_ascii=False, indent=2), encoding="utf-8")
     entradas = []
     for f in sorted(destino.rglob("*")):
@@ -524,17 +642,20 @@ Componentes ({len(componentes)}):
     return entradas
 
 
-def gerar(analise, destino: Path, projeto: Path, trabalho: Path, versao: str) -> Resultado:
+def gerar(analise, destino: Path, projeto: Path, trabalho: Path, versao: str,
+          referencia: str = "", publicada: bool = False) -> Resultado:
     """Inventário completo para o arruma.spec (Windows com MSYS2, macOS com Homebrew e pip)."""
     if sys.platform == "win32":
         resolvedores, sistema = [Msys2()], "windows"
     elif sys.platform == "darwin":
-        resolvedores, sistema = [Homebrew(), Pip()], "macos"
+        # Primeiro o pip: há fórmulas do Homebrew que trazem pacotes Python de outros projetos
+        # (por exemplo, typing_extensions dentro da fórmula pydantic).
+        resolvedores, sistema = [Pip(), Homebrew()], "macos"
     else:
         raise SystemExit("O inventário de licenças só existe para Windows e macOS.")
     inv = Inventario(resolvedores, projeto, trabalho)
     for caminho, tipo in ficheiros_recolhidos(analise.binaries, analise.datas, analise.pure, analise.scripts):
         inv.atribuir(caminho, tipo)
     componentes = inv.componentes()
-    entradas = escrever(componentes, destino, versao, sistema, projeto)
+    entradas = escrever(componentes, destino, versao, sistema, projeto, referencia, publicada)
     return Resultado(componentes, inv.desconhecidos, entradas)

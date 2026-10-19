@@ -59,7 +59,8 @@ a = Analysis(  # noqa: F821
             "module-versions": {"Gtk": "3.0", "Gdk": "3.0"},
         },
     },
-    excludes=["tkinter"],
+    # Sem AVIF: o Arruma não precisa dele e o módulo traria seis bibliotecas (uma delas em Rust).
+    excludes=["tkinter", "PIL._avif", "PIL.AvifImagePlugin"],
     noarchive=False,
 )
 # Licenças de terceiros: lista dos componentes que o PyInstaller recolheu, com os textos das
@@ -68,8 +69,17 @@ a = Analysis(  # noqa: F821
 sys.path.insert(0, str(ROOT / "packaging" / "licencas"))
 import terceiros  # noqa: E402
 
+# Versão publicada (etiqueta vX.Y.Z) ou de teste (commit), para o aviso indicar o código-fonte certo.
+REF, SHA = os.environ.get("GITHUB_REF", ""), os.environ.get("GITHUB_SHA", "")
+PUBLICADA = REF == f"refs/tags/v{arruma.__version__}"
+if PUBLICADA:
+    REFERENCIA = f"etiqueta v{arruma.__version__}"
+elif SHA:
+    REFERENCIA = f"commit {SHA[:12]}, versão de teste"
+else:
+    REFERENCIA = "versão construída localmente, sem etiqueta"
 licencas = terceiros.gerar(a, Path(workpath) / "licencas", ROOT, Path(workpath),  # noqa: F821
-                           arruma.__version__)
+                           arruma.__version__, REFERENCIA, PUBLICADA)
 print(f"Licenças de terceiros: {len(licencas.componentes)} componentes")
 for comp in sorted(licencas.componentes.values(), key=lambda c: c.nome.casefold()):
     print(f"  {comp.nome} {comp.versao} | {comp.licenca} | {comp.ficheiros} ficheiros | "

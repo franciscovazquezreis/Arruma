@@ -15,9 +15,16 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -41,6 +48,39 @@ def _pedido(url: str, metodo: str = "GET", tentativas: int = 4):
             erro = e
         time.sleep(2 ** (n + 1))
     raise erro  # type: ignore[misc]
+
+
+def _transferir(url: str, ficheiro: Path, tentativas: int = 4) -> str:
+    """Descarrega url para ficheiro (através de um .part) e devolve o SHA-256.
+
+    Repete quando a rede falha a meio, e só dá a transferência por boa quando chegaram todos os
+    bytes anunciados. Um 404 ou 410 sai logo como HTTPError."""
+    parcial = ficheiro.with_name(ficheiro.name + ".part")
+    erro: Exception | None = None
+    for n in range(tentativas):
+        try:
+            pedido = urllib.request.Request(url, headers={"User-Agent": AGENTE})
+            with urllib.request.urlopen(pedido, timeout=120) as resposta, open(parcial, "wb") as f:
+                esperado = resposta.headers.get("Content-Length")
+                soma, total = hashlib.sha256(), 0
+                while bloco := resposta.read(1 << 20):
+                    f.write(bloco)
+                    soma.update(bloco)
+                    total += len(bloco)
+            if esperado and esperado.isdigit() and int(esperado) != total:
+                raise ConnectionError(f"transferência incompleta ({total} de {esperado} bytes)")
+            os.replace(parcial, ficheiro)
+            return soma.hexdigest()
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 410):
+                parcial.unlink(missing_ok=True)
+                raise
+            erro = e
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+            erro = e
+        time.sleep(2 ** (n + 1))
+    parcial.unlink(missing_ok=True)
+    raise ConnectionError(f"{url}: {erro}")
 
 
 def _existe(url: str) -> bool:
@@ -74,6 +114,7 @@ def _sdist(nome: str, versao: str) -> str | None:
 def enderecos(indices: list[Path]) -> dict[str, list[tuple[str, str]]]:
     """Para cada sistema, a lista (componente, endereço) do código-fonte, sem repetições."""
     por_sistema: dict[str, list[tuple[str, str]]] = {}
+    CARGO.clear()
     for indice in indices:
         dados = json.loads(indice.read_text(encoding="utf-8"))
         sistema = dados["sistema"]
@@ -81,6 +122,8 @@ def enderecos(indices: list[Path]) -> dict[str, list[tuple[str, str]]]:
         vistos = {u for _, u in lista}
         for comp in dados["componentes"]:
             rotulo = f"{comp['nome']} {comp['versao']}"
+            if comp.get("cargo"):
+                CARGO.setdefault(sistema, set()).add(rotulo)
             for fonte in comp["fontes"]:
                 if fonte.get("tipo") == "pypi":
                     url = _sdist(fonte["nome"], fonte["versao"]) or \
@@ -91,6 +134,73 @@ def enderecos(indices: list[Path]) -> dict[str, list[tuple[str, str]]]:
                     vistos.add(url)
                     lista.append((rotulo, url))
     return por_sistema
+
+
+# Componentes com bibliotecas Rust, por sistema (preenchido por enderecos()).
+CARGO: dict[str, set[str]] = {}
+
+
+def crates(rotulo: str, arquivos: list[Path], destino: Path) -> Path:
+    """Código-fonte das bibliotecas Rust (crates) que o componente compila, num .tar.
+
+    Abre o código-fonte do componente (arquivo do MSYS2 ou original), repete as alterações ao
+    Cargo.lock que a receita do MSYS2 faz em prepare() e usa «cargo vendor --locked» para
+    descarregar exatamente as versões compiladas. O .tar leva o Cargo.lock usado, o código
+    de cada crate (com os textos das licenças) e uma lista com o nome, a versão e a licença."""
+    if not shutil.which("cargo"):
+        raise RuntimeError("falta o cargo (Rust) para juntar as bibliotecas Rust")
+    trabalho = Path(tempfile.mkdtemp(prefix="arruma-cargo-"))
+    try:
+        comandos: list[str] = []
+        originais: list[Path] = []
+        for arquivo in arquivos:
+            if arquivo.name.endswith((".src.tar.zst", ".src.tar.gz", ".src.tar.xz")):
+                pasta = trabalho / "receita"
+                pasta.mkdir(exist_ok=True)
+                subprocess.run(["tar", "-xaf", str(arquivo), "-C", str(pasta)], check=True)
+                for pkgbuild in pasta.rglob("PKGBUILD"):
+                    texto = pkgbuild.read_text(encoding="utf-8", errors="replace")
+                    comandos += [c.strip() for c in re.findall(r"^\s*cargo update\s+([^\n#]+)", texto, re.M)
+                                 if "$" not in c]
+                originais += [f for f in pasta.rglob("*") if f.is_file() and
+                              re.search(r"\.(tar\.(xz|gz|bz2|zst)|tgz)$", f.name) and
+                              not f.name.endswith((".src.tar.zst", ".src.tar.gz", ".src.tar.xz"))]
+            elif re.search(r"\.(tar\.(xz|gz|bz2)|tgz)$", arquivo.name):
+                originais.append(arquivo)
+        codigo = trabalho / "codigo"
+        codigo.mkdir()
+        for original in originais:
+            subprocess.run(["tar", "-xaf", str(original), "-C", str(codigo)], check=True)
+        locks = sorted(codigo.glob("*/Cargo.lock"))
+        if not locks:
+            raise RuntimeError(f"{rotulo}: o código-fonte não tem Cargo.lock")
+        raiz = locks[0].parent
+        for cmd in [["cargo", "update", *shlex.split(a)] for a in comandos] + \
+                [["cargo", "vendor", "--locked", "--versioned-dirs", "vendor"]]:
+            feito = subprocess.run(cmd, cwd=raiz, capture_output=True, text=True)
+            if feito.returncode:
+                raise RuntimeError(f"{' '.join(cmd)}: {feito.stderr.strip()[-800:]}")
+        import tomllib  # Python 3.11 ou mais recente (o servidor que publica as versões tem)
+
+        lista = []
+        for manifesto in sorted((raiz / "vendor").glob("*/Cargo.toml")):
+            pacote = tomllib.loads(manifesto.read_text(encoding="utf-8")).get("package", {})
+            licenca = pacote.get("license") or f"ver {pacote.get('license-file', '?')}"
+            lista.append(f"{pacote.get('name', '?')} {pacote.get('version', '?')}: {licenca}")
+        nome = re.sub(r"[^A-Za-z0-9.+-]+", "-", rotulo)
+        (raiz / "CRATES.txt").write_text(
+            f"Bibliotecas Rust (crates) do Cargo.lock de {rotulo}, com a licença de cada uma. Inclui as que\n"
+            "ficam dentro da biblioteca compilada e as que só servem para a compilar ou testar.\n"
+            "O código e os textos das licenças estão na pasta vendor/.\n\n" + "\n".join(lista) + "\n",
+            encoding="utf-8")
+        saida = destino / f"{nome}-crates.tar.gz"
+        with tarfile.open(saida, "w:gz") as tar:
+            for parte in ("CRATES.txt", "Cargo.lock", "vendor"):
+                tar.add(raiz / parte, arcname=f"{nome}-crates/{parte}")
+        print(f"ok    {rotulo}: {len(lista)} bibliotecas Rust em {saida.name}")
+        return saida
+    finally:
+        shutil.rmtree(trabalho, ignore_errors=True)
 
 
 def _alternativas(url: str) -> list[str]:
@@ -109,7 +219,33 @@ def verificar(por_sistema: dict[str, list[tuple[str, str]]]) -> int:
             ok = url.startswith("http") and any(_existe(u) for u in _alternativas(url))
             print(f"{'ok   ' if ok else 'FALTA'} {rotulo}: {url}")
             falhas += not ok
+        for rotulo in sorted(CARGO.get(sistema, ())):
+            with tempfile.TemporaryDirectory(prefix="arruma-verificar-") as tmp:
+                try:
+                    arquivos = [obtido[0] for obtido in (_obter(u, Path(tmp)) for r, u in lista if r == rotulo)
+                                if not isinstance(obtido, str)]
+                    crates(rotulo, [Path(tmp) / a for a in arquivos], Path(tmp))
+                except (RuntimeError, subprocess.CalledProcessError, OSError) as e:
+                    print(f"FALTA {rotulo}: bibliotecas Rust ({e})")
+                    falhas += 1
     return falhas
+
+
+def _obter(url: str, pasta: Path) -> tuple[str, str, str] | str:
+    """Descarrega o código-fonte para pasta: (ficheiro, SHA-256, endereço usado) ou o motivo da falha."""
+    if "://" not in url:
+        return "endereço inválido"
+    for alternativa in _alternativas(url):
+        nome = Path(urllib.parse.unquote(urllib.parse.urlparse(alternativa).path)).name or "fonte"
+        if (pasta / nome).exists():
+            nome = hashlib.sha256(alternativa.encode()).hexdigest()[:8] + "-" + nome
+        try:
+            return nome, _transferir(alternativa, pasta / nome), alternativa
+        except urllib.error.HTTPError:
+            continue  # 404/410: tenta a alternativa seguinte
+        except ConnectionError as e:
+            return str(e)
+    return "não existe"
 
 
 def descarregar(por_sistema: dict[str, list[tuple[str, str]]], saida: Path, versao: str) -> int:
@@ -119,26 +255,27 @@ def descarregar(por_sistema: dict[str, list[tuple[str, str]]], saida: Path, vers
         pasta = saida / f"fontes-{sistema}"
         pasta.mkdir(parents=True, exist_ok=True)
         somas = []
+        obtidos: dict[str, list[Path]] = {}
         for rotulo, url in lista:
-            for alternativa in _alternativas(url) if url.startswith("http") else []:
-                nome = Path(urllib.parse.urlparse(alternativa).path).name or "fonte"
-                if (pasta / nome).exists():
-                    nome = hashlib.sha256(alternativa.encode()).hexdigest()[:8] + "-" + nome
-                try:
-                    with _pedido(alternativa) as resposta, open(pasta / nome, "wb") as f:
-                        soma = hashlib.sha256()
-                        while bloco := resposta.read(1 << 20):
-                            f.write(bloco)
-                            soma.update(bloco)
-                    somas.append(f"{soma.hexdigest()}  {nome}  ({rotulo}; {alternativa})")
-                    print(f"ok    {rotulo}: {nome}")
-                    break
-                except urllib.error.HTTPError as e:
-                    if e.code not in (404, 410):
-                        raise
-            else:
-                print(f"FALTA {rotulo}: {url}")
+            obtido = _obter(url, pasta)
+            if isinstance(obtido, str):
+                print(f"FALTA {rotulo}: {url} ({obtido})")
                 falhas += 1
+                continue
+            nome, soma, alternativa = obtido
+            # Linhas «#» com a origem; as outras no formato de sha256sum -c.
+            somas += [f"# {rotulo}; {alternativa}", f"{soma}  {nome}"]
+            obtidos.setdefault(rotulo, []).append(pasta / nome)
+            print(f"ok    {rotulo}: {nome}")
+        for rotulo in sorted(CARGO.get(sistema, ())):
+            try:
+                tar_crates = crates(rotulo, obtidos.get(rotulo, []), pasta)
+            except (RuntimeError, subprocess.CalledProcessError, OSError) as e:
+                print(f"FALTA {rotulo}: bibliotecas Rust ({e})")
+                falhas += 1
+                continue
+            soma = hashlib.sha256(tar_crates.read_bytes()).hexdigest()
+            somas += [f"# {rotulo}: bibliotecas Rust (cargo vendor --locked)", f"{soma}  {tar_crates.name}"]
         (pasta / "SHA256SUMS.txt").write_text("\n".join(somas) + "\n", encoding="utf-8")
         arquivo = saida / f"Arruma-{versao}-codigo-fonte-terceiros-{sistema}.tar"
         with tarfile.open(arquivo, "w") as tar:
