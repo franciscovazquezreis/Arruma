@@ -371,8 +371,13 @@ class Pip:
         self.dono: dict[str, importlib.metadata.Distribution] = {}
         self.por_chave: dict[str, importlib.metadata.Distribution] = {}
         self.sites: set[str] = set()
+        self.por_modulo: dict[tuple[str, str], importlib.metadata.Distribution] = {}
         for dist in importlib.metadata.distributions():
             self._registar(dist)
+
+    @staticmethod
+    def _nome(nome: str) -> str:
+        return re.sub(r"[-_.]+", "_", nome).lower()
 
     def _registar(self, dist: importlib.metadata.Distribution) -> None:
         for f in dist.files or []:
@@ -393,14 +398,33 @@ class Pip:
             return
         self.sites.add(site)
         for info in sorted(Path(site).glob("*.dist-info")):
-            self._registar(importlib.metadata.PathDistribution(info))
+            dist = importlib.metadata.PathDistribution(info)
+            self._registar(dist)
+            # Os pacotes do Homebrew não trazem RECORD: fica o nome do módulo (ou o top_level.txt).
+            modulos = (dist.read_text("top_level.txt") or "").split() or [dist.metadata["Name"] or ""]
+            for modulo in modulos:
+                self.por_modulo.setdefault((site, self._nome(modulo)), dist)
+
+    def _por_modulo(self, real: str) -> importlib.metadata.Distribution | None:
+        partes = real.split("/")
+        if "site-packages" not in partes:
+            return None
+        fim = len(partes) - partes[::-1].index("site-packages")
+        if fim >= len(partes):
+            return None
+        site, primeiro = "/".join(partes[:fim]), partes[fim]
+        if primeiro.endswith(".dist-info"):
+            return None
+        modulo = primeiro.split(".", 1)[0] if primeiro.endswith((".py", ".so", ".pyd")) or ".cpython-" in primeiro \
+            else primeiro
+        return self.por_modulo.get((site, self._nome(modulo)))
 
     def pacote_de(self, caminho: str) -> str | None:
         real = _normalizar(caminho)
         dist = self.dono.get(real)
         if dist is None:
             self._site_de(real)
-            dist = self.dono.get(real)
+            dist = self.dono.get(real) or self._por_modulo(real)
         if dist is None:
             return None
         chave = f"{dist.metadata['Name']}/{dist.version}"
@@ -431,6 +455,10 @@ class Pip:
             if partes and partes[0].endswith(".dist-info") and (
                     "licenses" in partes or NOME_LICENCA.match(partes[-1])):
                 textos.append(str(dist.locate_file(f)))
+        info = getattr(dist, "_path", None)  # pasta .dist-info (sem RECORD, como no Homebrew)
+        if not textos and info and Path(info).is_dir():
+            textos = [str(f) for f in sorted(Path(info).rglob("*")) if f.is_file() and
+                      ("licenses" in f.relative_to(info).parts or NOME_LICENCA.match(f.name))]
         return Componente(chave=f"pypi:{chave}", nome=meta["Name"], versao=versao,
                           licenca=_corrigir_licenca(meta["Name"].lower(), licenca), origem=self.origem,
                           pagina=pagina, fontes=[{"tipo": "pypi", "nome": meta["Name"], "versao": versao}],

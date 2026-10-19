@@ -192,9 +192,13 @@ class InventoryTests(unittest.TestCase):
         escrever(info / "METADATA", "Metadata-Version: 2.4\nName: typing_extensions\nVersion: 4.15.0\n"
                                     "License-Expression: PSF-2.0\nLicense-File: LICENSE\n")
         escrever(info / "licenses" / "LICENSE", "A. HISTORY OF THE SOFTWARE")
-        escrever(info / "RECORD", "typing_extensions.py,,\ntyping_extensions-4.15.0.dist-info/METADATA,,\n"
-                                  "typing_extensions-4.15.0.dist-info/licenses/LICENSE,,\n")
+        # Como no Homebrew: sem RECORD, só METADATA e as licenças.
+        outro = escrever(site / "cryptography" / "hazmat" / "_oid.py", "# módulo")
+        escrever(site / "cryptography-50.0.1.dist-info" / "METADATA",
+                 "Metadata-Version: 2.4\nName: cryptography\nVersion: 50.0.1\nLicense-Expression: Apache-2.0 OR BSD-3-Clause\n")
         r = terceiros.Pip()
+        self.assertEqual(r.pacote_de(str(outro)), "cryptography/50.0.1")
+        self.assertIsNone(r.pacote_de(str(escrever(site / "gi" / "__init__.py"))))  # fica para o Homebrew
         chave = r.pacote_de(str(modulo))
         self.assertEqual(chave, "typing_extensions/4.15.0")
         comp = r.componente(chave)
