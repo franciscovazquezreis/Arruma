@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import http.client
+import io
 import json
 import os
 import re
@@ -142,58 +143,118 @@ def enderecos(indices: list[Path]) -> dict[str, list[tuple[str, str]]]:
 CARGO: dict[str, set[str]] = {}
 
 
-def crates(rotulo: str, arquivos: list[Path], destino: Path) -> Path:
-    """Código-fonte das bibliotecas Rust (crates) que o componente compila, num .tar.
+def _extrair(arquivo: Path, destino: Path) -> None:
+    """Abre um .tar (gz, xz, bz2 ou zst) com o Python, sem depender do tar do sistema (no MSYS2,
+    o tar é um programa POSIX que lê mal os caminhos do Windows)."""
+    destino.mkdir(parents=True, exist_ok=True)
+    if arquivo.name.endswith(".zst"):
+        dados: io.BytesIO | None = None
+        try:
+            from compression import zstd  # Python 3.14 ou mais recente
+            dados = io.BytesIO(zstd.decompress(arquivo.read_bytes()))
+        except ImportError:
+            if not shutil.which("zstd"):
+                raise RuntimeError(f"falta o zstd para abrir {arquivo.name}") from None
+            with open(arquivo, "rb") as entrada:
+                dados = io.BytesIO(subprocess.run(["zstd", "-dc"], stdin=entrada, capture_output=True,
+                                                  check=True).stdout)
+        tar = tarfile.open(fileobj=dados)
+    else:
+        tar = tarfile.open(arquivo)
+    with tar:
+        if hasattr(tarfile, "data_filter"):
+            tar.extractall(destino, filter="data")
+        else:  # Python sem a correção de segurança de 2023; as fontes vêm de endereços conhecidos
+            tar.extractall(destino)
+
+
+def _vendorizar(rotulo: str, arquivos: list[Path], trabalho: Path) -> tuple[Path, bool]:
+    """Descarrega para <raiz>/vendor as crates exatas que o componente compila.
 
     Abre o código-fonte do componente (arquivo do MSYS2 ou original), repete as alterações ao
-    Cargo.lock que a receita do MSYS2 faz em prepare() e usa «cargo vendor --locked» para
-    descarregar exatamente as versões compiladas. O .tar leva o Cargo.lock usado, o código
-    de cada crate (com os textos das licenças) e uma lista com o nome, a versão e a licença."""
+    Cargo.lock que a receita do MSYS2 faz em prepare() e usa «cargo vendor --locked». Quando o
+    código-fonte não traz Cargo.lock (o libimagequant, por exemplo, resolve as versões no momento
+    em que é compilado), gera-se um agora. Devolve a raiz do projeto e se o Cargo.lock foi gerado."""
     if not shutil.which("cargo"):
         raise RuntimeError("falta o cargo (Rust) para juntar as bibliotecas Rust")
+    comandos: list[str] = []
+    originais: list[Path] = []
+    for arquivo in arquivos:
+        if arquivo.name.endswith((".src.tar.zst", ".src.tar.gz", ".src.tar.xz")):
+            pasta = trabalho / "receita"
+            _extrair(arquivo, pasta)
+            for pkgbuild in pasta.rglob("PKGBUILD"):
+                texto = pkgbuild.read_text(encoding="utf-8", errors="replace")
+                comandos += [c.strip() for c in re.findall(r"^\s*cargo update\s+([^\n#]+)", texto, re.M)
+                             if "$" not in c]
+            originais += [f for f in pasta.rglob("*") if f.is_file() and
+                          re.search(r"\.(tar\.(xz|gz|bz2|zst)|tgz)$", f.name) and
+                          not f.name.endswith((".src.tar.zst", ".src.tar.gz", ".src.tar.xz"))]
+        elif re.search(r"\.(tar\.(xz|gz|bz2)|tgz)$", arquivo.name):
+            originais.append(arquivo)
+    codigo = trabalho / "codigo"
+    for original in originais:
+        _extrair(original, codigo)
+    locks = sorted(codigo.glob("*/Cargo.lock"))
+    gerado = not locks
+    if gerado:
+        manifestos = sorted(codigo.glob("*/Cargo.toml"))
+        if not manifestos:
+            raise RuntimeError(f"{rotulo}: o código-fonte não tem Cargo.toml")
+        raiz = manifestos[0].parent
+        comandos_cargo = [["cargo", "generate-lockfile"]]
+    else:
+        raiz = locks[0].parent
+        comandos_cargo = [["cargo", "update", *shlex.split(a)] for a in comandos]
+    for cmd in comandos_cargo + [["cargo", "vendor", "--locked", "--versioned-dirs", "vendor"]]:
+        feito = subprocess.run(cmd, cwd=raiz, capture_output=True, text=True)
+        if feito.returncode:
+            raise RuntimeError(f"{' '.join(cmd)}: {feito.stderr.strip()[-800:]}")
+    return raiz, gerado
+
+
+def _pacote_cargo(texto: str) -> dict:
+    """Secção [package] de um Cargo.toml (com o tomllib, ou à mão no Python 3.10)."""
+    try:
+        import tomllib
+        return tomllib.loads(texto).get("package", {})
+    except ImportError:
+        secao = re.search(r"^\[package\]\s*$(.*?)(?=^\[|\Z)", texto, re.M | re.S)
+        campos = re.findall(r'^([\w-]+)\s*=\s*"((?:[^"\\]|\\.)*)"', secao.group(1) if secao else "", re.M)
+        return dict(campos)
+
+
+def _crates_de(raiz: Path) -> list[dict]:
+    """Nome, versão, licença e pasta de cada crate em <raiz>/vendor."""
+    lista = []
+    for manifesto in sorted((raiz / "vendor").glob("*/Cargo.toml")):
+        pacote = _pacote_cargo(manifesto.read_text(encoding="utf-8"))
+        lista.append({"nome": pacote.get("name", "?"), "versao": pacote.get("version", "?"),
+                      "licenca": pacote.get("license") or "",
+                      "ficheiro_licenca": pacote.get("license-file") or "", "pasta": manifesto.parent})
+    return lista
+
+
+_AVISO_LOCK_GERADO = ("O código-fonte deste componente não traz Cargo.lock: as versões foram resolvidas "
+                      "quando o Arruma foi\nconstruído e podem diferir ligeiramente das que o "
+                      "distribuidor compilou.\n")
+
+
+def crates(rotulo: str, arquivos: list[Path], destino: Path) -> Path:
+    """Código-fonte das bibliotecas Rust (crates) que o componente compila, num .tar.gz com o
+    Cargo.lock usado, o código de cada crate (com os textos das licenças) e uma lista com o
+    nome, a versão e a licença de cada uma."""
     trabalho = Path(tempfile.mkdtemp(prefix="arruma-cargo-"))
     try:
-        comandos: list[str] = []
-        originais: list[Path] = []
-        for arquivo in arquivos:
-            if arquivo.name.endswith((".src.tar.zst", ".src.tar.gz", ".src.tar.xz")):
-                pasta = trabalho / "receita"
-                pasta.mkdir(exist_ok=True)
-                subprocess.run(["tar", "-xaf", str(arquivo), "-C", str(pasta)], check=True)
-                for pkgbuild in pasta.rglob("PKGBUILD"):
-                    texto = pkgbuild.read_text(encoding="utf-8", errors="replace")
-                    comandos += [c.strip() for c in re.findall(r"^\s*cargo update\s+([^\n#]+)", texto, re.M)
-                                 if "$" not in c]
-                originais += [f for f in pasta.rglob("*") if f.is_file() and
-                              re.search(r"\.(tar\.(xz|gz|bz2|zst)|tgz)$", f.name) and
-                              not f.name.endswith((".src.tar.zst", ".src.tar.gz", ".src.tar.xz"))]
-            elif re.search(r"\.(tar\.(xz|gz|bz2)|tgz)$", arquivo.name):
-                originais.append(arquivo)
-        codigo = trabalho / "codigo"
-        codigo.mkdir()
-        for original in originais:
-            subprocess.run(["tar", "-xaf", str(original), "-C", str(codigo)], check=True)
-        locks = sorted(codigo.glob("*/Cargo.lock"))
-        if not locks:
-            raise RuntimeError(f"{rotulo}: o código-fonte não tem Cargo.lock")
-        raiz = locks[0].parent
-        for cmd in [["cargo", "update", *shlex.split(a)] for a in comandos] + \
-                [["cargo", "vendor", "--locked", "--versioned-dirs", "vendor"]]:
-            feito = subprocess.run(cmd, cwd=raiz, capture_output=True, text=True)
-            if feito.returncode:
-                raise RuntimeError(f"{' '.join(cmd)}: {feito.stderr.strip()[-800:]}")
-        import tomllib  # Python 3.11 ou mais recente (o servidor que publica as versões tem)
-
-        lista = []
-        for manifesto in sorted((raiz / "vendor").glob("*/Cargo.toml")):
-            pacote = tomllib.loads(manifesto.read_text(encoding="utf-8")).get("package", {})
-            licenca = pacote.get("license") or f"ver {pacote.get('license-file', '?')}"
-            lista.append(f"{pacote.get('name', '?')} {pacote.get('version', '?')}: {licenca}")
+        raiz, gerado = _vendorizar(rotulo, arquivos, trabalho)
+        lista = [f"{c['nome']} {c['versao']}: {c['licenca'] or 'ver ' + (c['ficheiro_licenca'] or '?')}"
+                 for c in _crates_de(raiz)]
         nome = re.sub(r"[^A-Za-z0-9.+-]+", "-", rotulo)
         (raiz / "CRATES.txt").write_text(
             f"Bibliotecas Rust (crates) do Cargo.lock de {rotulo}, com a licença de cada uma. Inclui as que\n"
             "ficam dentro da biblioteca compilada e as que só servem para a compilar ou testar.\n"
-            "O código e os textos das licenças estão na pasta vendor/.\n\n" + "\n".join(lista) + "\n",
+            "O código e os textos das licenças estão na pasta vendor/.\n"
+            + (_AVISO_LOCK_GERADO if gerado else "") + "\n" + "\n".join(lista) + "\n",
             encoding="utf-8")
         saida = destino / f"{nome}-crates.tar.gz"
         with tarfile.open(saida, "w:gz") as tar:
@@ -201,6 +262,69 @@ def crates(rotulo: str, arquivos: list[Path], destino: Path) -> Path:
                 tar.add(raiz / parte, arcname=f"{nome}-crates/{parte}")
         print(f"ok    {rotulo}: {len(lista)} bibliotecas Rust em {saida.name}")
         return saida
+    finally:
+        shutil.rmtree(trabalho, ignore_errors=True)
+
+
+# Ficheiros com o texto da licença ou os avisos de copyright, na raiz de cada crate.
+_TEXTO_CRATE = re.compile(r"^(licen[cs]e|copying|copyright|notice|unlicense|authors)", re.I)
+
+
+def copiar_textos_crates(raiz: Path, destino: Path, rotulo: str, gerado: bool = False) -> int:
+    """Copia para destino os textos das licenças de cada crate em <raiz>/vendor, sem repetir os
+    que são iguais (o texto da Apache-2.0, por exemplo), e escreve destino/CRATES.txt com a lista.
+    Devolve o número de crates."""
+    textos = destino / "textos"
+    textos.mkdir(parents=True, exist_ok=True)
+    vistos: dict[str, str] = {}
+    linhas = []
+    sem_texto: set[str] = set()
+    lista = _crates_de(raiz)
+    for crate in lista:
+        pasta: Path = crate["pasta"]
+        candidatos = [f for f in sorted(pasta.iterdir()) if f.is_file() and _TEXTO_CRATE.match(f.name)]
+        if crate["ficheiro_licenca"]:
+            extra = (pasta / crate["ficheiro_licenca"]).resolve()
+            if extra.is_file() and extra.is_relative_to(pasta.resolve()) and extra not in candidatos:
+                candidatos.append(extra)
+        usados = []
+        for ficheiro in candidatos:
+            dados = ficheiro.read_bytes()
+            soma = hashlib.sha256(dados).hexdigest()[:12]
+            if soma not in vistos:
+                nome = f"{soma}-{re.sub(r'[^A-Za-z0-9._-]+', '_', ficheiro.name)}"
+                (textos / nome).write_bytes(dados)
+                vistos[soma] = f"textos/{nome}"
+            usados.append(vistos[soma])
+        licenca = crate["licenca"] or "ver o ficheiro da licença"
+        if not usados:
+            sem_texto.add(licenca)
+        detalhe = ", ".join(usados) if usados else "o pacote não traz o texto; ver ../../textos-padrao"
+        linhas.append(f"{crate['nome']} {crate['versao']}: {licenca}\n  {detalhe}")
+    (destino / "CRATES.txt").write_text(
+        f"Bibliotecas Rust (crates) do Cargo.lock de {rotulo}, com a licença de cada uma e os textos\n"
+        "que cada pacote traz (os textos iguais aparecem uma só vez, na pasta textos). Inclui as que\n"
+        "ficam dentro da biblioteca compilada e as que só servem para a compilar ou testar.\n"
+        + (_AVISO_LOCK_GERADO if gerado else "") + "\n" + "\n".join(linhas) + "\n",
+        encoding="utf-8")
+    # Para o terceiros.py juntar aos textos-padrao as licenças das crates que não trazem o texto.
+    (destino / "sem-texto.json").write_text(json.dumps(sorted(sem_texto)), encoding="utf-8")
+    return len(lista)
+
+
+def textos_crates(rotulo: str, urls: list[str], destino: Path) -> int:
+    """Descarrega o código-fonte do componente, junta as crates e copia os textos das licenças
+    para destino (usado pelo arruma.spec, para irem dentro do instalador)."""
+    trabalho = Path(tempfile.mkdtemp(prefix="arruma-crates-"))
+    try:
+        arquivos = []
+        for url in urls:
+            obtido = _obter(url, trabalho)
+            if isinstance(obtido, str):
+                raise RuntimeError(f"{rotulo}: não foi possível descarregar {url} ({obtido})")
+            arquivos.append(trabalho / obtido[0])
+        raiz, gerado = _vendorizar(rotulo, arquivos, trabalho / "cargo")
+        return copiar_textos_crates(raiz, destino, rotulo, gerado)
     finally:
         shutil.rmtree(trabalho, ignore_errors=True)
 

@@ -353,5 +353,112 @@ class SourceDownloadTests(unittest.TestCase):
         self.assertEqual([p.name for p in (tmp / "saida").iterdir()], [f"{pasta}.tar"])  # só fica o .tar
 
 
+
+def vendor_de_teste(raiz: Path) -> Path:
+    """Pasta vendor/ como a do «cargo vendor --versioned-dirs», com três crates."""
+    apache = "Apache License\nVersion 2.0, January 2004\n"
+    escrever(raiz / "vendor" / "foo-1.0.0" / "Cargo.toml",
+             '[package]\nname = "foo"\nversion = "1.0.0"\nlicense = "MIT OR Apache-2.0"\n\n[dependencies]\nx = "1"\n')
+    escrever(raiz / "vendor" / "foo-1.0.0" / "LICENSE-MIT", "Copyright (c) 2024 Foo\nPermission is hereby granted")
+    escrever(raiz / "vendor" / "foo-1.0.0" / "LICENSE-APACHE", apache)
+    escrever(raiz / "vendor" / "foo-1.0.0" / "src" / "lib.rs", "// código")
+    escrever(raiz / "vendor" / "bar-2.0.0" / "Cargo.toml",
+             '[package]\nname = "bar"\nversion = "2.0.0"\nlicense = "Apache-2.0"\n')
+    escrever(raiz / "vendor" / "bar-2.0.0" / "LICENSE-APACHE", apache)  # igual ao do foo
+    escrever(raiz / "vendor" / "baz-0.1.0" / "Cargo.toml",
+             '[package]\nname = "baz"\nversion = "0.1.0"\nlicense = "MIT"\n')  # sem texto
+    return raiz
+
+
+class RustCrateTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-crates-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_crate_texts_are_copied_once_and_listed(self):
+        import fontes
+        raiz = vendor_de_teste(self.tmp / "projeto")
+        destino = self.tmp / "crates"
+        self.assertEqual(fontes.copiar_textos_crates(raiz, destino, "librsvg 2.62.3"), 3)
+        textos = sorted(p.name for p in (destino / "textos").iterdir())
+        self.assertEqual(len(textos), 2)  # o texto da Apache-2.0 aparece uma só vez
+        lista = (destino / "CRATES.txt").read_text(encoding="utf-8")
+        self.assertIn("foo 1.0.0: MIT OR Apache-2.0", lista)
+        self.assertIn("baz 0.1.0: MIT\n  o pacote não traz o texto; ver ../../textos-padrao", lista)
+        self.assertNotIn("Cargo.lock: as versões", lista)
+        self.assertEqual(json.loads((destino / "sem-texto.json").read_text(encoding="utf-8")), ["MIT"])
+
+    def test_cargo_toml_without_tomllib(self):
+        import fontes
+        from unittest import mock
+        texto = '[package]\nname = "foo"\nversion = "1.0.0"\nlicense = "MIT OR Apache-2.0"\n\n[lib]\nname = "x"\n'
+        with mock.patch.dict(sys.modules, {"tomllib": None}):  # como no Python 3.10
+            pacote = fontes._pacote_cargo(texto)
+        self.assertEqual((pacote["name"], pacote["version"], pacote["license"]), ("foo", "1.0.0", "MIT OR Apache-2.0"))
+
+    def test_extract_without_system_tar(self):
+        import tarfile
+        import fontes
+        origem = escrever(self.tmp / "src" / "pacote-1.0" / "Cargo.lock", "# lock")
+        arquivo = self.tmp / "pacote-1.0.tar.gz"
+        with tarfile.open(arquivo, "w:gz") as tar:
+            tar.add(origem.parent, arcname="pacote-1.0")
+        fontes._extrair(arquivo, self.tmp / "aberto")
+        self.assertTrue((self.tmp / "aberto" / "pacote-1.0" / "Cargo.lock").is_file())
+
+    def test_standard_texts_for_crates_without_their_own(self):
+        self.assertEqual(terceiros._textos_padrao_crates(["MIT", "Apache-2.0/MIT", "MPL-2.0", "MIT-0"]),
+                         ["MIT.txt", "Apache-2.0.txt", "MPL-2.0.txt"])
+        self.assertEqual(terceiros._textos_padrao_crates(["BSD-2-Clause"]), ["BSD-2-Clause.txt"])
+        for nome in ("MIT.txt", "BSD-2-Clause.txt"):
+            self.assertTrue((terceiros.TEXTOS_PADRAO / nome).is_file(), nome)
+
+    def test_notice_ships_crate_texts(self):
+        import fontes
+        crates = self.tmp / "trabalho" / "librsvg"
+        fontes.copiar_textos_crates(vendor_de_teste(self.tmp / "projeto"), crates, "librsvg 2.62.3")
+        projeto = self.tmp / "arruma"
+        shutil.copyfile(RAIZ / "LICENSE", escrever(projeto / "LICENSE"))
+        comp = terceiros.Componente(chave="h:librsvg", nome="librsvg", versao="2.62.3", licenca="LGPL-2.1-or-later",
+                                    origem="homebrew", cargo=True, crates=str(crates), n_crates=3)
+        entradas = terceiros.escrever({"h:librsvg": comp}, self.tmp / "licencas", "0.2.0", "macos", projeto,
+                                      "etiqueta v0.2.0", True)
+        leia = " ".join((self.tmp / "licencas" / "LEIA-ME.txt").read_text(encoding="utf-8").split())
+        self.assertIn("Bibliotecas Rust: librsvg/crates/CRATES.txt (3 crates", leia)
+        self.assertIn("está em librsvg/crates", leia)
+        self.assertIn("librsvg-2.62.3-crates.tar.gz", leia)
+        self.assertTrue((self.tmp / "licencas" / "textos-padrao" / "MIT.txt").is_file())
+        destinos = {d for d, _src, _tipo in entradas}
+        self.assertIn("licencas/librsvg/crates/CRATES.txt", destinos)
+
+    def test_crates_are_collected_once_per_version_and_failures_stop_ci(self):
+        import fontes
+        from unittest import mock
+        def comp(chave, nome):
+            return terceiros.Componente(chave=chave, nome=nome, versao="50.0.1", licenca="Apache-2.0",
+                                        origem="pypi", cargo=True, fontes=[{"tipo": "url", "url": "https://x/y.tar.gz"}])
+        componentes = {"pypi:c": comp("pypi:c", "cryptography"), "homebrew:c": comp("homebrew:c", "cryptography")}
+        chamadas = []
+        def falso(rotulo, urls, destino):
+            chamadas.append(rotulo)
+            destino.mkdir(parents=True)
+            return 7
+        with mock.patch.object(fontes, "textos_crates", falso):
+            terceiros.juntar_textos_crates(componentes, self.tmp / "crates")
+        self.assertEqual(chamadas, ["cryptography 50.0.1"])
+        self.assertEqual({c.n_crates for c in componentes.values()}, {7})
+        def avaria(rotulo, urls, destino):
+            raise RuntimeError("sem rede")
+        outro = {"pypi:c": comp("pypi:c", "cryptography")}
+        with mock.patch.object(fontes, "textos_crates", avaria), \
+                mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
+            with self.assertRaises(SystemExit):
+                terceiros.juntar_textos_crates(outro, self.tmp / "crates2")
+        with mock.patch.object(fontes, "textos_crates", avaria), \
+                mock.patch.dict(os.environ, {"GITHUB_ACTIONS": ""}):
+            terceiros.juntar_textos_crates(outro, self.tmp / "crates3")
+        self.assertEqual(outro["pypi:c"].crates, "")
+
+
 if __name__ == "__main__":
     unittest.main()

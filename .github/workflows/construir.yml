@@ -130,7 +130,11 @@ jobs:
       - name: Testes com o Python do pacote
         run: python -m unittest discover -s tests
       - name: Construir com o PyInstaller
-        run: pyinstaller packaging/pyinstaller/arruma.spec --noconfirm --clean
+        run: |
+          # O cargo do servidor (fora do MSYS2) junta os textos das licenças das bibliotecas Rust.
+          export PATH="$PATH:$(cygpath -u "${CARGO_HOME:-$USERPROFILE/.cargo}")/bin"
+          cargo --version
+          pyinstaller packaging/pyinstaller/arruma.spec --noconfirm --clean
       - name: Autoteste da versão empacotada
         shell: pwsh
         run: |
@@ -196,7 +200,9 @@ jobs:
           # A assinatura ad hoc do .app tem de cobrir tudo, incluindo as licenças de terceiros.
           PYINSTALLER_STRICT_BUNDLE_CODESIGN_ERROR: "1"
           PYINSTALLER_VERIFY_BUNDLE_SIGNATURE: "1"
-        run: venv/bin/pyinstaller packaging/pyinstaller/arruma.spec --noconfirm --clean
+        run: |
+          cargo --version  # junta os textos das licenças das bibliotecas Rust
+          venv/bin/pyinstaller packaging/pyinstaller/arruma.spec --noconfirm --clean
       - name: Autoteste da versão empacotada
         run: |
           dist/Arruma.app/Contents/MacOS/Arruma --self-test="$PWD/autoteste.txt"

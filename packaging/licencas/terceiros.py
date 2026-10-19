@@ -71,7 +71,7 @@ TEXTOS_POR_LICENCA = [
 ]
 
 # Componentes que incluem bibliotecas Rust (crates) descarregadas durante a compilação.
-COMPILADOS_COM_CARGO = {"librsvg", "rav1e"}
+COMPILADOS_COM_CARGO = {"librsvg", "rav1e", "libimagequant", "cryptography"}
 
 # Ficheiros criados durante a instalação ou a construção, que nenhum pacote declara.
 GERADOS = {
@@ -98,6 +98,8 @@ class Componente:
     notas: list[str] = field(default_factory=list)
     ficheiros: int = 0
     cargo: bool = False  # inclui bibliotecas Rust (crates) cujo código-fonte o fontes.py junta à parte
+    crates: str = ""  # pasta com os textos das licenças dessas crates (ver juntar_textos_crates())
+    n_crates: int = 0
 
 
 @dataclass
@@ -242,6 +244,17 @@ def _textos_padrao(licenca: str) -> list[str]:
     for marca, textos in TEXTOS_POR_LICENCA:
         if marca in licenca:
             nomes += [t for t in textos if t not in nomes]
+    return nomes
+
+
+def _textos_padrao_crates(licencas: list[str]) -> list[str]:
+    """Textos-padrão para as crates que não trazem o texto da licença (com a MIT e a BSD-2-Clause,
+    que nos componentes vêm sempre no próprio pacote)."""
+    nomes: list[str] = []
+    for licenca in licencas:
+        extra = (["MIT.txt"] if re.search(r"\bMIT\b(?![-\w])", licenca) else []) + \
+                (["BSD-2-Clause.txt"] if "BSD-2-Clause" in licenca else [])
+        nomes += [t for t in _textos_padrao(licenca) + extra if t not in nomes]
     return nomes
 
 
@@ -738,15 +751,26 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
         if copiados:
             bloco.append("  Textos: " + ", ".join(copiados))
         notas = list(comp.notas)
+        if comp.crates and Path(comp.crates).is_dir():
+            shutil.copytree(comp.crates, destino / pasta / "crates")
+            sem_texto = destino / pasta / "crates" / "sem-texto.json"
+            if sem_texto.is_file():
+                precisos.update(_textos_padrao_crates(json.loads(sem_texto.read_text(encoding="utf-8"))))
+            comp.crates = f"{pasta}/crates"
+            bloco.append(f"  Bibliotecas Rust: {comp.crates}/CRATES.txt ({comp.n_crates} crates, com os textos "
+                         "das licenças)")
         if comp.cargo:
             arquivo = re.sub(r"[^A-Za-z0-9.+-]+", "-", f"{comp.nome} {comp.versao}")  # como no fontes.py
-            onde = (f"O código-fonte de terceiros que acompanha esta versão traz o código e os textos das "
-                    f"licenças de todas elas (ficheiro {arquivo}-crates.tar.gz)." if publicada or execucao else
-                    "O código e os textos das licenças de todas elas estão no código-fonte de terceiros das "
-                    "versões publicadas (o packaging/licencas/fontes.py do Arruma junta-os).")
+            textos_txt = (f"A lista, com a licença de cada uma e os textos que cada pacote traz, está em "
+                          f"{comp.crates}. " if comp.crates else
+                          "Os textos das licenças delas não foram incluídos nesta construção. ")
+            onde = (f"O código delas está no código-fonte de terceiros que acompanha esta versão (ficheiro "
+                    f"{arquivo}-crates.tar.gz)." if publicada or execucao else
+                    "O código delas está no código-fonte de terceiros das versões publicadas (o "
+                    "packaging/licencas/fontes.py do Arruma junta-o).")
             notas.append(f"Inclui bibliotecas Rust (crates) ligadas estaticamente, listadas no Cargo.lock do "
-                         f"código-fonte do {comp.nome}; cada uma tem a sua licença (sobretudo MIT, Apache-2.0 "
-                         f"e MPL-2.0). {onde}")
+                         f"código-fonte do {comp.nome}; cada uma tem a sua licença (sobretudo MIT e Apache-2.0). "
+                         f"{textos_txt}{onde}")
         bloco += [f"  Nota: {n}" for n in notas]
         linhas_comp.append("\n".join(bloco))
     for nome in sorted(precisos):
@@ -836,5 +860,42 @@ def gerar(analise, destino: Path, projeto: Path, trabalho: Path, versao: str,
     for caminho, tipo in ficheiros_recolhidos(analise.binaries, analise.datas, analise.pure, analise.scripts):
         inv.atribuir(caminho, tipo)
     componentes = inv.componentes()
+    juntar_textos_crates(componentes, trabalho / "crates")
     entradas = escrever(componentes, destino, versao, sistema, projeto, referencia, publicada, execucao)
     return Resultado(componentes, inv.desconhecidos, entradas)
+
+
+def _url_fonte(fonte: dict) -> str:
+    if fonte.get("tipo") == "pypi":
+        import fontes
+        return fontes._sdist(fonte["nome"], fonte["versao"]) or ""
+    return fonte.get("url", "")
+
+
+def juntar_textos_crates(componentes: dict[str, Componente], trabalho: Path) -> None:
+    """Junta os textos das licenças das bibliotecas Rust de cada componente compilado com o cargo,
+    para irem dentro do instalador (a MIT e a Apache-2.0 pedem que acompanhem cada cópia).
+
+    No GitHub Actions, uma falha para a construção. Numa construção local sem cargo ou sem rede,
+    o aviso diz que esses textos não foram incluídos."""
+    import fontes
+
+    feitos: dict[tuple[str, str], tuple[str, int]] = {}
+    for comp in sorted(componentes.values(), key=lambda c: c.chave):
+        if not comp.cargo:
+            continue
+        chave = (comp.nome, comp.versao)  # o mesmo pacote pode vir do pip e do Homebrew
+        if chave not in feitos:
+            destino = trabalho / re.sub(r"[^A-Za-z0-9.+-]+", "-", f"{comp.nome}-{comp.versao}")
+            shutil.rmtree(destino, ignore_errors=True)
+            try:
+                urls = [u for u in (_url_fonte(f) for f in comp.fontes) if u]
+                n = fontes.textos_crates(f"{comp.nome} {comp.versao}", urls, destino)
+                feitos[chave] = (str(destino), n)
+                print(f"Bibliotecas Rust de {comp.nome} {comp.versao}: {n} crates")
+            except (RuntimeError, OSError, subprocess.CalledProcessError) as e:
+                if os.environ.get("GITHUB_ACTIONS") == "true":
+                    raise SystemExit(f"Não foi possível juntar os textos das bibliotecas Rust de {comp.nome}: {e}")
+                print(f"AVISO: textos das bibliotecas Rust de {comp.nome} não incluídos ({e})")
+                feitos[chave] = ("", 0)
+        comp.crates, comp.n_crates = feitos[chave]
