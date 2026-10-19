@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fluxo temporário: apaga as execuções anteriores do Actions (e, com elas, os artefactos, os
+# registos e os resumos) depois de o repositório passar a público. Corre-se uma vez à mão e
+# retira-se a seguir.
+name: Limpar execuções antigas
+
+on:
+  workflow_dispatch:
+    inputs:
+      manter:
+        description: Números das execuções a manter, separados por espaços
+        default: ""
+
+permissions:
+  actions: write
+
+jobs:
+  limpar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Apagar as execuções anteriores
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANTER: ${{ inputs.manter }}
+        run: |
+          [[ "$MANTER" =~ ^[0-9\ ]*$ ]] || { echo "::error::«manter» só pode ter números separados por espaços."; exit 1; }
+          manter=$(printf '%s\n' $MANTER "$GITHUB_RUN_ID" | jq -R 'tonumber' | jq -cs '.')
+          filtro=".workflow_runs[] | select(.id as \$i | $manter | index(\$i) | not)"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" --jq "$filtro | .id" > execucoes.txt
+          echo "A manter: $manter. A apagar: $(wc -l < execucoes.txt) execuções."
+          falhas=0
+          while read -r id; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$id" > /dev/null || falhas=$((falhas + 1))
+          done < execucoes.txt
+          restantes=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" --jq "$filtro | .id" | wc -l)
+          echo "Falhas: $falhas. Execuções que ficaram por apagar: $restantes."
+          test "$restantes" -eq 0
