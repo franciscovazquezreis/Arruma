@@ -226,8 +226,11 @@ def _pacote_cargo(texto: str) -> dict:
         return tomllib.loads(texto).get("package", {})
     except ImportError:
         secao = re.search(r"^\[package\]\s*$(.*?)(?=^\[|\Z)", texto, re.M | re.S)
-        campos = re.findall(r'^([\w-]+)\s*=\s*"((?:[^"\\]|\\.)*)"', secao.group(1) if secao else "", re.M)
-        return dict(campos)
+        corpo = secao.group(1) if secao else ""
+        campos: dict = dict(re.findall(r'^([\w-]+)\s*=\s*"((?:[^"\\]|\\.)*)"', corpo, re.M))
+        for nome, lista in re.findall(r"^([\w-]+)\s*=\s*\[([^\]]*)\]", corpo, re.M):  # listas simples
+            campos[nome] = re.findall(r'"((?:[^"\\]|\\.)*)"', lista)
+        return campos
 
 
 def _crates_de(raiz: Path) -> list[dict]:
