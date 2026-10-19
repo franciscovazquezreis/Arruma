@@ -20,10 +20,14 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/raiz" "$STAGE/scripts"
 ditto "$APP" "$STAGE/raiz/Arruma.app"
 
+pkgbuild --analyze --root "$STAGE/raiz" "$STAGE/componentes.plist" >/dev/null
 # Sem isto, o instalador procura o Arruma noutro sítio do disco e atualiza essa cópia, em vez
 # de instalar em /Applications.
-pkgbuild --analyze --root "$STAGE/raiz" "$STAGE/componentes.plist" >/dev/null
 plutil -replace 0.BundleIsRelocatable -bool NO "$STAGE/componentes.plist"
+# A comparação de versões é feita pelo verificar_versao() abaixo. Com a verificação do próprio
+# instalador, ele recusava-se em silêncio a pôr uma versão mais antiga por cima de uma mais
+# recente, depois de o preinstall já ter retirado a instalada.
+plutil -replace 0.BundleIsVersionChecked -bool NO "$STAGE/componentes.plist"
 
 cat > "$STAGE/scripts/preinstall" <<'EOF'
 #!/bin/sh

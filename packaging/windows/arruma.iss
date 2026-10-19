@@ -133,8 +133,9 @@ begin
                                     'Queres mesmo substituí-lo pela versão mais antiga?',
                                     mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
   else
-    Result := SuppressibleMsgBox('Vai atualizar o Arruma da versão ' + Instalada + ' para a ' + VersaoNova + '.' +
-                                 #13#10 + 'O histórico e as definições ficam.',
+    { Nenhuma linha pode começar por #: o pré-processador do Inno Setup lê-a como uma diretiva. }
+    Result := SuppressibleMsgBox('Vai atualizar o Arruma da versão ' + Instalada + ' para a ' + VersaoNova +
+                                 '.' + #13#10 + 'O histórico e as definições ficam.',
                                  mbInformation, MB_OKCANCEL, IDOK) = IDOK;
   end;
 end;

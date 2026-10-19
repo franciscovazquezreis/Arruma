@@ -255,6 +255,9 @@ jobs:
           PLIST=/Applications/Arruma.app/Contents/Info.plist
           versao() { /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$PLIST"; }
           instalar() { sudo installer -pkg "$PKG" -target / ; }
+          # A aplicação instalada tem de ter os mesmos ficheiros que a construída (fora o Info.plist alterado).
+          completa() { test "$(cd /Applications/Arruma.app && find . -type f | sort | shasum)" = \
+                            "$(cd dist/Arruma.app && find . -type f | sort | shasum)"; }
           sudo rm -rf /Applications/Arruma.app
           instalar
           test "$(versao)" = "$VERSAO"
@@ -262,13 +265,19 @@ jobs:
           cat autoteste-instalado.txt
           grep -q "RESULTADO: OK" autoteste-instalado.txt
           if instalar; then echo "::error::A mesma versão foi reinstalada."; exit 1; fi
+          completa
           sudo plutil -replace CFBundleShortVersionString -string 0.1.0 "$PLIST"
           instalar
           test "$(versao)" = "$VERSAO"
+          completa
+          # Versão mais recente instalada: na janela do instalador aparece o aviso e a pessoa decide;
+          # na linha de comandos não há pergunta, por isso o aviso fica no registo e a instalação segue.
           sudo plutil -replace CFBundleShortVersionString -string 9.9.9 "$PLIST"
-          if instalar; then echo "Versão mais recente: o instalador avisou e continuou (na linha de comandos não há pergunta)."
-          else echo "Versão mais recente: o instalador recusou."; fi
-          echo "Versão instalada no fim: $(versao)"
+          instalar
+          test "$(versao)" = "$VERSAO"
+          completa
+          /Applications/Arruma.app/Contents/MacOS/Arruma --self-test="$PWD/autoteste-depois.txt"
+          grep -q "RESULTADO: OK" autoteste-depois.txt
       - uses: actions/upload-artifact@v7
         with:
           name: arruma-macos-${{ matrix.arch }}
