@@ -23,6 +23,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 REPOSITORIO = "https://github.com/franciscovazquezreis/Arruma"
+# Nome do artefacto do GitHub Actions com o código-fonte de terceiros (ver construir.yml).
+ARTEFACTO_FONTES = "arruma-codigo-fonte-terceiros"
 TEXTOS_PADRAO = Path(__file__).with_name("textos")
 IGNORAR_TIPOS = {"SYMLINK", "DEPENDENCY", "OPTION"}
 PREFIXO_MSYS2 = "mingw-w64-ucrt-x86_64-"
@@ -108,7 +110,23 @@ def _corrigir_licenca(nome: str, licenca: str) -> str:
     return LICENCAS_CORRIGIDAS.get(nome, licenca) or "não indicada"
 
 
-_INCOMPATIVEL = re.compile(r"(?<!L)GPL-2\.0-only|MPL-1\.1")
+# Licenças que não se podem combinar com a GPL versão 3 ou posterior, segundo a lista da FSF
+# (https://www.gnu.org/licenses/license-list.html). No SPDX, os identificadores antigos sem
+# -only/-or-later (GPL-2.0, GPL-1.0) valem como -only.
+_INCOMPATIVEIS = {
+    "GPL-1.0", "GPL-1.0-only", "GPL-2.0", "GPL-2.0-only", "MPL-1.0", "MPL-1.1", "CDDL-1.0", "CDDL-1.1",
+    "EPL-1.0", "EPL-2.0", "CPL-1.0", "IPL-1.0", "OpenSSL", "BSD-4-Clause", "BSD-4-Clause-UC", "Apache-1.0",
+    "Apache-1.1", "PHP-3.0", "PHP-3.01", "QPL-1.0", "Artistic-1.0", "OSL-1.0", "OSL-1.1", "OSL-2.0",
+    "OSL-2.1", "OSL-3.0", "AFL-1.1", "AFL-1.2", "AFL-2.0", "AFL-2.1", "AFL-3.0", "EUPL-1.0", "EUPL-1.1",
+    "CC-BY-SA-1.0", "CC-BY-SA-2.0", "CC-BY-SA-2.5", "CC-BY-SA-3.0",
+}
+
+
+def _compativel(termo: str) -> bool:
+    licenca = termo.split(" WITH ")[0].strip()
+    if licenca.endswith("+"):  # «+» no SPDX: esta versão ou qualquer posterior
+        licenca = licenca[:-1] + "-or-later"
+    return licenca not in _INCOMPATIVEIS and not licenca.startswith(("CC-BY-NC", "CC-BY-ND"))
 
 
 def _dividir(expr: str, operador: str) -> list[str]:
@@ -141,19 +159,49 @@ def _sem_parenteses(expr: str) -> str:
     return expr
 
 
+def _resolver(expr: str) -> str | None:
+    """A primeira opção de expr compatível com a GPL-3.0 ou posterior, ou None se não houver."""
+    expr = _sem_parenteses(expr)
+    for alternativa in _dividir(expr, "OR"):  # no SPDX, o OR liga menos do que o AND
+        termos = _dividir(alternativa, "AND")
+        if len(termos) == 1 and _sem_parenteses(termos[0]) == termos[0]:
+            if _compativel(termos[0]):
+                return termos[0]
+            continue
+        partes = [_resolver(t) for t in termos]
+        if all(partes):
+            return " AND ".join(partes)  # type: ignore[arg-type]
+    return None
+
+
 def escolher_licenca(licenca: str) -> str:
-    """Opção usada quando a licença deixa escolher: a primeira compatível com a GPL-3.0 ou posterior."""
+    """Opção usada quando a licença deixa escolher: a primeira compatível com a GPL-3.0 ou posterior.
+
+    Sem escolha (sem OR), devolve a licença tal como está. Com escolha mas sem nenhuma opção
+    compatível, falha, para que a construção pare em vez de publicar um aviso errado."""
     expr = _sem_parenteses(licenca)
-    termos = _dividir(expr, "AND")
-    if len(termos) > 1:
-        return " AND ".join(escolher_licenca(t) for t in termos)
-    alternativas = _dividir(expr, "OR")
-    if len(alternativas) == 1:
+    if " OR " not in expr:
         return expr
-    for alternativa in alternativas:
-        if not _INCOMPATIVEL.search(alternativa):
-            return escolher_licenca(alternativa)
-    return escolher_licenca(alternativas[0])
+    escolha = _resolver(expr)
+    if escolha is None:
+        raise ValueError(f"nenhuma opção de «{licenca}» é compatível com a GPL versão 3 ou posterior")
+    return escolha
+
+
+# Componentes que só formam um agregado com o Arruma (ficheiros de dados, não código que corre
+# dentro dele), por isso podem ter uma licença que não se combinaria com a GPL-3.0.
+AGREGADOS = {"hicolor-icon-theme"}
+
+
+def incompativeis(componentes: dict[str, Componente]) -> list[str]:
+    """Componentes cuja licença, já com a escolha feita, não se pode combinar com a GPL-3.0 ou posterior."""
+    maus = []
+    for comp in sorted(componentes.values(), key=lambda c: c.nome.casefold()):
+        escolha = escolher_licenca(comp.licenca)
+        termos = re.split(r"\s+AND\s+", re.sub(r"[()]", " ", escolha).strip())
+        if comp.nome not in AGREGADOS and not all(_compativel(t) for t in termos):
+            maus.append(f"{comp.nome} {comp.versao} ({escolha})")
+    return maus
 
 
 def _textos_padrao(licenca: str) -> list[str]:
@@ -579,16 +627,36 @@ class Inventario:
                     comp.notas.append("O carregador (bootloader) do PyInstaller vai dentro do Arruma.exe / "
                                       "Arruma.app; a exceção da sua licença permite distribuí-lo assim.")
                 if comp.nome == "freetype" and escolher_licenca(comp.licenca).startswith("FTL"):
-                    comp.notas.append(f"Portions of this software are copyright © {datetime.date.today().year} "
+                    comp.notas.append(f"Portions of this software are copyright © {_ano_freetype(comp)} "
                                       "The FreeType Project (https://freetype.org). All rights reserved.")
                 if comp.nome in COMPILADOS_COM_CARGO:
                     comp.cargo = True
                     comp.notas.append(f"Inclui bibliotecas Rust (crates) ligadas estaticamente, listadas no Cargo.lock "
                                       f"do código-fonte do {comp.nome}; cada uma tem a sua licença (sobretudo MIT, "
-                                      "Apache-2.0 e MPL-2.0). O arquivo de código-fonte de cada versão publicada traz "
-                                      "o código e os textos das licenças de todas elas.")
+                                      "Apache-2.0 e MPL-2.0). O código-fonte de terceiros que acompanha esta versão "
+                                      "traz o código e os textos das licenças de todas elas.")
                 resultado[comp.chave] = comp
         return resultado
+
+
+def _ano_freetype(comp: Componente) -> int:
+    """Ano da versão da FreeType, que a FTL pede no aviso («Portions of this software are copyright © <ano>»).
+
+    Vem do cabeçalho freetype.h instalado com o pacote («Copyright (C) 1996-AAAA»), que se procura
+    a partir dos textos da licença (share/licenses/freetype no MSYS2, raiz do keg no Homebrew)."""
+    anos: list[int] = []
+    for texto in comp.textos:
+        for pasta in list(Path(texto).parents)[:4]:
+            cabecalho = pasta / "include" / "freetype2" / "freetype" / "freetype.h"
+            if cabecalho.is_file():
+                anos += [int(a) for a in re.findall(r"Copyright \(C\) \d{4}-(\d{4})",
+                                                     cabecalho.read_text(encoding="utf-8", errors="replace"))]
+    if not anos:
+        for texto in comp.textos:
+            if Path(texto).is_file():
+                anos += [int(a) for a in re.findall(r"\b(?:19|20)\d{2}\b",
+                                                     Path(texto).read_text(encoding="utf-8", errors="replace"))]
+    return max(anos) if anos else datetime.date.today().year
 
 
 def _pasta_segura(nome: str, usadas: set[str]) -> str:
@@ -601,7 +669,8 @@ def _pasta_segura(nome: str, usadas: set[str]) -> str:
 
 
 def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sistema: str,
-             projeto: Path, referencia: str = "", publicada: bool = False) -> list[tuple[str, str, str]]:
+             projeto: Path, referencia: str = "", publicada: bool = False,
+             execucao: str = "") -> list[tuple[str, str, str]]:
     """Escreve a pasta de licenças e devolve as entradas a juntar ao a.datas do PyInstaller."""
     if destino.exists():
         shutil.rmtree(destino)
@@ -643,7 +712,8 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
         linhas_comp.append("\n".join(bloco))
     for nome in sorted(precisos):
         shutil.copyfile(projeto / "LICENSE" if nome == "GPL-3.0.txt" else TEXTOS_PADRAO / nome, padrao / nome)
-    origem_txt = {"windows": "MSYS2 (https://www.msys2.org)", "macos": "Homebrew (https://brew.sh) e PyPI"}[sistema]
+    origem_txt = {"windows": "pelo MSYS2 (https://www.msys2.org)",
+                  "macos": "pelo Homebrew (https://brew.sh) e pelo PyPI (https://pypi.org)"}[sistema]
     if sistema == "macos":
         alteracoes = ("O Arruma usa-os sem os alterar, exceto no que o PyInstaller faz em qualquer aplicação para\n"
                       "macOS: reescreve os caminhos das bibliotecas dinâmicas e a assinatura de cada binário e\n"
@@ -652,16 +722,24 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
     else:
         alteracoes = "O Arruma usa-os sem os alterar."
     referencia = referencia or f"etiqueta v{versao}"
+    tar = f"Arruma-{versao}-codigo-fonte-terceiros-{sistema}.tar"
     if publicada:
-        fontes_txt = (f"- Esta versão está publicada em {REPOSITORIO}/releases, onde está também, no\n"
-                      "  mesmo sítio, um arquivo com o código-fonte correspondente de todos os componentes\n"
-                      "  desta lista.")
+        fontes_txt = (f"- Esta versão está publicada em {REPOSITORIO}/releases. Na mesma página está\n"
+                      f"  o ficheiro {tar}, com o código-fonte correspondente de todos os\n"
+                      "  componentes desta lista.")
+    elif execucao:
+        fontes_txt = ("- Esta é uma versão de teste, que não foi publicada em Releases. O código-fonte\n"
+                      "  correspondente de todos os componentes desta lista está na mesma execução do\n"
+                      f"  GitHub Actions que a construiu ({execucao}), no artefacto\n"
+                      f"  «{ARTEFACTO_FONTES}», e fica disponível durante o mesmo tempo que os\n"
+                      "  instaladores.")
     else:
-        fontes_txt = ("- Esta é uma versão de teste, que não foi publicada em Releases: o código-fonte de\n"
-                      "  cada componente está no endereço indicado na lista abaixo. As versões publicadas\n"
-                      f"  em {REPOSITORIO}/releases trazem também esse código-fonte no mesmo sítio.")
+        fontes_txt = ("- Esta versão foi construída sem o código-fonte dos componentes: está no endereço\n"
+                      "  indicado para cada um na lista abaixo, e quem distribuir esta versão tem de o\n"
+                      "  juntar, como pedem a GPL e a LGPL. As versões publicadas em\n"
+                      f"  {REPOSITORIO}/releases trazem-no na mesma página.")
     cabecalho = f"""Arruma {versao}: componentes de outros autores
-(Third-party components included in this build, with their licenses and source code.)
+(Third-party components included in this build, their licenses and where to get their source code.)
 
 O Arruma é software livre: podes redistribuí-lo e alterá-lo nos termos da GNU General
 Public License, versão 3 ou (à tua escolha) qualquer versão posterior. É distribuído sem
@@ -669,25 +747,28 @@ qualquer garantia. O texto da licença está em Arruma/LICENSE. Código-fonte do
 {REPOSITORIO} ({referencia}).
 
 Esta versão para {'Windows' if sistema == 'windows' else 'macOS'} inclui os componentes abaixo, de outros autores, tal como
-são distribuídos pelo {origem_txt}, que podem ter aplicado as suas próprias alterações
-(incluídas no código-fonte de cada componente). {alteracoes}
+são distribuídos {origem_txt}.
+As alterações que estes tenham aplicado estão incluídas no código-fonte de cada
+componente. {alteracoes}
 A combinação é distribuída nos termos da GPL versão 3 ou posterior. Cada componente mantém
 a sua licença; os textos estão na pasta com o nome do componente e, para as licenças mais
 comuns, em textos-padrao. Quando uma licença deixa escolher, a opção usada aparece em
 «Distribuído nos termos de» e é sempre compatível com a GPL versão 3 ou posterior. Os
 programas que o Arruma apenas executa (no Windows, pdftotext e pdftoppm) e os ficheiros de
-dados (temas de ícones) ficam apenas agregados à combinação.
+dados (temas de ícones) formam com ele apenas um agregado (secção 5 da GPL versão 3), a que
+a licença do Arruma não se estende.
 
 Código-fonte dos componentes
 {fontes_txt}
-- Durante pelo menos três anos a contar da data desta versão, qualquer pessoa pode pedir
-  uma cópia completa desse código-fonte, sem custos, em {REPOSITORIO}/issues.
+- Se algum destes ficheiros deixar de estar disponível, abre um pedido em
+  {REPOSITORIO}/issues.
 
 Componentes ({len(componentes)}):
 """
     (destino / "LEIA-ME.txt").write_text(cabecalho + "\n\n".join(linhas_comp) + "\n", encoding="utf-8")
     (destino / "componentes.json").write_text(json.dumps(
         {"versao": versao, "sistema": sistema, "referencia": referencia, "publicada": publicada,
+         "execucao": execucao,
          "componentes": [asdict(c) for c in componentes.values()]},
         ensure_ascii=False, indent=2), encoding="utf-8")
     entradas = []
@@ -698,7 +779,7 @@ Componentes ({len(componentes)}):
 
 
 def gerar(analise, destino: Path, projeto: Path, trabalho: Path, versao: str,
-          referencia: str = "", publicada: bool = False) -> Resultado:
+          referencia: str = "", publicada: bool = False, execucao: str = "") -> Resultado:
     """Inventário completo para o arruma.spec (Windows com MSYS2, macOS com Homebrew e pip)."""
     if sys.platform == "win32":
         resolvedores, sistema = [Msys2()], "windows"
@@ -712,5 +793,5 @@ def gerar(analise, destino: Path, projeto: Path, trabalho: Path, versao: str,
     for caminho, tipo in ficheiros_recolhidos(analise.binaries, analise.datas, analise.pure, analise.scripts):
         inv.atribuir(caminho, tipo)
     componentes = inv.componentes()
-    entradas = escrever(componentes, destino, versao, sistema, projeto, referencia, publicada)
+    entradas = escrever(componentes, destino, versao, sistema, projeto, referencia, publicada, execucao)
     return Resultado(componentes, inv.desconhecidos, entradas)

@@ -6,7 +6,7 @@ Funciona em **Linux** (pensado para o Linux Mint), **Windows 10/11** e **macOS 1
 
 ## Instalar
 
-As versões prontas a instalar são geradas automaticamente pelo GitHub a cada alteração no ramo `main`. Ficam na página [Releases](https://github.com/franciscovazquezreis/Arruma/releases) quando é publicada uma versão, ou em [Actions → Construir e testar](https://github.com/franciscovazquezreis/Arruma/actions/workflows/construir.yml) → última execução do `main` → *Artifacts*, durante 14 dias. Também se podem pedir à mão, para qualquer ramo, no botão *Run workflow* dessa página.
+As versões prontas a instalar são geradas automaticamente pelo GitHub a cada alteração no ramo `main`. Ficam na página [Releases](https://github.com/franciscovazquezreis/Arruma/releases) quando é publicada uma versão, ou em [Actions → Construir e testar](https://github.com/franciscovazquezreis/Arruma/actions/workflows/construir.yml) → última execução do `main` → *Artifacts*, durante 14 dias. Quem tem acesso de escrita ao repositório pode também pedi-las à mão, para qualquer ramo, no botão *Run workflow* dessa página.
 
 ### Linux Mint, Ubuntu e Debian
 
@@ -28,13 +28,13 @@ Em alternativa, sem `sudo` e só para o teu utilizador, a partir do código:
 
 Corre `Arruma-0.2.0-windows-instalador.exe`. Não pede permissões de administrador, cria a entrada no menu Iniciar e acrescenta «Arrumar com o Arruma» ao clique direito das pastas (no Windows 11 aparece em «Mostrar mais opções»). Há também uma versão portátil em `.zip`, que não precisa de instalação.
 
-O instalador não tem assinatura digital paga, por isso o Windows pode mostrar o aviso «O Windows protegeu o seu PC». Para continuar: **Mais informações → Executar mesmo assim**.
+O instalador não está assinado com um certificado de assinatura de código, por isso o Windows pode mostrar o aviso «O Windows protegeu o seu PC». Para continuar: **Mais informações → Executar mesmo assim**.
 
 ### macOS
 
 Abre o `.dmg` certo para o teu Mac (`apple-silicon` para os modelos M1, M2, M3… e `intel` para os mais antigos) e arrasta o Arruma para a pasta Aplicações.
 
-A aplicação não está registada na Apple, por isso na primeira vez o macOS recusa abri-la. Para autorizar: **Definições do Sistema → Privacidade e segurança → Abrir mesmo assim**. Em alternativa, no Terminal:
+A aplicação não está assinada com um certificado de programador da Apple nem passou pela notarização da Apple, por isso na primeira vez o macOS recusa abri-la. Para autorizar: **Definições do Sistema → Privacidade e segurança → Abrir mesmo assim**. Em alternativa, no Terminal:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Arruma.app
@@ -71,7 +71,7 @@ Pastas de programas, projetos de programação, bibliotecas (Calibre, Fotografia
 O workflow [Avaliar IA](https://github.com/franciscovazquezreis/Arruma/actions/workflows/avaliar-ia.yml) instala o Ollama num servidor do GitHub e compara duas versões do Arruma, com o modelo `qwen2.5:3b`, em dois conjuntos de documentos fictícios:
 
 - **desenvolvimento** (36 documentos, mais fotografias, música e instaladores): foi usado para afinar as regras, por isso os números são otimistas;
-- **validação** (26 documentos diferentes): as áreas esperadas foram fixadas antes de qualquer teste e o conjunto não serve para afinar nada. É a medida honesta.
+- **validação** (26 documentos diferentes): as áreas esperadas foram fixadas antes de qualquer teste e o conjunto não serve para afinar nada. É este o resultado que conta.
 
 Resultados da avaliação de 16 de outubro de 2026 (versão original 0.1.0 e versão 0.2.0):
 
@@ -97,7 +97,7 @@ python3 -m arruma --self-test              # verifica a interface e o plano (pre
 packaging/linux/build-deb.sh               # cria dist/arruma_<versão>_all.deb
 ```
 
-As versões de Windows e macOS são construídas com o PyInstaller (`packaging/pyinstaller/arruma.spec`) a partir do GTK do MSYS2 e do Homebrew; os passos exatos estão em `.github/workflows/construir.yml`. Os testes correm em todas as alterações; as versões para instalar só no `main`, nas etiquetas e à mão, porque num repositório privado os minutos de macOS e Windows contam muito mais do que os de Linux. Para publicar uma versão, cria uma etiqueta `vX.Y.Z` igual à versão em `arruma/__init__.py`.
+As versões de Windows e macOS são construídas com o PyInstaller (`packaging/pyinstaller/arruma.spec`) a partir do GTK do MSYS2 e do Homebrew; os passos exatos estão em `.github/workflows/construir.yml`. Os testes correm em todas as alterações. As versões para instalar só são construídas no `main`, nas etiquetas e quando pedidas à mão, porque demoram (sobretudo no macOS) e cada uma leva consigo cerca de 1 GB de código-fonte de componentes de terceiros. Para publicar uma versão, cria uma etiqueta `vX.Y.Z` igual à versão em `arruma/__init__.py`; se for diferente, a publicação para.
 
 | Pasta | Conteúdo |
 |---|---|
@@ -110,4 +110,4 @@ As versões de Windows e macOS são construídas com o PyInstaller (`packaging/p
 
 O Arruma é software livre: podes usá-lo, estudá-lo, alterá-lo e distribuí-lo nos termos da [GNU General Public License](LICENSE), versão 3 ou (à tua escolha) qualquer versão posterior. É distribuído sem qualquer garantia. Copyright © 2026 Francisco Reis.
 
-As versões para Windows e macOS incluem componentes de outros autores (Python, GTK, Poppler, mutagen, entre outros), cada um com a sua licença. A lista completa, os textos das licenças e o endereço do código-fonte de cada componente vão dentro de cada versão, na pasta `licencas` (no Windows em `_internal\licencas`, no macOS em `Arruma.app/Contents/Resources/licencas`), e abrem-se no botão «Acerca do Arruma» → «Licenças de terceiros». Cada versão publicada em Releases traz também, no mesmo sítio, o código-fonte desses componentes. O pacote `.deb` não inclui componentes de terceiros: usa os que o sistema já tem.
+As versões para Windows e macOS incluem componentes de outros autores (Python, GTK, mutagen e, no Windows, Poppler, entre outros), cada um com a sua licença. A lista completa, os textos das licenças e o endereço do código-fonte de cada componente vão dentro de cada versão, na pasta `licencas` (no Windows em `_internal\licencas`, no macOS em `Arruma.app/Contents/Resources/licencas`), e abrem-se no botão «Acerca do Arruma» → «Licenças de terceiros». O código-fonte desses componentes acompanha os instaladores: nas versões publicadas, na mesma página de Releases (ficheiros `Arruma-<versão>-codigo-fonte-terceiros-<sistema>.tar`); nas versões de teste, na mesma execução do Actions (artefacto `arruma-codigo-fonte-terceiros`). O pacote `.deb` não inclui componentes de terceiros: usa os que o sistema já tem.

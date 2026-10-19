@@ -225,7 +225,7 @@ class AIPlanTests(unittest.TestCase):
             "scan_001.txt": {"titulo": "Fatura LusoEnergia eletricidade", "categoria": "Finanças › Faturas e Recibos",
                              "data": "2025-03-12", "confianca": 0.9},
             # Respostas típicas de um modelo fraco sem esquema: categoria inventada e empresa inventada.
-            "doc2025.txt": {"titulo": "Fatura Construções Oeste", "categoria": "Casa › Obras e Manutenção",
+            "doc2025.txt": {"titulo": "Fatura Construções Exemplo", "categoria": "Casa › Obras e Manutenção",
                             "data": "2025-01-31", "confianca": 0.7},
             "CV.docx": {"titulo": "Curriculum vitae Ana Ribeiro", "categoria": "Educação › Trabalho",
                         "data": "", "confianca": 0.6},

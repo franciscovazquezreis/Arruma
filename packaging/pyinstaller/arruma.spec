@@ -78,8 +78,13 @@ elif SHA:
     REFERENCIA = f"commit {SHA[:12]}, versão de teste"
 else:
     REFERENCIA = "versão construída localmente, sem etiqueta"
+# O construir.yml junta o código-fonte de terceiros à própria execução (artefacto) sempre que os
+# instaladores ficam à vista de outras pessoas: repositório público ou versão publicada.
+EXECUCAO = ""
+if os.environ.get("ARRUMA_FONTES_NA_EXECUCAO") == "true" and os.environ.get("GITHUB_RUN_ID"):
+    EXECUCAO = f"{terceiros.REPOSITORIO}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
 licencas = terceiros.gerar(a, Path(workpath) / "licencas", ROOT, Path(workpath),  # noqa: F821
-                           arruma.__version__, REFERENCIA, PUBLICADA)
+                           arruma.__version__, REFERENCIA, PUBLICADA, EXECUCAO)
 print(f"Licenças de terceiros: {len(licencas.componentes)} componentes")
 for comp in sorted(licencas.componentes.values(), key=lambda c: c.nome.casefold()):
     print(f"  {comp.nome} {comp.versao} | {comp.licenca} | {comp.ficheiros} ficheiros | "
@@ -89,6 +94,10 @@ for caminho, tipo in licencas.desconhecidos:
 sem_origem = [c for c, t in licencas.desconhecidos if t in ("BINARY", "EXTENSION")]
 if sem_origem:
     raise SystemExit(f"{len(sem_origem)} bibliotecas sem origem conhecida: não é possível indicar a licença.")
+incompativeis = terceiros.incompativeis(licencas.componentes)
+if incompativeis:
+    raise SystemExit("Componentes com licença que não se combina com a GPL-3.0 ou posterior: "
+                     + "; ".join(incompativeis))
 a.datas += licencas.entradas
 # Índice para o fontes.py juntar o código-fonte destes componentes em cada versão publicada.
 PLATAFORMA = "windows" if IS_WIN else f"macos-{'apple-silicon' if platform.machine() == 'arm64' else 'intel'}"
@@ -129,6 +138,7 @@ if IS_MAC:
             "CFBundleDisplayName": "Arruma",
             "CFBundleShortVersionString": arruma.__version__,
             "CFBundleVersion": arruma.__version__,
+            "NSHumanReadableCopyright": f"{arruma.COPYRIGHT}. Software livre (GPL-3.0 ou posterior).",
             "CFBundleDevelopmentRegion": "pt_PT",
             "LSApplicationCategoryType": "public.app-category.productivity",
             "LSMinimumSystemVersion": os.environ.get("ARRUMA_MACOS_MIN", "11.0"),
@@ -138,7 +148,7 @@ if IS_MAC:
             "NSDocumentsFolderUsageDescription":
                 "O Arruma lê e arruma os teus documentos apenas quando escolheres essa pasta.",
             "NSDownloadsFolderUsageDescription":
-                "O Arruma lê e arruma as Descargas apenas quando escolheres essa pasta.",
+                "O Arruma lê e arruma as Transferências apenas quando escolheres essa pasta.",
             "NSRemovableVolumesUsageDescription":
                 "O Arruma lê e arruma os discos externos que escolheres.",
             "NSNetworkVolumesUsageDescription":

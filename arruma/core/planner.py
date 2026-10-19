@@ -19,7 +19,7 @@ from .ai import PROMPT_VERSION, AIError, LocalAI
 from .classifier import KIND_BASE, Placement, classify_simple, document_placement
 from .db import Database
 from .extract import date_from_name, extract_text, image_info, plausible
-from .fsutil import is_within, path_key, sanitize_name, split_ext, unique_path, user_dirs
+from .fsutil import is_within, path_key, plural, sanitize_name, split_ext, unique_path, user_dirs
 from .system import is_external_mount
 from .scanner import FileItem, FolderInfo, ScanResult, is_home
 from .settings import Settings
@@ -504,7 +504,7 @@ class Planner:
                         ai_result: dict | None) -> Placement:
         n = u.total_files
         base = KIND_BASE.get(dominant, "other")
-        keep = f"A pasta «{u.name}» tem nome próprio, por isso é mantida inteira ({n} ficheiros)."
+        keep = f"A pasta «{u.name}» tem nome próprio, por isso é mantida inteira ({plural(n, 'ficheiro', 'ficheiros')})."
         if dominant == tx.IMAGE:
             years: Counter = Counter()
             for f in ufiles[:400]:

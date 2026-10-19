@@ -39,7 +39,7 @@ DOCUMENTOS: dict[str, tuple[list[str], list[str]]] = {
         "Total a pagar: 56,19 EUR   Débito direto em 20-03-2025",
     ]),
     "doc20250131.pdf": (["Finanças"], [
-        "Construções Oeste, Lda.   NIF 507 111 222",
+        "Construções Exemplo, Lda.   NIF 507 111 223",
         "RECIBO DE VENCIMENTO   Janeiro de 2025",
         "Trabalhador: João Martins   N.º Segurança Social: 12345678901",
         "Categoria: Técnico Administrativo",
@@ -68,7 +68,7 @@ DOCUMENTOS: dict[str, tuple[list[str], list[str]]] = {
         "Saldo inicial: 2.430,15 EUR",
         "03-02 Transferência recebida - Atlântida Seguros   +3.800,00",
         "05-02 Pagamento de serviços LusoEnergia   -59,77",
-        "10-02 Compra com cartão Supermercado Oeste   -84,32",
+        "10-02 Compra com cartão Supermercado Exemplo   -84,32",
         "Saldo final disponível: 6.086,06 EUR",
     ]),
     "Documento (1).docx": (["Saúde"], [
@@ -90,7 +90,7 @@ DOCUMENTOS: dict[str, tuple[list[str], list[str]]] = {
         "Médico: Dra. Inês Almeida   Cédula profissional 54321",
     ]),
     "relatorio.pdf": (["Saúde"], [
-        "Hospital do Oeste - Serviço de Ortopedia",
+        "Hospital de Vila Exemplo - Serviço de Ortopedia",
         "RELATÓRIO MÉDICO",
         "Doente: Ana Ribeiro   Processo n.º 778899   Data: 2025-01-15",
         "Motivo da consulta: dor no joelho direito após queda.",
@@ -118,7 +118,7 @@ DOCUMENTOS: dict[str, tuple[list[str], list[str]]] = {
         "A administração do condomínio apresentou as contas, aprovadas por unanimidade.",
     ]),
     "orcamento_obras.pdf": (["Casa"], [
-        "Remodelações Oeste, Lda.   Orçamento n.º 2025/031",
+        "Remodelações Exemplo, Lda.   Orçamento n.º 2025/031",
         "Cliente: Ana Ribeiro   Obra: remodelação da casa de banho",
         "Demolição de azulejos e loiças: 450,00 EUR",
         "Canalização nova (água quente e fria): 780,00 EUR",
@@ -127,7 +127,7 @@ DOCUMENTOS: dict[str, tuple[list[str], list[str]]] = {
     ]),
     "contrato_trabalho_assinado.pdf": (["Trabalho"], [
         "CONTRATO DE TRABALHO A TERMO CERTO",
-        "Entre Construções Oeste, Lda., NIF 507 111 222, Entidade Empregadora,",
+        "Entre Construções Exemplo, Lda., NIF 507 111 223, Entidade Empregadora,",
         "e João Martins, NIF 245 678 901, Trabalhador,",
         "é celebrado o presente contrato de trabalho, com as cláusulas seguintes:",
         "1.ª O Trabalhador é admitido para exercer funções de Técnico Administrativo.",
@@ -217,8 +217,8 @@ DOCUMENTOS: dict[str, tuple[list[str], list[str]]] = {
         "Reconhecimento de assinatura efetuado no Cartório Notarial de Vila Exemplo.",
     ]),
     "notificacao_tribunal.pdf": (["Jurídico"], [
-        "TRIBUNAL JUDICIAL DA COMARCA DE LISBOA NORTE",
-        "Juízo Local Cível de Torres Vedras   Processo n.º 1234/25.0T8TVD",
+        "TRIBUNAL JUDICIAL DA COMARCA DE EXEMPLO",
+        "Juízo Local Cível de Vila Exemplo   Processo n.º 1234/25.0T8VEX",
         "CITAÇÃO",
         "Fica V. Ex.ª citada para, no prazo de 30 dias, contestar a ação declarativa",
         "de condenação que lhe move Credifácil, S.A., com a advertência de que a falta",
@@ -266,7 +266,7 @@ DOCUMENTOS: dict[str, tuple[list[str], list[str]]] = {
     "garantia_portatil.pdf": (["Compras e Garantias"], [
         "Eletrolar - Certificado de garantia",
         "Produto: computador portátil Nexus 15, n.º de série NX15-2025-00871",
-        "Data de compra: 2025-01-08   Loja: Eletrolar Torres Vedras",
+        "Data de compra: 2025-01-08   Loja: Eletrolar Vila Exemplo",
         "Prazo de garantia: 3 anos a contar da data de compra.",
         "Guarde este certificado juntamente com a fatura de compra.",
     ]),
@@ -312,7 +312,7 @@ DOCUMENTOS: dict[str, tuple[list[str], list[str]]] = {
         "Ligar ao canalizador amanhã de manhã por causa da fuga na cozinha.",
     ]),
     "Nova pasta/recibo_agua.txt": (["Finanças"], [
-        "Águas do Oeste - Fatura n.º AO/2025/55123   Data: 02-03-2025",
+        "Águas de Vila Exemplo - Fatura n.º AVE/2025/55123   Data: 02-03-2025",
         "Consumo de água: 9 m3   Saneamento e resíduos incluídos",
         "Total a pagar: 18,50 EUR",
     ]),
@@ -350,7 +350,7 @@ VALIDACAO: dict[str, tuple[list[str], list[str]]] = {
         "Prémio anual: 218,40 EUR",
     ]),
     "marcacao.txt": (["Saúde"], [
-        "Consulta de medicina dentária marcada para 14/11/2025 às 15h30, Clínica Sorriso Oeste.",
+        "Consulta de medicina dentária marcada para 14/11/2025 às 15h30, Clínica Sorriso de Vila Exemplo.",
         "Traga o cartão de utente e chegue 10 minutos antes.",
     ]),
     "boletim_vacinas.pdf": (["Saúde"], [
@@ -418,7 +418,7 @@ VALIDACAO: dict[str, tuple[list[str], list[str]]] = {
         "Estabelecimento pretendido: Escola Básica de Vila Exemplo",
     ]),
     "reparacao_carro.pdf": (["Veículos", "Finanças"], [
-        "Auto Oeste, Lda. - Fatura n.º AO/2025/551",
+        "Auto Exemplo, Lda. - Fatura n.º AE/2025/551",
         "Viatura: Renault Clio, matrícula 12-AB-34, 101.230 km",
         "Substituição de pastilhas de travão e discos dianteiros: 289,00 EUR",
         "Mão de obra: 60,00 EUR",

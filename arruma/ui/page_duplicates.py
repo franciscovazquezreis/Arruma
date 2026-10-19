@@ -132,7 +132,7 @@ class DuplicatesPage(Gtk.Stack):
         self.tv.expand_all()
         wasted = sum(g.wasted for g in groups)
         self.summary.set_markup(f"{plural(len(groups), 'grupo', 'grupos')} de ficheiros iguais. Podes libertar até "
-                                f"<b>{human_size(wasted)}</b>. Sugerimos manter a cópia com melhor nome e local; "
+                                f"<b>{human_size(wasted)}</b>. O Arruma sugere manter a cópia com melhor nome e local; "
                                 "as outras ficam marcadas.")
         self._update_label()
         self.set_visible_child_name("content")
@@ -159,7 +159,8 @@ class DuplicatesPage(Gtk.Stack):
     def _update_label(self) -> None:
         sizes = {f.path: f.size for g in self.groups for f in g.files}
         sel = self._selected_paths()
-        self.sel_label.set_markup(f"<b>{len(sel)}</b> selecionados · {human_size(sum(sizes.get(p, 0) for p in sel))}")
+        escolhidas = "selecionada" if len(sel) == 1 else "selecionadas"
+        self.sel_label.set_markup(f"<b>{len(sel)}</b> {escolhidas} · {human_size(sum(sizes.get(p, 0) for p in sel))}")
         self.trash_btn.set_sensitive(bool(sel))
 
     def _on_toggled(self, _r, path: str) -> None:
@@ -192,7 +193,7 @@ class DuplicatesPage(Gtk.Stack):
 
     def _on_trash(self) -> None:
         sel = self._selected_paths()
-        if sel and confirm(self.win, f"Enviar {len(sel)} cópias {TRASH_TO}?",
+        if sel and confirm(self.win, f"Enviar {plural(len(sel), 'cópia', 'cópias')} {TRASH_TO}?",
                            f"Ficam {TRASH_IN} do sistema, de onde as podes recuperar. Também podes anular no Histórico.",
                            f"Enviar {TRASH_TO}", destructive=True):
             self.win.trash_duplicates(sel)

@@ -122,7 +122,7 @@ class InventoryTests(unittest.TestCase):
         self.assertTrue(all(e[2] == "DATA" and Path(e[1]).is_file() for e in entradas))
         leia = (destino / "LEIA-ME.txt").read_text(encoding="utf-8")
         self.assertIn("gtk3 3.24.52-1", leia)
-        self.assertIn("três anos", leia)
+        self.assertIn("/issues", leia)
         self.assertNotIn("—", leia)
         dados = json.loads((destino / "componentes.json").read_text(encoding="utf-8"))
         self.assertEqual(dados["sistema"], "windows")
@@ -222,6 +222,46 @@ class ChoiceAndNoticeTests(unittest.TestCase):
         for comp, licenca in terceiros.LICENCAS_CORRIGIDAS.items():
             self.assertNotRegex(terceiros.escolher_licenca(licenca), r"(?<!L)GPL-2\.0-only", comp)
 
+    def test_license_choice_follows_spdx_precedence(self):
+        casos = {
+            # AND liga mais do que OR: «A AND B OR C» é «(A AND B) OR C».
+            "GPL-2.0-only AND MIT OR Apache-2.0": "Apache-2.0",
+            "MIT OR GPL-2.0-only AND BSD-3-Clause": "MIT",
+            # Identificadores antigos: GPL-2.0 é -only; «+» é «ou posterior».
+            "GPL-2.0 OR MIT": "MIT",
+            "GPL-2.0+ OR MPL-1.1": "GPL-2.0+",
+            "CC-BY-SA-3.0 OR LGPL-3.0-or-later": "LGPL-3.0-or-later",
+            "OpenSSL OR MIT": "MIT",
+            "MIT OR MPL-2.0 OR LGPL-2.1-or-later OR GPL-2.0-or-later": "MIT",
+            "GPL-2.0-only": "GPL-2.0-only",  # sem escolha fica como está
+        }
+        for licenca, esperada in casos.items():
+            self.assertEqual(terceiros.escolher_licenca(licenca), esperada, licenca)
+        with self.assertRaises(ValueError):
+            terceiros.escolher_licenca("GPL-2.0-only OR MPL-1.1")
+
+    def test_incompatible_licenses_are_reported(self):
+        def comp(nome, licenca):
+            return terceiros.Componente(chave=nome, nome=nome, versao="1", licenca=licenca, origem="msys2")
+        componentes = {c.chave: c for c in (
+            comp("zstd", "(BSD-3-Clause OR GPL-2.0-only) AND BSD-2-Clause AND MIT"),
+            comp("hicolor-icon-theme", "GPL-2.0-only"),  # só dados: agregado
+            comp("biblioteca", "MIT AND GPL-2.0-only"),
+            comp("outra", "MPL-1.1"),
+        )}
+        self.assertEqual(terceiros.incompativeis(componentes),
+                         ["biblioteca 1 (MIT AND GPL-2.0-only)", "outra 1 (MPL-1.1)"])
+
+    def test_freetype_credit_year_comes_from_its_header(self):
+        tmp = Path(tempfile.mkdtemp(prefix="arruma-freetype-")).resolve()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        texto = escrever(tmp / "ucrt64" / "share" / "licenses" / "freetype" / "FTL.TXT", "Copyright 1996-2002, 2006")
+        escrever(tmp / "ucrt64" / "include" / "freetype2" / "freetype" / "freetype.h",
+                 " * Copyright (C) 1996-2025 by\n")
+        comp = terceiros.Componente(chave="f", nome="freetype", versao="2.15.0-1",
+                                    licenca="FTL OR GPL-2.0-or-later", origem="msys2", textos=[str(texto)])
+        self.assertEqual(terceiros._ano_freetype(comp), 2025)
+
     def test_test_build_and_release_notices(self):
         tmp = Path(tempfile.mkdtemp(prefix="arruma-aviso-")).resolve()
         self.addCleanup(shutil.rmtree, tmp, True)
@@ -232,11 +272,20 @@ class ChoiceAndNoticeTests(unittest.TestCase):
         terceiros.escrever({"msys2:x": comp}, tmp / "a", "0.2.0", "windows", projeto,
                            "commit 2feff1e49b17, versão de teste", False)
         teste = (tmp / "a" / "LEIA-ME.txt").read_text(encoding="utf-8")
-        self.assertIn("versão de teste", teste)
+        self.assertIn("construída sem o código-fonte dos componentes", teste)
         self.assertIn("Distribuído nos termos de: LGPL-2.1-only", teste)
+        self.assertNotIn("três anos", teste)
+        execucao = "https://github.com/franciscovazquezreis/Arruma/actions/runs/1"
+        terceiros.escrever({"msys2:x": comp}, tmp / "c", "0.2.0", "windows", projeto,
+                           "commit 2feff1e49b17, versão de teste", False, execucao)
+        com_fontes = " ".join((tmp / "c" / "LEIA-ME.txt").read_text(encoding="utf-8").split())
+        self.assertIn("Esta é uma versão de teste, que não foi publicada em Releases", com_fontes)
+        self.assertIn(f"({execucao}), no artefacto «{terceiros.ARTEFACTO_FONTES}»", com_fontes)
         terceiros.escrever({"msys2:x": comp}, tmp / "b", "0.2.0", "macos", projeto, "etiqueta v0.2.0", True)
         publicada = (tmp / "b" / "LEIA-ME.txt").read_text(encoding="utf-8")
         self.assertIn("Esta versão está publicada", publicada)
+        self.assertIn("Arruma-0.2.0-codigo-fonte-terceiros-macos.tar", publicada)
+        self.assertIn("pelo Homebrew (https://brew.sh) e pelo PyPI", " ".join(publicada.split()))
         self.assertIn("reescreve os caminhos das bibliotecas", publicada)
         self.assertEqual(json.loads((tmp / "b" / "componentes.json").read_text(encoding="utf-8"))["publicada"], True)
 
@@ -280,13 +329,14 @@ class SourceDownloadTests(unittest.TestCase):
         with mock.patch.object(fontes.time, "sleep"):
             falhas = fontes.descarregar(lista, tmp / "saida", "0.2.0")
         self.assertEqual(falhas, 1)
-        somas = (tmp / "saida" / "fontes-windows" / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
+        pasta = "Arruma-0.2.0-codigo-fonte-terceiros-windows"
+        with tarfile.open(tmp / "saida" / f"{pasta}.tar") as tar:
+            self.assertIn(f"{pasta}/exemplo-1.0.tar.gz", tar.getnames())
+            somas = tar.extractfile(f"{pasta}/SHA256SUMS.txt").read().decode("utf-8").splitlines()
         linhas = [l for l in somas if l and not l.startswith("#")]
         self.assertEqual(linhas, [f"{hashlib.sha256(origem.read_bytes()).hexdigest()}  exemplo-1.0.tar.gz"])
         self.assertIn(f"# exemplo 1.0; {url}", somas)
-        with tarfile.open(tmp / "saida" / "Arruma-0.2.0-codigo-fonte-terceiros-windows.tar") as tar:
-            self.assertIn("Arruma-0.2.0-codigo-fonte-terceiros-windows/exemplo-1.0.tar.gz", tar.getnames())
-        self.assertFalse(list((tmp / "saida").rglob("*.part")))
+        self.assertEqual([p.name for p in (tmp / "saida").iterdir()], [f"{pasta}.tar"])  # só fica o .tar
 
 
 if __name__ == "__main__":

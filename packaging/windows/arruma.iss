@@ -1,4 +1,5 @@
-; Instalador do Arruma para Windows (Inno Setup 6).
+; SPDX-License-Identifier: GPL-3.0-or-later
+; Instalador do Arruma para Windows (Inno Setup 6.3 ou mais recente: lê o ficheiro em UTF-8).
 ; Uso: iscc /DAppVersion=0.2.0 packaging\windows\arruma.iss
 ; Espera a aplicação já construída em dist\Arruma (PyInstaller).
 
@@ -11,7 +12,8 @@ AppId={{18C83DB7-5EF6-4B5E-B0F4-8D1E10EE1738}
 AppName=Arruma
 AppVersion={#AppVersion}
 AppVerName=Arruma {#AppVersion}
-AppPublisher=Arruma
+AppPublisher=Francisco Reis
+AppCopyright=Copyright © 2026 Francisco Reis
 AppPublisherURL=https://github.com/franciscovazquezreis/Arruma
 AppSupportURL=https://github.com/franciscovazquezreis/Arruma/issues
 DefaultDirName={autopf}\Arruma

@@ -168,7 +168,7 @@ def classify_simple(item: FileItem, settings: Settings) -> Placement | None:
 
     if k == tx.AUDIO:
         if VOICE_RE.search(item.name) or item.ext == "amr":
-            return Placement("music", ("Gravações de voz",), reason="Gravação de voz ou nota áudio.",
+            return Placement("music", ("Gravações de voz",), reason="Gravação ou mensagem de voz.",
                              confidence=0.85)
         tags = audio_tags(item.path)
         artist = real_tag(tags.get("albumartist", ""), artist=True) or real_tag(tags.get("artist", ""), artist=True)
@@ -187,7 +187,7 @@ def classify_simple(item: FileItem, settings: Settings) -> Placement | None:
         return Placement("music", (), reason="Áudio sem etiquetas de artista ou álbum.", confidence=0.6)
 
     if k == tx.ARCHIVE:
-        return Placement("archives", (), reason=f"Arquivo comprimido ({ext_label}). Depois de extraído, "
+        return Placement("archives", (), reason=f"Ficheiro comprimido ({ext_label}). Depois de extraído, "
                          "muitas vezes já não é preciso.", confidence=0.95)
     if k == tx.INSTALLER:
         what = "Imagem de disco" if item.ext in ("iso", "img") else "Instalador de programa"

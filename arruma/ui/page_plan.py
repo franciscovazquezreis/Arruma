@@ -322,7 +322,7 @@ class PlanPage(Gtk.Stack):
             ("📄", "documento", "documentos", lambda a: a.op == "move" and a.kind in (tx.DOCUMENT, tx.BOOK)),
             ("🖼️", "imagem", "imagens", lambda a: a.op == "move" and a.kind == tx.IMAGE),
             ("🎬", "vídeo", "vídeos", lambda a: a.op == "move" and a.kind == tx.VIDEO),
-            ("🎵", "áudio", "áudios", lambda a: a.op == "move" and a.kind == tx.AUDIO),
+            ("🎵", "ficheiro de áudio", "ficheiros de áudio", lambda a: a.op == "move" and a.kind == tx.AUDIO),
             ("📦", "outro ficheiro", "outros ficheiros", lambda a: a.op == "move" and a.kind in
              (tx.ARCHIVE, tx.INSTALLER, tx.CODE, tx.OTHER)),
             ("📁", "pasta inteira", "pastas inteiras", lambda a: a.op == "move_dir"),
@@ -337,7 +337,7 @@ class PlanPage(Gtk.Stack):
             parts.append(f"✏️ {plural(renamed, 'nome novo', 'nomes novos')}")
         txt = "  ·  ".join(parts)
         if plan.ai_model:
-            txt += f"\n<span size='small'>A IA local ({esc(plan.ai_model)}) leu {plan.ai_count} documentos.</span>"
+            txt += f"\n<span size='small'>A IA local ({esc(plan.ai_model)}) leu {plural(plan.ai_count, 'documento', 'documentos')}.</span>"
         self.summary.set_markup(txt)
         self._update_selection_label()
 
@@ -346,7 +346,8 @@ class PlanPage(Gtk.Stack):
             return
         en = self.plan.enabled()
         size = sum(a.size for a in en if a.op != "rmdir")
-        self.sel_label.set_markup(f"<b>{len(en)}</b> de {len(self.plan.actions)} alterações selecionadas"
+        total = plural(len(self.plan.actions), "alteração selecionada", "alterações selecionadas")
+        self.sel_label.set_markup(f"<b>{len(en)}</b> de {total}"
                                   f"  <span alpha='60%'>· {human_size(size)}</span>")
         self.apply_btn.set_sensitive(bool(en))
 
@@ -469,7 +470,7 @@ class PlanPage(Gtk.Stack):
             else:
                 sub = f"de {esc(display_path(os.path.dirname(a.src)))}"
             if a.op == "move_dir":
-                sub = f"pasta inteira ({a.count} ficheiros) · " + sub
+                sub = f"pasta inteira ({plural(a.count, 'ficheiro', 'ficheiros')}) · " + sub
             return f"{name}\n" + small.format(sub)
         if a.op == "trash":
             target = f"→ {TRASH_NAME} (recuperável)"
@@ -662,7 +663,7 @@ class PlanPage(Gtk.Stack):
         new_dir = rename_folder_in_plan(self.plan, folder_path, new_name)
         if new_dir != folder_path:
             self._repopulate(select_folder=new_dir)
-            self.win.toast.show(f"Pasta renomeada para «{os.path.basename(new_dir)}».")
+            self.win.toast.show(f"Nome da pasta mudado para «{os.path.basename(new_dir)}».")
 
     def _choose_folder_dest(self, folder_path: str) -> None:
         if not self.plan:
@@ -912,9 +913,11 @@ class PlanPage(Gtk.Stack):
             word = "Alta" if a.confidence >= 0.75 else ("Média" if a.confidence >= 0.55 else "Baixa: confirma")
             src, _ = SOURCE_LABEL.get(a.source, (a.source, ""))
             who = f"IA local ({self.plan.ai_model})" if a.source == "IA" and self.plan.ai_model else src
+            if a.source == "manual":
+                who = "ti"
             box.pack_start(label(f"{word} · decidido por {who}", "small", "dim", wrap=True), False, False, 0)
 
-        size = human_size(a.size) + (f" · {a.count} ficheiros" if a.op == "move_dir" else "")
+        size = human_size(a.size) + (f" · {plural(a.count, 'ficheiro', 'ficheiros')}" if a.op == "move_dir" else "")
         if a.op != "rmdir":
             self._field(box, "TAMANHO", size)
 
@@ -982,7 +985,7 @@ class PlanPage(Gtk.Stack):
         if trash:
             parts.append(f"{plural(trash, 'ficheiro temporário vai', 'ficheiros temporários vão')} {TRASH_TO}.")
         parts.append("Nada é apagado definitivamente e podes anular tudo no Histórico.")
-        if confirm(self.win, f"Aplicar {len(en)} alterações?", "\n".join(parts), "Aplicar"):
+        if confirm(self.win, f"Aplicar {plural(len(en), 'alteração', 'alterações')}?", "\n".join(parts), "Aplicar"):
             self.win.apply_plan(en)
 
     def show_done(self, res: Result, plan: Plan) -> None:
@@ -997,7 +1000,7 @@ class PlanPage(Gtk.Stack):
                              f"({human_size(res.bytes_moved)} organizados).", "subtitle", xalign=0.5),
                        False, False, 0)
         if res.errors:
-            exp = Gtk.Expander(label=f"{plural(len(res.errors), 'item não pôde', 'itens não puderam')} ser alterados")
+            exp = Gtk.Expander(label=plural(len(res.errors), "item não pôde ser alterado", "itens não puderam ser alterados"))
             lst = vbox(4, margin_top=6)
             for path, err in res.errors[:100]:
                 lst.pack_start(label(f"{display_path(path)}: {err}", "small", "dim", wrap=True, max_width=70),

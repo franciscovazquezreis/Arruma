@@ -86,7 +86,7 @@ class SettingsPage(Gtk.ScrolledWindow):
                      "Desligado por defeito para não mexer em configurações.",
                      self.include_hidden),
             pref_row("Leitura de digitalizações (OCR)",
-                     "Permite ler PDFs digitalizados sem texto selecionável.",
+                     "Permite ler PDF digitalizados sem texto selecionável.",
                      ocr_pill),
         ]), False, False, 0)
 

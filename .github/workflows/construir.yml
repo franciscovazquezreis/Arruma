@@ -1,9 +1,16 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Testa o Arruma em Linux, Windows e macOS e constrói as versões para instalar.
-# Os testes correm em todas as alterações. As versões para instalar, que gastam muitos
-# minutos (sobretudo no macOS), só são construídas no ramo main, nas etiquetas vX.Y.Z e
-# à mão (Actions → Construir e testar → Run workflow). Os ficheiros ficam em Actions →
-# (execução) → Artifacts durante 14 dias; ao criar uma etiqueta vX.Y.Z, são também
-# publicados numa versão (Releases) do GitHub, onde não expiram.
+# Os testes correm em todas as alterações. As versões para instalar, que demoram (sobretudo
+# no macOS) e levam consigo cerca de 1 GB de código-fonte de componentes de terceiros, só são
+# construídas no ramo main, nas etiquetas vX.Y.Z e à mão (Actions → Construir e testar →
+# Run workflow). Os ficheiros ficam em Actions → (execução) → Artifacts durante 14 dias; ao
+# criar uma etiqueta vX.Y.Z, são também publicados numa versão (Releases) do GitHub, onde
+# não expiram.
+#
+# A GPL e a LGPL pedem que o código-fonte dos componentes de terceiros fique no mesmo sítio
+# que os instaladores. Por isso, sempre que outras pessoas os podem descarregar (repositório
+# público ou versão publicada), o trabalho «fontes» junta esse código-fonte à mesma execução,
+# no artefacto arruma-codigo-fonte-terceiros. Num repositório privado só confirma que existe.
 name: Construir e testar
 
 on:
@@ -13,6 +20,13 @@ on:
     paths-ignore: ["README.md", "tests/avaliacao/**", ".github/workflows/avaliar-ia.yml"]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Ver o comentário no início e packaging/pyinstaller/arruma.spec.
+  ARRUMA_FONTES_NA_EXECUCAO: ${{ (!github.event.repository.private || startsWith(github.ref, 'refs/tags/v')) && 'true' || 'false' }}
 
 jobs:
   testes:
@@ -32,6 +46,8 @@ jobs:
       PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
@@ -44,6 +60,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: A etiqueta tem de ser igual à versão do Arruma
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "$GITHUB_REF_NAME" = "v$(python3 -c 'import arruma; print(arruma.__version__)')"
       - run: packaging/linux/build-deb.sh dist
       - uses: actions/upload-artifact@v7
         with:
@@ -83,6 +104,8 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -151,6 +174,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: GTK e Python do Homebrew
         run: |
           # O Pillow vem do Homebrew (e não da roda do PyPI) para que cada biblioteca que ele usa
@@ -192,47 +217,50 @@ jobs:
     name: Código-fonte de terceiros
     needs: [windows, macos]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           pattern: fontes-*
           path: fontes
           merge-multiple: true
       - name: Confirmar que o código-fonte de cada componente está disponível
+        if: env.ARRUMA_FONTES_NA_EXECUCAO != 'true'
         run: python3 packaging/licencas/fontes.py --verificar fontes/*.json
+      - name: Juntar o código-fonte de cada componente (GPL e LGPL pedem-no no mesmo sítio)
+        if: env.ARRUMA_FONTES_NA_EXECUCAO == 'true'
+        run: python3 packaging/licencas/fontes.py --saida fontes-terceiros fontes/*.json
+      - uses: actions/upload-artifact@v7
+        if: env.ARRUMA_FONTES_NA_EXECUCAO == 'true'
+        with:
+          name: arruma-codigo-fonte-terceiros
+          retention-days: 14
+          compression-level: 0  # são arquivos já comprimidos
+          path: fontes-terceiros/*.tar
 
   publicar:
     name: Publicar versão
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [testes, linux-instalar, windows, macos, fontes]
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
-          pattern: arruma-*
+          pattern: arruma-*  # inclui arruma-codigo-fonte-terceiros
           path: artefactos
           merge-multiple: true
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: fontes-*
-          path: fontes
-          merge-multiple: true
-      - name: Código-fonte dos componentes de terceiros (GPL e LGPL pedem-no no mesmo sítio)
-        run: |
-          python3 packaging/licencas/fontes.py --saida fontes-terceiros fontes/*.json
-          mv fontes-terceiros/*.tar artefactos/
       - uses: softprops/action-gh-release@v3
         with:
           files: artefactos/*
           generate_release_notes: true
           body: |
             Instaladores para Linux (.deb), Windows (instalador e versão portátil) e macOS (Apple Silicon e Intel).
-            O Arruma é software livre (GPL-3.0 ou posterior). Os arquivos «codigo-fonte-terceiros» contêm o
+            O Arruma é software livre (GPL-3.0 ou posterior). Os ficheiros .tar «codigo-fonte-terceiros» contêm o
             código-fonte dos componentes de outros autores incluídos nas versões de Windows e macOS; a lista e
             as licenças estão dentro de cada versão, na pasta «licencas».

@@ -3,8 +3,9 @@
 
 Lê os componentes-*.json gerados pelas construções de Windows e macOS (terceiros.py) e
 descarrega o código-fonte exato de cada componente: o arquivo .src.tar.zst do MSYS2, o arquivo
-original, os remendos e a receita do Homebrew, ou o sdist do PyPI. O resultado é um arquivo .tar
-por sistema, publicado na mesma versão (Releases) que os instaladores, como pedem a GPL e a LGPL.
+original, os remendos e a receita do Homebrew, ou o sdist do PyPI. O resultado é um ficheiro .tar
+por sistema, que acompanha os instaladores (na mesma execução do GitHub Actions e, nas versões
+publicadas, na mesma página de Releases), como pedem a GPL e a LGPL.
 
 Uso:
   python fontes.py --verificar componentes-*.json        só confirma que cada endereço existe
@@ -280,6 +281,7 @@ def descarregar(por_sistema: dict[str, list[tuple[str, str]]], saida: Path, vers
         arquivo = saida / f"Arruma-{versao}-codigo-fonte-terceiros-{sistema}.tar"
         with tarfile.open(arquivo, "w") as tar:
             tar.add(pasta, arcname=f"Arruma-{versao}-codigo-fonte-terceiros-{sistema}")
+        shutil.rmtree(pasta)  # já está no .tar; no Windows são perto de 700 MB
         print(f"{arquivo} ({arquivo.stat().st_size / 1e6:.0f} MB)")
     return falhas
 

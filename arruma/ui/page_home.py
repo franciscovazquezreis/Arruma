@@ -300,7 +300,7 @@ class HomePage(Gtk.ScrolledWindow):
             ctx.add_class("off")
             self.ai_pill.set_text("não encontrada")
             self.ai_text.set_text(f"{status.error} Podes usar o Arruma na mesma (com regras e palavras-chave) "
-                                  f"ou ativar a IA instalando o Ollama e o modelo {RECOMMENDED_MODEL}.")
+                                  f"ou ativar a IA: basta instalar o Ollama e o modelo {RECOMMENDED_MODEL}.")
             self.ai_btn.set_label("Como ativar")
             self._set_btn(self.win.show_ai_help)
 

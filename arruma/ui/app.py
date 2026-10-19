@@ -125,7 +125,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         brand.pack_start(icon("folder", 32), False, False, 0)
         col = vbox(0)
         col.pack_start(label("Arruma", "brand"), False, False, 0)
-        col.pack_start(label("100% local · sem internet", "brand-sub"), False, False, 0)
+        col.pack_start(label("100\u00a0% local · sem internet", "brand-sub"), False, False, 0)
         brand.pack_start(col, False, False, 0)
         side.pack_start(brand, False, False, 0)
 
@@ -255,7 +255,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         box = dlg.get_content_area()
         add_classes(box, "card")
         inner = vbox(10, margin_top=12, margin_bottom=12, margin_start=16, margin_end=16)
-        inner.pack_start(label("Inteligência artificial 100% local", "section-title"), False, False, 0)
+        inner.pack_start(label("Inteligência artificial 100\u00a0% local", "section-title"), False, False, 0)
         inner.pack_start(label(
             "Para ler documentos e sugerir nomes em português sem usar a internet, o Arruma liga-se ao "
             "Ollama a correr no teu computador. Depois de instalado, funciona sem internet.",
@@ -277,7 +277,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
         inner.pack_start(label(
             "Depois de concluído, carrega em «Verificar agora». Mesmo sem o Ollama, o Arruma continua a "
-            "funcionar usando regras, metadados (datas das fotografias, etiquetas de música) e palavras-chave.",
+            "funcionar com regras, metadados (datas das fotografias, etiquetas de música) e palavras-chave.",
             "small", "dim", wrap=True, max_width=68), False, False, 0)
         box.add(inner)
         dlg.show_all()

@@ -11,10 +11,15 @@ from gi.repository import Gtk
 from ..core import taxonomy as tx
 from ..core.fsutil import (COMPUTER_TOKEN, display_path, human_count, human_size, is_unclear_name,
                            is_within, plural, split_ext, user_dirs)
+from ..core.system import folder_display_name
 from ..core.planner import MODE_INSIDE, MODE_PERSONAL, default_mode
 from ..core.scanner import ScanResult, is_home
 from .widgets import (DonutChart, Placeholder, ProgressPanel, StatCard, button, card,
                       esc, hbox, icon, kind_color, kind_icon, kind_label, label, show_in_folder, vbox)
+
+
+def _contagem(n: int, singular: str, plural_: str) -> str:
+    return f"<b>{human_count(n)}</b> {singular if n == 1 else plural_}"
 
 
 class AnalysisPage(Gtk.Stack):
@@ -165,20 +170,22 @@ class AnalysisPage(Gtk.Stack):
         unclear = sum(1 for f in scan.files if f.kind in (tx.DOCUMENT,) and is_unclear_name(split_ext(f.name)[0]))
         if unclear:
             out.append(("dialog-question-symbolic",
-                        f"<b>{human_count(unclear)}</b> documentos com nomes pouco claros (ex.: «scan_003.pdf»).",
+                        _contagem(unclear, "documento com nome pouco claro", "documentos com nomes pouco claros")
+                        + " (ex.: «scan_003.pdf»).",
                         unclear, "warn"))
         junk = scan.by_kind.get(tx.JUNK, (0, 0))
         if junk[0]:
-            out.append(("user-trash-symbolic", f"<b>{human_count(junk[0])}</b> ficheiros temporários ou incompletos "
-                        f"({human_size(junk[1])}).", junk[0], "warn"))
+            out.append(("user-trash-symbolic", _contagem(junk[0], "ficheiro temporário ou incompleto",
+                                                         "ficheiros temporários ou incompletos")
+                        + f" ({human_size(junk[1])}).", junk[0], "warn"))
         empty = sum(1 for f in scan.folders.values() if f.empty and f.path not in root_set)
         if empty:
-            out.append(("folder-symbolic", f"<b>{human_count(empty)}</b> pastas vazias.", empty, "warn"))
+            out.append(("folder-symbolic", _contagem(empty, "pasta vazia.", "pastas vazias."), empty, "warn"))
         inst = scan.by_kind.get(tx.INSTALLER, (0, 0))
         arch = scan.by_kind.get(tx.ARCHIVE, (0, 0))
         if inst[0] + arch[0] >= 3:
             out.append(("package-x-generic-symbolic",
-                        f"<b>{human_count(inst[0] + arch[0])}</b> instaladores e arquivos comprimidos "
+                        f"<b>{human_count(inst[0] + arch[0])}</b> instaladores e ficheiros comprimidos "
                         f"({human_size(inst[1] + arch[1])}) que talvez já não sejam precisos.",
                         inst[0] + arch[0], "info"))
         year_ago = time.time() - 365 * 86400
@@ -187,22 +194,26 @@ class AnalysisPage(Gtk.Stack):
             old = sum(1 for f in scan.files if f.mtime < year_ago and is_within(f.path, dl_dir))
             if old:
                 out.append(("document-open-recent-symbolic",
-                            f"<b>{human_count(old)}</b> transferências com mais de um ano.", old, "info"))
+                            _contagem(old, "transferência com mais de um ano.",
+                                      "transferências com mais de um ano."), old, "info"))
         huge = sum(1 for f in scan.files if f.size > 1024 ** 3)
         if huge:
-            out.append(("drive-harddisk-symbolic", f"<b>{human_count(huge)}</b> ficheiros com mais de 1 GB.", huge, "info"))
+            out.append(("drive-harddisk-symbolic", _contagem(huge, "ficheiro com mais de 1 GB.",
+                                                             "ficheiros com mais de 1 GB."), huge, "info"))
         if scan.protected:
             names = ", ".join(f"«{esc(os.path.basename(p))}»" for p, _ in scan.protected[:3])
             more = f" e mais {len(scan.protected) - 3}" if len(scan.protected) > 3 else ""
             out.append(("security-high-symbolic",
-                        f"<b>{len(scan.protected)}</b> pastas protegidas que não vão ser alteradas: {names}{more} "
+                        _contagem(len(scan.protected), "pasta protegida que não vai ser alterada",
+                                  "pastas protegidas que não vão ser alteradas") + f": {names}{more} "
                         "(projetos, bibliotecas de programas, pastas sincronizadas).", len(scan.protected), "ok"))
         if scan.skipped_hidden:
-            out.append(("view-paged-symbolic", f"{human_count(scan.skipped_hidden)} itens ocultos ignorados.",
+            out.append(("view-paged-symbolic", plural(scan.skipped_hidden, "item oculto ignorado.", "itens ocultos ignorados."),
                         scan.skipped_hidden, "info"))
         if scan.errors:
-            out.append(("dialog-warning-symbolic", f"{human_count(len(scan.errors))} itens não puderam ser lidos "
-                        "(sem permissão).", len(scan.errors), "info"))
+            out.append(("dialog-warning-symbolic", plural(len(scan.errors), "item não pôde ser lido",
+                                                              "itens não puderam ser lidos")
+                        + " (sem permissão).", len(scan.errors), "info"))
         return out
 
     def _cta(self, scan: ScanResult) -> Gtk.Widget:
@@ -215,36 +226,38 @@ class AnalysisPage(Gtk.Stack):
                              "dim", wrap=True), False, False, 0)
 
         mode = default_mode(scan)
+        docs, imgs, vids, mus = (folder_display_name(k) for k in ("DOCUMENTS", "PICTURES", "VIDEOS", "MUSIC"))
+        pessoais = f"Nas pastas pessoais ({docs}, {imgs}, {vids}, {mus}…)"
         if scan.whole_computer:
             r1 = Gtk.RadioButton.new_with_label(None, "Dentro de cada pasta ou disco analisado")
             r2 = Gtk.RadioButton.new_with_label_from_widget(
-                r1, "Nas pastas pessoais (Documentos, Imagens, Vídeos, Música…) e em cada disco externo")
+                r1, f"{pessoais} e em cada disco externo")
             d1 = label("Em cada disco ou pasta principal, organiza os ficheiros dentro de subpastas próprias.",
                        "small", "dim", wrap=True, margin_start=26)
-            d2 = label("Recomendado para todo o computador: organiza a tua Pasta Pessoal nas pastas Documentos, "
-                       "Imagens, Vídeos e Música, e mantém os discos externos organizados dentro de si próprios.",
+            d2 = label(f"Recomendado para todo o computador: organiza a tua pasta pessoal nas pastas {docs}, "
+                       f"{imgs}, {vids} e {mus}, e mantém os discos externos organizados dentro de si próprios.",
                        "small", "dim", wrap=True, margin_start=26)
             r1.set_sensitive(False)
         elif len(scan.roots) > 1:
             r1 = Gtk.RadioButton.new_with_label(None, f"Dentro de cada uma das {len(scan.roots)} pastas escolhidas")
             r2 = Gtk.RadioButton.new_with_label_from_widget(
-                r1, "Nas pastas pessoais (Documentos, Imagens, Vídeos, Música…)")
+                r1, pessoais)
             d1 = label("Cada pasta escolhida fica organizada dentro de si própria (ex.: «Pasta/Documentos/Finanças»).",
                        "small", "dim", wrap=True, margin_start=26)
             d2 = label("Junta e organiza os ficheiros de todas as pastas selecionadas nas tuas pastas pessoais.",
                        "small", "dim", wrap=True, margin_start=26)
             if any(is_home(rt) for rt in scan.roots):
                 r1.set_sensitive(False)
-                d1.set_text("Não disponível quando a Pasta Pessoal faz parte da seleção.")
+                d1.set_text("Não disponível quando a pasta pessoal faz parte da seleção.")
         else:
             r1 = Gtk.RadioButton.new_with_label(None, f"Dentro de «{name}»")
             r2 = Gtk.RadioButton.new_with_label_from_widget(
-                r1, "Nas pastas pessoais (Documentos, Imagens, Vídeos, Música…)")
+                r1, pessoais)
             d1 = label(f"Cria subpastas como «{name}/Documentos/Finanças» ou «{name}/Imagens/Fotografias». "
                        "As subpastas que já têm nome próprio ficam como estão.",
                        "small", "dim", wrap=True, margin_start=26)
-            d2 = label("Recomendado para Transferências e Secretária: cada ficheiro vai para a pasta pessoal certa "
-                       "(ex.: «Documentos/Saúde», «Imagens/Fotografias/2024»).", "small", "dim", wrap=True, margin_start=26)
+            d2 = label(f"Recomendado para {folder_display_name('DOWNLOAD')} e {folder_display_name('DESKTOP')}: "
+                       f"cada ficheiro vai para a pasta pessoal certa (ex.: «{docs}/Saúde», «{imgs}/Fotografias/2024»).", "small", "dim", wrap=True, margin_start=26)
             if is_home(root):
                 r1.set_sensitive(False)
                 d1.set_text("Não disponível para a pasta pessoal.")

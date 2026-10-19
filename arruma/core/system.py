@@ -50,7 +50,7 @@ if IS_WINDOWS:
     DISPLAY_NAMES = {"DESKTOP": "Ambiente de Trabalho", "DOWNLOAD": "Transferências", "DOCUMENTS": "Documentos",
                      "PICTURES": "Imagens", "VIDEOS": "Vídeos", "MUSIC": "Música"}
 elif IS_MAC:
-    DISPLAY_NAMES = {"DESKTOP": "Secretária", "DOWNLOAD": "Descargas", "DOCUMENTS": "Documentos",
+    DISPLAY_NAMES = {"DESKTOP": "Secretária", "DOWNLOAD": "Transferências", "DOCUMENTS": "Documentos",
                      "PICTURES": "Imagens", "VIDEOS": "Filmes", "MUSIC": "Música"}
 else:
     DISPLAY_NAMES = {}
@@ -128,6 +128,11 @@ def user_dirs() -> dict[str, Path]:
     if IS_MAC:
         return _mac_user_dirs()
     return _xdg_user_dirs()
+
+
+def folder_display_name(key: str) -> str:
+    """Nome com que o sistema mostra uma pasta pessoal (Filmes no macOS, Vídeos no Windows…)."""
+    return DISPLAY_NAMES.get(key) or user_dirs()[key].name
 
 
 def config_dir() -> Path:
