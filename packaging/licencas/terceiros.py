@@ -100,6 +100,8 @@ class Componente:
     cargo: bool = False  # inclui bibliotecas Rust (crates) cujo código-fonte o fontes.py junta à parte
     crates: str = ""  # pasta com os textos das licenças dessas crates (ver juntar_textos_crates())
     n_crates: int = 0
+    crates_lock_gerado: bool = False  # o código-fonte não traz Cargo.lock; gerou-se um na construção
+    crates_sem_texto: list[str] = field(default_factory=list)  # licenças das crates que não trazem texto
 
 
 @dataclass
@@ -247,13 +249,37 @@ def _textos_padrao(licenca: str) -> list[str]:
     return nomes
 
 
+def _licenca_crate_spdx(licenca: str) -> str:
+    """As crates antigas escrevem «MIT/Apache-2.0» para dizer «MIT OR Apache-2.0»."""
+    return re.sub(r"\s*/\s*", " OR ", licenca)
+
+
+def problemas_crates(licencas: list[str], sem_texto: list[str]) -> list[str]:
+    """Licenças de crates que não se podem combinar com a GPL-3.0 ou posterior (ou que não são
+    identificadores SPDX), e licenças de crates sem texto para as quais não há texto-padrão."""
+    problemas = []
+    for licenca in licencas:
+        try:
+            escolha = escolher_licenca(_licenca_crate_spdx(licenca))
+        except ValueError:
+            problemas.append(f"incompatível com a GPL-3.0: {licenca}")
+            continue
+        termos = re.split(r"\s+AND\s+", re.sub(r"[()]", " ", escolha).strip())
+        if not all(_conhecida(t) and _compativel(t) for t in termos):
+            problemas.append(f"incompatível com a GPL-3.0 ou desconhecida: {licenca}")
+    for licenca in sem_texto:
+        if not _textos_padrao_crates([_licenca_crate_spdx(licenca)]):
+            problemas.append(f"sem texto no pacote nem texto-padrão: {licenca}")
+    return problemas
+
+
 def _textos_padrao_crates(licencas: list[str]) -> list[str]:
     """Textos-padrão para as crates que não trazem o texto da licença (com a MIT e a BSD-2-Clause,
     que nos componentes vêm sempre no próprio pacote)."""
     nomes: list[str] = []
     for licenca in licencas:
         extra = (["MIT.txt"] if re.search(r"\bMIT\b(?![-\w])", licenca) else []) + \
-                (["BSD-2-Clause.txt"] if "BSD-2-Clause" in licenca else [])
+                (["BSD-2-Clause.txt"] if re.search(r"\bBSD-2-Clause\b(?![-\w])", licenca) else [])
         nomes += [t for t in _textos_padrao(licenca) + extra if t not in nomes]
     return nomes
 
@@ -723,6 +749,10 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
     padrao.mkdir()
     usadas = {"arruma", "textos-padrao"}
     precisos: set[str] = set()
+    origem_txt, distribuidor = {
+        "windows": ("pelo MSYS2 (https://www.msys2.org)", "o MSYS2"),
+        "macos": ("pelo Homebrew (https://brew.sh) e pelo PyPI (https://pypi.org)", "o Homebrew"),
+    }[sistema]
     linhas_comp: list[str] = []
     for comp in sorted(componentes.values(), key=lambda c: c.nome.casefold()):
         pasta = _pasta_segura(comp.nome, usadas)
@@ -753,32 +783,32 @@ def escrever(componentes: dict[str, Componente], destino: Path, versao: str, sis
         notas = list(comp.notas)
         if comp.crates and Path(comp.crates).is_dir():
             shutil.copytree(comp.crates, destino / pasta / "crates")
-            sem_texto = destino / pasta / "crates" / "sem-texto.json"
-            if sem_texto.is_file():
-                precisos.update(_textos_padrao_crates(json.loads(sem_texto.read_text(encoding="utf-8"))))
+            precisos.update(_textos_padrao_crates([_licenca_crate_spdx(lic) for lic in comp.crates_sem_texto]))
             comp.crates = f"{pasta}/crates"
-            bloco.append(f"  Bibliotecas Rust: {comp.crates}/CRATES.txt ({comp.n_crates} crates, com os textos "
-                         "das licenças)")
+            bloco.append(f"  Bibliotecas Rust: {comp.crates}/CRATES.txt ({comp.n_crates} crates do Cargo.lock, "
+                         "com os textos das licenças)")
         if comp.cargo:
             arquivo = re.sub(r"[^A-Za-z0-9.+-]+", "-", f"{comp.nome} {comp.versao}")  # como no fontes.py
+            if comp.crates_lock_gerado:
+                lock_txt = (f"listadas num Cargo.lock gerado na construção do Arruma (o código-fonte do {comp.nome} "
+                            f"não traz um, e as versões podem não ser exatamente as que {distribuidor} compilou)")
+            else:
+                lock_txt = f"listadas no Cargo.lock do código-fonte do {comp.nome}"
             textos_txt = (f"A lista, com a licença de cada uma e os textos que cada pacote traz, está em "
                           f"{comp.crates}. " if comp.crates else
-                          "Os textos das licenças delas não foram incluídos nesta construção. ")
+                          "Os textos das licenças delas não foram incluídos nesta construção; estão, com o código, "
+                          "no código-fonte de terceiros das versões publicadas. ")
             onde = (f"O código delas está no código-fonte de terceiros que acompanha esta versão (ficheiro "
                     f"{arquivo}-crates.tar.gz)." if publicada or execucao else
+                    "O packaging/licencas/fontes.py do Arruma junta esse código-fonte." if not comp.crates else
                     "O código delas está no código-fonte de terceiros das versões publicadas (o "
                     "packaging/licencas/fontes.py do Arruma junta-o).")
-            notas.append(f"Inclui bibliotecas Rust (crates) ligadas estaticamente, listadas no Cargo.lock do "
-                         f"código-fonte do {comp.nome}; cada uma tem a sua licença (sobretudo MIT e Apache-2.0). "
-                         f"{textos_txt}{onde}")
+            notas.append(f"Inclui bibliotecas Rust (crates) ligadas estaticamente, {lock_txt}; cada uma tem a sua "
+                         f"licença (sobretudo MIT e Apache-2.0). {textos_txt}{onde}")
         bloco += [f"  Nota: {n}" for n in notas]
         linhas_comp.append("\n".join(bloco))
     for nome in sorted(precisos):
         shutil.copyfile(projeto / "LICENSE" if nome == "GPL-3.0.txt" else TEXTOS_PADRAO / nome, padrao / nome)
-    origem_txt, distribuidor = {
-        "windows": ("pelo MSYS2 (https://www.msys2.org)", "o MSYS2"),
-        "macos": ("pelo Homebrew (https://brew.sh) e pelo PyPI (https://pypi.org)", "o Homebrew"),
-    }[sistema]
     if sistema == "macos":
         alteracoes = ("O Arruma usa-os sem os alterar, exceto no que o PyInstaller faz em qualquer aplicação para\n"
                       "macOS: reescreve os caminhos das bibliotecas dinâmicas e a assinatura de cada binário e\n"
@@ -876,11 +906,13 @@ def juntar_textos_crates(componentes: dict[str, Componente], trabalho: Path) -> 
     """Junta os textos das licenças das bibliotecas Rust de cada componente compilado com o cargo,
     para irem dentro do instalador (a MIT e a Apache-2.0 pedem que acompanhem cada cópia).
 
-    No GitHub Actions, uma falha para a construção. Numa construção local sem cargo ou sem rede,
-    o aviso diz que esses textos não foram incluídos."""
+    No GitHub Actions, qualquer falha faz parar a construção, tal como uma crate com licença
+    incompatível com a GPL-3.0 ou sem texto nenhum (nem no pacote nem nos textos-padrão). Numa
+    construção local sem cargo ou sem rede, o aviso diz que esses textos não foram incluídos."""
     import fontes
 
-    feitos: dict[tuple[str, str], tuple[str, int]] = {}
+    no_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+    feitos: dict[tuple[str, str], dict] = {}
     for comp in sorted(componentes.values(), key=lambda c: c.chave):
         if not comp.cargo:
             continue
@@ -889,13 +921,24 @@ def juntar_textos_crates(componentes: dict[str, Componente], trabalho: Path) -> 
             destino = trabalho / re.sub(r"[^A-Za-z0-9.+-]+", "-", f"{comp.nome}-{comp.versao}")
             shutil.rmtree(destino, ignore_errors=True)
             try:
-                urls = [u for u in (_url_fonte(f) for f in comp.fontes) if u]
-                n = fontes.textos_crates(f"{comp.nome} {comp.versao}", urls, destino)
-                feitos[chave] = (str(destino), n)
-                print(f"Bibliotecas Rust de {comp.nome} {comp.versao}: {n} crates")
-            except (RuntimeError, OSError, subprocess.CalledProcessError) as e:
-                if os.environ.get("GITHUB_ACTIONS") == "true":
+                urls = [_url_fonte(f) for f in comp.fontes]
+                if not all(urls):
+                    raise RuntimeError("não foi possível saber onde está o código-fonte (PyPI sem resposta?)")
+                info = fontes.textos_crates(f"{comp.nome} {comp.versao}", urls, destino)
+                print(f"Bibliotecas Rust de {comp.nome} {comp.versao}: {info['n']} crates")
+            except Exception as e:  # noqa: BLE001 (numa construção local, qualquer falha só dá um aviso)
+                if no_ci:
                     raise SystemExit(f"Não foi possível juntar os textos das bibliotecas Rust de {comp.nome}: {e}")
                 print(f"AVISO: textos das bibliotecas Rust de {comp.nome} não incluídos ({e})")
-                feitos[chave] = ("", 0)
-        comp.crates, comp.n_crates = feitos[chave]
+                feitos[chave] = {"pasta": "", "n": 0, "gerado": False, "sem_texto": []}
+                continue
+            problemas = problemas_crates(info.get("licencas", []), info["sem_texto"])
+            if problemas:
+                mensagem = f"Bibliotecas Rust de {comp.nome}: " + "; ".join(problemas)
+                if no_ci:
+                    raise SystemExit(mensagem)
+                print(f"AVISO: {mensagem}")
+            feitos[chave] = {"pasta": str(destino), **info}
+        info = feitos[chave]
+        comp.crates, comp.n_crates = info["pasta"], info["n"]
+        comp.crates_lock_gerado, comp.crates_sem_texto = info["gerado"], list(info["sem_texto"])

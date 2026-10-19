@@ -168,6 +168,10 @@ def _extrair(arquivo: Path, destino: Path) -> None:
             tar.extractall(destino)
 
 
+# «cargo update …» numa receita do MSYS2 (prepare()), com ou sem o caminho do cargo antes.
+_CARGO_UPDATE = re.compile(r"^[ \t]*(?:\S*/)?cargo[ \t]+update(?:[ \t]+([^\n#]*))?[ \t]*(?:#.*)?$", re.M)
+
+
 def _vendorizar(rotulo: str, arquivos: list[Path], trabalho: Path) -> tuple[Path, bool]:
     """Descarrega para <raiz>/vendor as crates exatas que o componente compila.
 
@@ -185,8 +189,7 @@ def _vendorizar(rotulo: str, arquivos: list[Path], trabalho: Path) -> tuple[Path
             _extrair(arquivo, pasta)
             for pkgbuild in pasta.rglob("PKGBUILD"):
                 texto = pkgbuild.read_text(encoding="utf-8", errors="replace")
-                comandos += [c.strip() for c in re.findall(r"^\s*cargo update\s+([^\n#]+)", texto, re.M)
-                             if "$" not in c]
+                comandos += [c.strip() for c in _CARGO_UPDATE.findall(texto) if "$" not in c]
             originais += [f for f in pasta.rglob("*") if f.is_file() and
                           re.search(r"\.(tar\.(xz|gz|bz2|zst)|tgz)$", f.name) and
                           not f.name.endswith((".src.tar.zst", ".src.tar.gz", ".src.tar.xz"))]
@@ -197,6 +200,8 @@ def _vendorizar(rotulo: str, arquivos: list[Path], trabalho: Path) -> tuple[Path
         _extrair(original, codigo)
     locks = sorted(codigo.glob("*/Cargo.lock"))
     gerado = not locks
+    if not originais:
+        raise RuntimeError(f"{rotulo}: nenhum arquivo de código-fonte entre {[a.name for a in arquivos]}")
     if gerado:
         manifestos = sorted(codigo.glob("*/Cargo.toml"))
         if not manifestos:
@@ -205,7 +210,8 @@ def _vendorizar(rotulo: str, arquivos: list[Path], trabalho: Path) -> tuple[Path
         comandos_cargo = [["cargo", "generate-lockfile"]]
     else:
         raiz = locks[0].parent
-        comandos_cargo = [["cargo", "update", *shlex.split(a)] for a in comandos]
+        comandos_cargo = []
+    comandos_cargo += [["cargo", "update", *shlex.split(a)] for a in comandos]
     for cmd in comandos_cargo + [["cargo", "vendor", "--locked", "--versioned-dirs", "vendor"]]:
         feito = subprocess.run(cmd, cwd=raiz, capture_output=True, text=True)
         if feito.returncode:
@@ -229,15 +235,22 @@ def _crates_de(raiz: Path) -> list[dict]:
     lista = []
     for manifesto in sorted((raiz / "vendor").glob("*/Cargo.toml")):
         pacote = _pacote_cargo(manifesto.read_text(encoding="utf-8"))
+        autores = pacote.get("authors")
         lista.append({"nome": pacote.get("name", "?"), "versao": pacote.get("version", "?"),
                       "licenca": pacote.get("license") or "",
-                      "ficheiro_licenca": pacote.get("license-file") or "", "pasta": manifesto.parent})
+                      "ficheiro_licenca": pacote.get("license-file") or "", "pasta": manifesto.parent,
+                      "autores": ", ".join(autores) if isinstance(autores, list) else ""})
     return lista
 
 
-_AVISO_LOCK_GERADO = ("O código-fonte deste componente não traz Cargo.lock: as versões foram resolvidas "
-                      "quando o Arruma foi\nconstruído e podem diferir ligeiramente das que o "
-                      "distribuidor compilou.\n")
+def _aviso_lock_gerado(quando: str) -> str:
+    return ("O código-fonte deste componente não traz Cargo.lock: as versões foram resolvidas quando\n"
+            f"{quando} e podem diferir ligeiramente das que o distribuidor compilou.\n")
+
+
+_ABRANGE = ("Inclui todas as do Cargo.lock: as que ficam dentro da biblioteca compilada e também as que\n"
+            "só servem para a compilar ou testar, para outros sistemas ou para programas que não vêm\n"
+            "no Arruma.\n")
 
 
 def crates(rotulo: str, arquivos: list[Path], destino: Path) -> Path:
@@ -251,10 +264,9 @@ def crates(rotulo: str, arquivos: list[Path], destino: Path) -> Path:
                  for c in _crates_de(raiz)]
         nome = re.sub(r"[^A-Za-z0-9.+-]+", "-", rotulo)
         (raiz / "CRATES.txt").write_text(
-            f"Bibliotecas Rust (crates) do Cargo.lock de {rotulo}, com a licença de cada uma. Inclui as que\n"
-            "ficam dentro da biblioteca compilada e as que só servem para a compilar ou testar.\n"
+            f"Bibliotecas Rust (crates) do Cargo.lock de {rotulo}, com a licença de cada uma.\n" + _ABRANGE +
             "O código e os textos das licenças estão na pasta vendor/.\n"
-            + (_AVISO_LOCK_GERADO if gerado else "") + "\n" + "\n".join(lista) + "\n",
+            + (_aviso_lock_gerado("este arquivo foi criado") if gerado else "") + "\n" + "\n".join(lista) + "\n",
             encoding="utf-8")
         saida = destino / f"{nome}-crates.tar.gz"
         with tarfile.open(saida, "w:gz") as tar:
@@ -266,14 +278,32 @@ def crates(rotulo: str, arquivos: list[Path], destino: Path) -> Path:
         shutil.rmtree(trabalho, ignore_errors=True)
 
 
-# Ficheiros com o texto da licença ou os avisos de copyright, na raiz de cada crate.
+# Ficheiros com o texto da licença ou os avisos de copyright de cada crate. Também se procuram em
+# subpastas (o regex-syntax, por exemplo, traz o aviso da Unicode em src/unicode_tables), exceto
+# nas de testes e exemplos.
 _TEXTO_CRATE = re.compile(r"^(licen[cs]e|copying|copyright|notice|unlicense|authors)", re.I)
+_PASTAS_SEM_TEXTOS = {"tests", "test", "examples", "example", "benches", "fuzz", ".github"}
 
 
-def copiar_textos_crates(raiz: Path, destino: Path, rotulo: str, gerado: bool = False) -> int:
+def _textos_do_crate(pasta: Path, ficheiro_licenca: str) -> list[Path]:
+    encontrados = []
+    for ficheiro in sorted(pasta.rglob("*")):
+        relativo = ficheiro.relative_to(pasta)
+        if (ficheiro.is_file() and _TEXTO_CRATE.match(ficheiro.name)
+                and not _PASTAS_SEM_TEXTOS.intersection(p.lower() for p in relativo.parts[:-1])):
+            encontrados.append(ficheiro)
+    if ficheiro_licenca:
+        extra = pasta / ficheiro_licenca
+        if (extra.is_file() and extra.resolve().is_relative_to(pasta.resolve())
+                and extra.resolve() not in {f.resolve() for f in encontrados}):
+            encontrados.append(extra)
+    return encontrados
+
+
+def copiar_textos_crates(raiz: Path, destino: Path, rotulo: str, gerado: bool = False) -> dict:
     """Copia para destino os textos das licenças de cada crate em <raiz>/vendor, sem repetir os
     que são iguais (o texto da Apache-2.0, por exemplo), e escreve destino/CRATES.txt com a lista.
-    Devolve o número de crates."""
+    Devolve o número de crates, as licenças de todas e as das que não trazem nenhum texto."""
     textos = destino / "textos"
     textos.mkdir(parents=True, exist_ok=True)
     vistos: dict[str, str] = {}
@@ -282,37 +312,34 @@ def copiar_textos_crates(raiz: Path, destino: Path, rotulo: str, gerado: bool = 
     lista = _crates_de(raiz)
     for crate in lista:
         pasta: Path = crate["pasta"]
-        candidatos = [f for f in sorted(pasta.iterdir()) if f.is_file() and _TEXTO_CRATE.match(f.name)]
-        if crate["ficheiro_licenca"]:
-            extra = (pasta / crate["ficheiro_licenca"]).resolve()
-            if extra.is_file() and extra.is_relative_to(pasta.resolve()) and extra not in candidatos:
-                candidatos.append(extra)
-        usados = []
-        for ficheiro in candidatos:
+        usados: list[str] = []
+        for ficheiro in _textos_do_crate(pasta, crate["ficheiro_licenca"]):
             dados = ficheiro.read_bytes()
             soma = hashlib.sha256(dados).hexdigest()[:12]
             if soma not in vistos:
                 nome = f"{soma}-{re.sub(r'[^A-Za-z0-9._-]+', '_', ficheiro.name)}"
                 (textos / nome).write_bytes(dados)
                 vistos[soma] = f"textos/{nome}"
-            usados.append(vistos[soma])
+            onde = ficheiro.parent.relative_to(pasta).as_posix()
+            referencia = vistos[soma] + (f" ({onde})" if onde != "." else "")
+            if referencia not in usados:
+                usados.append(referencia)
         licenca = crate["licenca"] or "ver o ficheiro da licença"
+        autores = f" (autores: {crate['autores']})" if crate["autores"] and not usados else ""
         if not usados:
             sem_texto.add(licenca)
         detalhe = ", ".join(usados) if usados else "o pacote não traz o texto; ver ../../textos-padrao"
-        linhas.append(f"{crate['nome']} {crate['versao']}: {licenca}\n  {detalhe}")
+        linhas.append(f"{crate['nome']} {crate['versao']}: {licenca}{autores}\n  {detalhe}")
     (destino / "CRATES.txt").write_text(
         f"Bibliotecas Rust (crates) do Cargo.lock de {rotulo}, com a licença de cada uma e os textos\n"
-        "que cada pacote traz (os textos iguais aparecem uma só vez, na pasta textos). Inclui as que\n"
-        "ficam dentro da biblioteca compilada e as que só servem para a compilar ou testar.\n"
-        + (_AVISO_LOCK_GERADO if gerado else "") + "\n" + "\n".join(linhas) + "\n",
+        "que cada pacote traz (os textos iguais aparecem uma só vez, na pasta textos).\n" + _ABRANGE
+        + (_aviso_lock_gerado("esta lista foi criada") if gerado else "") + "\n" + "\n".join(linhas) + "\n",
         encoding="utf-8")
-    # Para o terceiros.py juntar aos textos-padrao as licenças das crates que não trazem o texto.
-    (destino / "sem-texto.json").write_text(json.dumps(sorted(sem_texto)), encoding="utf-8")
-    return len(lista)
+    return {"n": len(lista), "gerado": gerado, "sem_texto": sorted(sem_texto),
+            "licencas": sorted({c["licenca"] or "ver o ficheiro da licença" for c in lista})}
 
 
-def textos_crates(rotulo: str, urls: list[str], destino: Path) -> int:
+def textos_crates(rotulo: str, urls: list[str], destino: Path) -> dict:
     """Descarrega o código-fonte do componente, junta as crates e copia os textos das licenças
     para destino (usado pelo arruma.spec, para irem dentro do instalador)."""
     trabalho = Path(tempfile.mkdtemp(prefix="arruma-crates-"))
