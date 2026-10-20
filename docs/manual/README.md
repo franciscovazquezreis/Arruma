@@ -126,7 +126,7 @@ Se aparecer uma mensagem que não esperavas, vê [Mensagens que podem aparecer](
 
 ### Windows
 
-As imagens do instalador foram tiradas com a versão 0.2.2, num Windows em inglês. Na 0.2.3, as páginas e as caixas são iguais, só muda o número da versão. Por estarem em inglês, a caixa do modo de instalação mostra «Cancel» e as caixas sobre a versão mostram «Cancel», «Yes» e «No»; num Windows em português leem-se «Cancelar», «Sim» e «Não». A pasta de instalação mostra o utilizador da máquina onde as imagens foram tiradas («runneradmin»); no teu computador aparece o teu nome.
+As imagens do instalador foram tiradas num Windows em inglês. Por isso, a caixa do modo de instalação mostra «Cancel» e as caixas sobre a versão mostram «Cancel», «Yes» e «No»; num Windows em português leem-se «Cancelar», «Sim» e «Não». A pasta de instalação mostra o utilizador da máquina onde as imagens foram tiradas («runneradmin»); no teu computador aparece o teu nome.
 
 1. Descarrega `Arruma-0.2.3-windows-instalador.exe` da página de versões. O ficheiro fica na pasta Transferências. O navegador pode avisar que este ficheiro não costuma ser descarregado. No Microsoft Edge, o aviso aparece na lista de transferências, no canto superior direito: passa o rato por cima do ficheiro, carrega em «…» e escolhe «Manter»; se aparecer outro aviso, carrega em «Mostrar mais» e depois em «Manter mesmo assim» (a redação pode variar ligeiramente). Noutros navegadores, procura a opção para manter ou guardar o ficheiro.
 2. Faz duplo clique no ficheiro. Como o instalador não tem assinatura digital, o Windows mostra o aviso do SmartScreen «O Windows protegeu o seu PC». Carrega em «Mais informações» e depois em «Executar mesmo assim» (a redação pode variar ligeiramente; há versões que dizem «Executar de qualquer forma»). Se não aparecer «Mais informações» nem «Executar mesmo assim» e o Windows disser que bloqueou a aplicação, vê [Controlo Inteligente de Aplicações](#controlo-inteligente-de-aplicações-windows-11).
@@ -182,7 +182,7 @@ As definições e o histórico da versão portátil não ficam na pasta do Arrum
 3. Abre o menu Apple → Definições do Sistema e, na barra lateral, carrega em «Privacidade e segurança» (pode ser preciso deslocar a barra para baixo).
 4. Desce até «Segurança». Ao lado da indicação de que o instalador do Arruma foi bloqueado, carrega em «Abrir» (o nome do botão pode variar ligeiramente, por exemplo «Abrir mesmo assim»). Este botão só fica disponível durante cerca de uma hora depois da tentativa do passo 2; se já lá não estiver, repete o passo 2.
 5. O aviso volta a aparecer, agora com a opção de abrir. Carrega em «Abrir», escreve a palavra-passe com que entras no Mac (ou usa o Touch ID) e confirma. A partir daqui, o ficheiro abre com duplo clique.
-6. Abre-se o instalador, «Instalar Arruma 0.2.3», na página «Introdução». Carrega em «Continuar». A imagem foi tirada com a versão 0.2.2; à parte o número, o instalador da 0.2.3 é igual.
+6. Abre-se o instalador, «Instalar Arruma 0.2.3», na página «Introdução». Carrega em «Continuar».
 
    ![Instalador do macOS na página «Introdução»](imagens/macos-01-instalador.png)
 
@@ -737,7 +737,7 @@ O Arruma abre e analisa as pastas indicadas, todas juntas (o que não for pasta 
 
 ### Linux
 
-**O ícone do Arruma aparece como um quadrado vazio no menu ou na barra de tarefas.** Acontece quando uma cópia antiga, instalada com o `instalar.sh`, foi apagada à mão: a lista de ícones guardada na tua pasta pessoal continua a apontar para um ícone que já não existe. O pacote do Arruma, desde a versão 0.2.2, refaz essa lista quando é instalado. Se o quadrado continuar, refá-la tu no Terminal:
+**O ícone do Arruma aparece como um quadrado vazio no menu ou na barra de tarefas.** Acontece quando uma cópia antiga, instalada com o `instalar.sh`, foi apagada à mão: a lista de ícones guardada na tua pasta pessoal continua a apontar para um ícone que já não existe. O pacote do Arruma, desde a versão 0.2.3, refaz essa lista quando é instalado. Se o quadrado continuar, refá-la tu no Terminal:
 
 ```bash
 gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor
@@ -853,7 +853,7 @@ Só aparecem se houver uma cópia do `instalar.sh` na pasta pessoal de algum uti
 |---|---|---|
 | «✓ Arruma instalado com sucesso!», com a lista dos sítios onde o encontras | Fim da instalação ou da atualização. | Abre o Arruma no menu, em Acessórios. |
 | «O Arruma 0.2.3 já está instalado. Não há nada a atualizar.» | Já tens esta versão. | Nada. |
-| «A atualizar o Arruma de 0.2.2 para 0.2.3 (o histórico e as definições ficam).» | Tens uma versão mais antiga. | Nada; a atualização continua sozinha. |
+| «A atualizar o Arruma de 0.2.1 para 0.2.3 (o histórico e as definições ficam).» | Tens uma versão mais antiga. | Nada; a atualização continua sozinha. |
 | «Está instalado o Arruma 0.3.0, mais recente do que a versão desta cópia (0.2.3). Substituir? [s/N]» | Tens uma versão mais recente. | Enter (ou `n`) mantém a que tens e responde «Nada foi alterado.»; `s` substitui. |
 | «Está instalado o Arruma de versão desconhecida, que não se consegue comparar com esta cópia (0.2.3). Substituir? [s/N]» | Não foi possível ler a versão instalada. | `s` substitui; Enter mantém. |
 | «O pacote arruma 0.2.3 já está instalado no sistema.» | Tens o pacote `.deb` instalado. O `instalar.sh` recusa-se sempre. | Lê a linha seguinte; ver também [Problemas frequentes](#problemas-frequentes). |
@@ -882,11 +882,11 @@ Aparecem logo que abres o instalador, quando o Arruma já está instalado (nesse
 | «O Arruma vai ser atualizado da versão … para a 0.2.3.» / «O histórico e as definições ficam.» | Tens uma versão mais antiga. | «OK» continua com a atualização; «Cancelar» fecha sem mudar nada. |
 | «Está instalado o Arruma …, mais recente do que a versão deste instalador (0.2.3).» / «Queres mesmo substituí-lo pela versão mais antiga?» | Tens uma versão mais recente. | «Não» fecha sem mudar nada, e é quase sempre o que convém. «Sim» substitui pela versão mais antiga. |
 
-As imagens foram tiradas com a versão 0.2.2; na 0.2.3, as caixas são iguais, com o número novo. As versões 0.1.0 e 9.9.9 são versões de teste, usadas só para fazer aparecer estas caixas.
+As versões 0.1.0 e 9.9.9 são versões de teste, usadas só para fazer aparecer estas caixas.
 
-![Caixa «O Arruma 0.2.2 já está instalado»](imagens/windows-07-mesma-versao.png)
+![Caixa «O Arruma 0.2.3 já está instalado»](imagens/windows-07-mesma-versao.png)
 
-![Caixa de atualização da versão 0.1.0 para a 0.2.2](imagens/windows-08-atualizar.png)
+![Caixa de atualização da versão 0.1.0 para a 0.2.3](imagens/windows-08-atualizar.png)
 
 ![Caixa de versão mais recente já instalada](imagens/windows-09-versao-mais-recente.png)
 
@@ -934,9 +934,7 @@ Aparecem por cima da página «Introdução», logo que o instalador abre.
 | «O Arruma 0.2.3 já está instalado» / «Não há nada a atualizar. Para o reinstalar, põe primeiro o Arruma no Lixo.» | Já tens esta versão. | «Fechar». Para reinstalar, põe primeiro o Arruma no Lixo. |
 | «Está instalada uma versão mais recente» / «Está instalado o Arruma …, mais recente do que a versão deste instalador (0.2.3). Se continuares nesta janela, será substituído pela versão mais antiga. Pela linha de comandos fica como está; para o substituir, põe primeiro o Arruma no Lixo.» | Tens uma versão mais recente. | «OK». Para manter a mais recente, fecha o instalador sem continuar (Cmd+Q, ou menu Instalador → «Sair do Instalador»; o nome pode variar ligeiramente); se continuares, fica instalada a mais antiga. |
 
-Tal como as do Windows, estas imagens foram tiradas com a versão 0.2.2.
-
-![Caixa «O Arruma 0.2.2 já está instalado» no instalador do macOS](imagens/macos-02-mesma-versao.png)
+![Caixa «O Arruma 0.2.3 já está instalado» no instalador do macOS](imagens/macos-02-mesma-versao.png)
 
 ![Caixa «Está instalada uma versão mais recente» no instalador do macOS](imagens/macos-03-versao-mais-recente.png)
 
@@ -953,7 +951,7 @@ cd ~/Transferências
 sudo apt install ./arruma_0.2.3_all.deb
 ```
 
-Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão atualizados os seguintes pacotes:` e `A descompactar arruma (0.2.3) sobre (0.2.2) ...`. Se for a mesma, responde `arruma já é a versão mais recente (0.2.3).` (no Linux Mint 22, `arruma já está na versão mais recente (0.2.3).`) e não muda nada. Se for mais recente, mostra `Será reposta uma versão ANTERIOR dos seguintes pacotes:` e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
+Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão atualizados os seguintes pacotes:` e `A descompactar arruma (0.2.3) sobre (0.2.1) ...`. Se for a mesma, responde `arruma já é a versão mais recente (0.2.3).` (no Linux Mint 22, `arruma já está na versão mais recente (0.2.3).`) e não muda nada. Se for mais recente, mostra `Será reposta uma versão ANTERIOR dos seguintes pacotes:` e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
 
 Com duplo clique no ficheiro, o Instalador de Pacotes recusa descer de versão e, para a mesma versão, oferece «Reinstalar pacote».
 
