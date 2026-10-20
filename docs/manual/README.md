@@ -252,7 +252,7 @@ Algumas pastas não se podem escolher. Se tentares, aparece «Não é possível 
 - «Esta é uma pasta do sistema. Por segurança, o Arruma não lhe toca.»
 - «Esta pasta contém configurações de programas e não deve ser reorganizada.»
 - «A pasta não existe.» ou «Não tens permissão para alterar esta pasta.»
-- «Esta pasta está protegida: …. Por segurança, o Arruma não lhe toca.», com o tipo de pasta no meio, por exemplo «pasta sincronizada (Dropbox)» ou «projeto de programação» (ver [Pastas protegidas](#regras-de-organização)).
+- «Esta pasta está protegida: pasta sincronizada (Dropbox). Por segurança, o Arruma não lhe toca.» No lugar de «pasta sincronizada (Dropbox)» aparece o tipo de pasta, por exemplo «projeto de programação» (ver «Pastas protegidas» em [Regras de organização](#regras-de-organização)).
 - «Esta pasta está em «Pastas a ignorar sempre», nas Definições. Para a arrumares, tira-a primeiro dessa lista.» Se a pasta estiver dentro de uma pasta dessa lista, a mensagem diz qual.
 
 Se escolheres várias e uma delas for recusada, nenhuma é analisada; tira essa e tenta de novo. A raiz do disco (`/` no Linux e no macOS, `C:\` no Windows) não dá erro: conta como «Todo o computador». No Windows, podes juntar pastas de unidades diferentes (por exemplo, uma em C: e outra em D:) na mesma análise.
