@@ -3,6 +3,7 @@
 o que mudou e anular pergunta, mostra o progresso e diz porque falhou. Os testes da janela precisam do
 PyGObject e de ecrã (no Linux sem ambiente gráfico: xvfb-run -a python3 -m unittest discover -s tests)."""
 
+import errno
 import itertools
 import os
 import shutil
@@ -133,6 +134,112 @@ class HistoryTests(unittest.TestCase):
         self.assertFalse((self.root / "Documentos").exists())
         self.assertEqual(self.db.session(s["id"])["undone"], 1)
 
+    def cross_device(self, disk: Path):
+        """O sistema recusa mudar o nome de um item para outro disco (EXDEV): o Arruma copia-o."""
+        real = os.rename
+
+        def rename(src, dst):
+            if str(src).startswith(str(disk) + os.sep) != str(dst).startswith(str(disk) + os.sep):
+                raise OSError(errno.EXDEV, "Invalid cross-device link")
+            real(src, dst)
+        return mock.patch.object(executor_mod.os, "rename", rename)
+
+    def test_move_to_another_disk(self):
+        pen = self.tmp / "Pen"
+        video = pen / "ferias.mp4"
+        video.parent.mkdir()
+        video.write_bytes(b"V" * 100_000)
+        album = write(pen / "Álbum" / "foto.jpg", "foto").parent
+        dest = self.root / "Vídeos"
+        actions = [move(0, video, dest / video.name),
+                   Action(1, "move_dir", str(album), str(dest / album.name), tx.IMAGE, 4, "", 1.0, "regras")]
+        with self.cross_device(pen):
+            res = self.ex.apply(actions, str(pen), "teste", remove_empty=False)
+            self.assertEqual(res.errors, [])
+            self.assertEqual(sorted(os.listdir(dest)), ["ferias.mp4", "Álbum"])  # sem cópias provisórias
+            self.assertEqual(((dest / "ferias.mp4").stat().st_size, (dest / "Álbum" / "foto.jpg").read_text()),
+                             (100_000, "foto"))
+            self.assertEqual(os.listdir(pen), [])
+            undo = self.ex.undo(res.session_id)
+        self.assertEqual((undo.ok, undo.errors), (2, []))
+        self.assertEqual((video.stat().st_size, (album / "foto.jpg").read_text()), (100_000, "foto"))
+        self.assertFalse(dest.exists())
+
+    def test_move_to_another_disk_cut_half_way(self):
+        # O Arruma morre (corte de luz, sessão terminada) a meio de copiar um vídeo da pen: o original, inteiro,
+        # fica no sítio e a cópia incompleta não fica com o nome certo. Anular não o dá como «outro item com o
+        # mesmo nome», nem põe a cópia incompleta no lugar dele.
+        pen = self.tmp / "Pen"
+        video = pen / "ferias.mp4"
+        video.parent.mkdir()
+        video.write_bytes(b"V" * 100_000)
+        dest = self.root / "Vídeos" / video.name
+
+        def copy_dies(src, dst, follow_symlinks=True):
+            with open(src, "rb") as f, open(dst, "wb") as out:
+                out.write(f.read(30_000))
+            raise Interrupted()
+        with self.cross_device(pen), mock.patch.object(executor_mod.shutil, "copy2", copy_dies), \
+                self.assertRaises(Interrupted):
+            self.ex.apply([move(0, video, dest)], str(pen), "teste", remove_empty=False)
+        self.assertEqual(os.listdir(dest.parent), [])
+        # Num corte de luz, a cópia provisória nem chega a ser apagada: apaga-a quem anular.
+        partial = dest.with_name(dest.name + executor_mod.PARTIAL)
+        partial.write_bytes(b"V" * 30_000)
+        s, = self.db.sessions()
+        with self.cross_device(pen):
+            undo = self.ex.undo(s["id"])
+        self.assertEqual((undo.ok, undo.errors), (1, []))
+        self.assertEqual(video.stat().st_size, 100_000)
+        self.assertFalse(dest.parent.exists())
+        self.assertEqual(self.db.session(s["id"])["undone"], 1)
+
+    def test_item_undone_in_another_window_before_it_was_moved(self):
+        # Outra janela anula a sessão entre o registo de um item e a mudança dele: ainda estava no sítio e parecia
+        # já ter voltado. Depois de mudado, volta a ficar por anular («Anulada em parte» e «Anular o resto»).
+        files = self.files[:2]
+        docs = self.root / "Docs"
+        docs.mkdir()
+        other = Executor(Database(self.tmp / "historico.db"))
+        real = executor_mod.safe_move
+
+        def other_window_undoes(src, dst):
+            if src == str(files[1]):
+                other.undo(other.db.sessions()[0]["id"])
+            real(src, dst)
+        with mock.patch.object(executor_mod, "safe_move", other_window_undoes):
+            res = self.ex.apply([move(i, f, docs / f.name) for i, f in enumerate(files)], str(self.root), "teste")
+        s = self.db.session(res.session_id)
+        self.assertEqual((s["undone"], s["n_left"]), (2, 1))
+        self.assertEqual((files[0].exists(), (docs / files[1].name).exists()), (True, True))
+        rest = other.undo(res.session_id)
+        self.assertEqual((rest.ok, rest.errors), (1, []))
+        self.assertTrue(all(f.exists() for f in files))
+        self.assertEqual(self.db.session(res.session_id)["undone"], 1)
+
+    def test_trash_recorded_but_not_sent_is_undone_without_error(self):
+        # O Arruma morre depois de registar o item e antes de o enviar para o Lixo: nunca saiu do sítio.
+        junk = Action(0, "trash", str(self.files[0]), "", tx.JUNK, 1, "", 1.0, "regras")
+        with mock.patch.object(executor_mod, "send_to_trash", side_effect=Interrupted()), \
+                self.assertRaises(Interrupted):
+            self.ex.apply([junk], str(self.root), "teste", remove_empty=False)
+        s, = self.db.sessions()
+        undo = self.ex.undo(s["id"])
+        self.assertEqual((undo.ok, undo.errors), (1, []))
+        s = self.db.session(s["id"])
+        self.assertEqual((s["undone"], s["n_left"]), (1, 0))
+        self.assertTrue(self.files[0].exists())
+        # Se está mesmo no Lixo e há outro com o mesmo nome no lugar dele, continua a dizer porquê.
+        bin_ = self.tmp / "Lixo"
+        bin_.mkdir()
+        with mock.patch.object(executor_mod, "send_to_trash", lambda p: os.rename(p, bin_ / os.path.basename(p))):
+            res = self.ex.apply([junk], str(self.root), "teste", remove_empty=False)
+        write(self.files[0], "outro")
+        with mock.patch.object(executor_mod, "in_trash", return_value=True):
+            undo = self.ex.undo(res.session_id)
+        self.assertEqual(undo.errors, [(str(self.files[0]), "Já existe um ficheiro no local original.")])
+        self.assertEqual(self.db.session(res.session_id)["n_left"], 1)
+
     def test_failed_move_is_only_an_error(self):
         real = executor_mod.safe_move
 
@@ -253,13 +360,20 @@ class HistoryTests(unittest.TestCase):
         actions = [move(i, f, dest / f.name) for i, f in enumerate([*self.files, old])]
         actions.append(Action(5, "rmdir", str(self.root / "Nova pasta"), "", tx.OTHER, 0, "", 0.95, "regras"))
         res = self.ex.apply(actions, str(self.root), "teste", cleanup_dirs=[str(self.root / "Velha")])
-        self.assertEqual(self.db.session(res.session_id)["n_ok"], 6)  # 5 itens e a pasta vazia
+        s = self.db.session(res.session_id)
+        # O Histórico conta 6 alterações (5 itens e a pasta vazia); a pergunta diz quantos itens voltam ao sítio.
+        self.assertEqual((s["n_ok"], s["n_items"]), (6, 5))
+        if Gtk is not None:
+            from arruma.ui.page_history import undo_question
+            title, text, _ok = undo_question(s)
+            self.assertEqual(title, "Anular 6 alterações?")
+            self.assertIn("5 itens voltam ao sítio onde estavam", text)
         ops = [o["op"] for o in self.db.ops(res.session_id)]
         self.assertEqual((ops.count("mkdir"), ops.count("rmdir")), (2, 3))
         blocker = write(self.files[1], "outro ficheiro")
         seen = []
         undo = self.ex.undo(res.session_id, progress=lambda n, total, path: seen.append((n, total)))
-        self.assertEqual(seen, [(n, 5) for n in range(6)])
+        self.assertEqual(seen, [(n, s["n_items"]) for n in range(6)])
         self.assertEqual((undo.ok, len(undo.errors)), (4, 1))
         s = self.db.session(res.session_id)
         self.assertEqual((s["undone"], s["n_left"]), (2, 1))  # «Anular o resto?»: falta 1 item
@@ -324,11 +438,13 @@ class UndoTextTests(unittest.TestCase):
     def test_question(self):
         from arruma.core.system import TRASH_TO
         from arruma.ui.page_history import undo_question
-        s = {"title": "Arrumação de «Bagunça»", "undone": 0, "n_ok": 12, "n_left": 12}
+        s = {"title": "Arrumação de «Bagunça»", "undone": 0, "n_ok": 12, "n_left": 12, "n_items": 10}
         title, text, ok = undo_question(s)
         self.assertEqual((title, ok), ("Anular 12 alterações?", "Anular"))
-        self.assertTrue(text.startswith(f"Arrumação de «Bagunça». Cada item volta ao sítio onde estava, incluindo o "
-                                        f"que foi {TRASH_TO}."))
+        self.assertTrue(text.startswith(f"Arrumação de «Bagunça». 10 itens voltam ao sítio onde estavam, "
+                                        f"incluindo o que foi {TRASH_TO}."))
+        self.assertIn("1 item volta ao sítio onde estava,", undo_question({**s, "n_items": 1})[1])
+        self.assertIn("Cada item volta ao sítio onde estava,", undo_question({**s, "n_items": 0})[1])  # só pastas
         title, text, ok = undo_question({**s, "undone": 2, "n_left": 1})
         self.assertEqual((title, ok), ("Anular o resto?", "Anular o resto"))
         self.assertIn("Ainda falta 1 item por voltar ao sítio onde estava.", text)

@@ -13,8 +13,10 @@ from typing import Callable
 
 from .db import Database
 from .fsutil import is_within, unique_path
+from .trash import in_trash, send_to_trash
 from .trash import restore as restore_from_trash
-from .trash import send_to_trash
+
+PARTIAL = ".arruma-parcial"  # nome provisório de uma cópia para outro disco, até estar completa
 
 
 @dataclass
@@ -35,16 +37,38 @@ def safe_move(src: str, dst: str) -> None:
     except OSError as e:
         if e.errno != errno.EXDEV:
             raise
-        # Discos diferentes: copiar, verificar e só depois remover o original.
-        if os.path.isdir(src) and not os.path.islink(src):
-            shutil.copytree(src, dst, symlinks=True)
+        # Discos diferentes: copiar com um nome provisório, verificar, dar-lhe o nome certo (no mesmo disco,
+        # de uma vez) e só depois remover o original. Se o Arruma morrer a meio da cópia, «dst» não existe.
+        is_dir = os.path.isdir(src) and not os.path.islink(src)
+        tmp = str(unique_path(Path(dst + PARTIAL)))
+        try:
+            if is_dir:
+                shutil.copytree(src, tmp, symlinks=True)
+            else:
+                shutil.copy2(src, tmp, follow_symlinks=False)
+                if os.path.getsize(src) != os.path.getsize(tmp):
+                    raise OSError("A cópia não ficou igual ao original.") from e
+            if os.path.lexists(dst):
+                raise FileExistsError(errno.EEXIST, "Já existe", dst)
+            os.rename(tmp, dst)
+        except BaseException:
+            _remove(tmp)
+            raise
+        if is_dir:
             shutil.rmtree(src)
         else:
-            shutil.copy2(src, dst, follow_symlinks=False)
-            if os.path.getsize(src) != os.path.getsize(dst):
-                os.remove(dst)
-                raise OSError("A cópia não ficou igual ao original.") from e
             os.remove(src)
+
+
+def _remove(path: str) -> None:
+    """Apaga, se puder, uma cópia provisória (incompleta) deixada por safe_move()."""
+    try:
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif os.path.lexists(path):
+            os.remove(path)
+    except OSError:
+        pass
 
 
 ProgressFn = Callable[[int, int, str], None]
@@ -88,10 +112,13 @@ class Executor:
             # a anulação sabe dele. Se não chegou a sair do sítio, anular encontra-o no local original.
             op_id = log(op, src, dst, pending=1)
             try:
-                return op_id, act()
+                result = act()
             except Exception:
                 self.db.drop_op(op_id)  # não chegou a ser feito: o erro fica registado a seguir, como os outros
                 raise
+            # Outra janela pode tê-lo dado como anulado entre o registo e agora (ainda estava no sítio).
+            self.db.confirm_op(sid, op_id)
+            return op_id, result
 
         for n, a in enumerate(actions):
             if cancel is not None and cancel.is_set():
@@ -200,8 +227,12 @@ class Executor:
                 raise FileExistsError(errno.EEXIST, "Já existe um item com o mesmo nome no local original.")
             if here:
                 os.makedirs(os.path.dirname(src), exist_ok=True)
+                _remove(src + PARTIAL)  # de uma anulação anterior que morreu a meio da cópia
                 safe_move(dst, src)
-            # Só no local original: já lá voltou (à mão) e não há nada a fazer.
+            else:
+                # Só no local original: já lá voltou (à mão) e não há nada a fazer. Ou nunca chegou a sair:
+                # se o Arruma morreu a meio de o copiar para outro disco, apaga-se a cópia incompleta.
+                _remove(dst + PARTIAL)
         elif op == "mkdir":
             try:
                 os.rmdir(src)
@@ -212,6 +243,9 @@ class Executor:
         elif op == "rmdir":
             os.makedirs(src, exist_ok=True)
         elif op == "trash":
-            restore_from_trash(src, dst)
+            # Registado, mas o Arruma morreu antes de o enviar: está no sítio e não há nada no Lixo a recuperar.
+            # «Já existe» só quando há mesmo uma cópia no Lixo e outro item no lugar dela.
+            if not os.path.lexists(src) or in_trash(src, dst):
+                restore_from_trash(src, dst)
         if done:
             self.db.mark_op_undone(o["id"])

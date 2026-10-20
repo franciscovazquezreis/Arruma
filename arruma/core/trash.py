@@ -32,6 +32,27 @@ def restore(orig: str, trashed: str | None = None) -> None:
         _gio_restore(orig)
 
 
+def in_trash(orig: str, trashed: str | None = None) -> bool:
+    """Se há no Lixo um item que saiu de «orig» (o que restore() iria buscar)."""
+    if IS_WINDOWS:
+        drive = os.path.splitdrive(os.path.abspath(orig))[0]
+        found = find_in_recycle_bin(orig, Path(drive + "\\") / "$Recycle.Bin")
+        return found is not None and os.path.lexists(found[1])
+    if IS_MAC:
+        return bool(trashed) and os.path.lexists(trashed)
+    if _freedesktop_find(orig) is not None:
+        return True
+    try:  # o Lixo que só o GIO conhece, como em _gio_restore()
+        import gi
+        gi.require_version("Gio", "2.0")
+        from gi.repository import Gio
+        enum = Gio.File.new_for_uri("trash:///").enumerate_children("trash::orig-path",
+                                                                     Gio.FileQueryInfoFlags.NONE, None)
+        return any(info.get_attribute_byte_string("trash::orig-path") == orig for info in enum)
+    except Exception:
+        return False
+
+
 # --------------------------------------------------------------------------- Linux (GIO)
 
 def _gio_trash(path: str) -> str | None:

@@ -9,8 +9,8 @@ from gi.repository import Gdk, GLib, Gtk, Pango
 
 from ..core import taxonomy as tx
 from ..core.executor import Result
-from ..core.fsutil import (HOME, common_root, display_path, human_count, human_size, is_within, path_parts,
-                           plural, sanitize_name)
+from ..core.fsutil import (HOME, common_root, display_path, human_count, human_size, is_within, path_key,
+                           path_parts, plural, sanitize_name)
 from ..core.planner import (Action, Plan, move_folder_in_plan, rebase_document,
                             rename_action_in_plan, rename_folder_in_plan, retarget)
 from ..core.system import TRASH_NAME, TRASH_TO
@@ -709,20 +709,32 @@ class PlanPage(Gtk.Stack):
         if new_name:
             self._apply_folder_rename(folder_path, new_name)
 
-    def _confirm_merge(self, new_dir: str) -> bool:
-        """Uma pasta nova que passa a ter o nome e o local de uma que já existe junta-se a ela e depois já não
-        se separa no plano (a que já existe não muda de nome nem de local). Pergunta primeiro."""
-        if not os.path.isdir(new_dir):
+    def _is_merge_target(self, new_dir: str, src_dir: str) -> bool:
+        """Se «new_dir» já é uma pasta, no disco ou no plano (outra pasta nova), sem contar «src_dir»."""
+        nd, sd = path_key(new_dir), path_key(src_dir)  # no Windows e no macOS, «Fotos» e «fotos» são a mesma
+        if nd == sd:
+            return False
+        if os.path.isdir(new_dir):
             return True
+        return any(a.dst and is_within(path_key(a.dst), nd) and not is_within(path_key(a.dst), sd)
+                   for a in self.plan.actions)
+
+    def _confirm_merge(self, new_dir: str, src_dir: str) -> bool:
+        """Uma pasta nova que passa a ter o nome e o local de outra (que já existe, ou outra pasta nova do plano)
+        junta-se a ela e depois já não se separa no plano. Pergunta primeiro."""
+        if not self._is_merge_target(new_dir, src_dir):
+            return True
+        where = ("Já existe uma pasta com este nome neste local." if os.path.isdir(new_dir)
+                 else "O plano já tem outra pasta nova com este nome neste local.")
         return confirm(self.win, f"Juntar à pasta «{os.path.basename(new_dir)}»?",
-                       "Já existe uma pasta com este nome neste local. Os itens desta pasta nova passam para lá e "
+                       f"{where} Os itens desta pasta nova passam para lá e "
                        "depois já não os podes separar no plano, a não ser um a um.", "Juntar")
 
     def _apply_folder_rename(self, folder_path: str, new_name: str) -> None:
         if not self.plan or not self._can_edit_folder(folder_path):
             return
         if not self._confirm_merge(os.path.join(os.path.dirname(os.path.normpath(folder_path)),
-                                                sanitize_name(new_name))):
+                                                sanitize_name(new_name)), folder_path):
             return
         new_dir = rename_folder_in_plan(self.plan, folder_path, new_name)
         if new_dir != folder_path:
@@ -734,7 +746,8 @@ class PlanPage(Gtk.Stack):
             return
         target_parent = choose_folder(self.win, "Mover pasta para dentro de…", os.path.dirname(folder_path))
         if target_parent and self._confirm_merge(os.path.join(target_parent,
-                                                              os.path.basename(os.path.normpath(folder_path)))):
+                                                              os.path.basename(os.path.normpath(folder_path))),
+                                                 folder_path):
             new_dir = move_folder_in_plan(self.plan, folder_path, target_parent)
             if new_dir:
                 self._repopulate(select_folder=new_dir)
@@ -859,8 +872,9 @@ class PlanPage(Gtk.Stack):
             if not self._can_edit_folder(src_dir):
                 context.finish(False, False, time)
                 return
-            if os.path.isdir(os.path.join(target_dir, src_parts[-1])):
-                # Juntar a uma pasta que já existe pergunta primeiro: depois de largar, não a meio do arrastar.
+            if self._is_merge_target(os.path.join(target_dir, src_parts[-1]), src_dir):
+                # Juntar a outra pasta (no disco ou no plano) pergunta primeiro: depois de largar, não a meio do
+                # arrastar.
                 context.finish(False, False, time)
                 GLib.idle_add(self._merge_dropped_folder, src_dir, target_dir)
                 return
@@ -875,7 +889,7 @@ class PlanPage(Gtk.Stack):
 
     def _merge_dropped_folder(self, src_dir: str, target_dir: str) -> bool:
         name = os.path.basename(src_dir)
-        if self.plan and self._confirm_merge(os.path.join(target_dir, name)):
+        if self.plan and self._confirm_merge(os.path.join(target_dir, name), src_dir):
             new_dir = move_folder_in_plan(self.plan, src_dir, target_dir)
             if new_dir:
                 self._finish_dnd(None, new_dir, f"Pasta «{name}» movida para «{display_path(target_dir)}».")

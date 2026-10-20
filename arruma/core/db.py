@@ -111,6 +111,13 @@ class Database:
         with self.connect() as c:
             c.execute("DELETE FROM ops WHERE id=?", (op_id,))
 
+    def confirm_op(self, session_id: int, op_id: int) -> None:
+        """Feita a operação registada antes de ser feita. Outra janela que anulou a sessão entretanto pode tê-la
+        dado como anulada (o item ainda estava no sítio): volta a ficar por anular («Anular o resto»)."""
+        with self.connect() as c:
+            if c.execute("UPDATE ops SET status='ok' WHERE id=? AND status='anulada'", (op_id,)).rowcount:
+                c.execute("UPDATE sessions SET undone=2 WHERE id=? AND undone=1", (session_id,))
+
     def set_op_dst(self, op_id: int, dst: str | None) -> None:
         with self.connect() as c:
             c.execute("UPDATE ops SET dst=? WHERE id=?", (dst, op_id))
@@ -127,16 +134,19 @@ class Database:
     def mark_undone(self, session_id: int) -> None:
         """«undone»: 1 quando já não falta anular nada; 2 (anulada em parte) quando alguma operação falhou ou
         se parou a meio e ficou alguma coisa por anular; 0 quando nada chegou a ser anulado."""
+        # Numa só instrução: outra janela que registe uma operação a meio não fica de fora da conta.
         with self.connect() as c:
-            left = c.execute("SELECT COUNT(*) FROM ops WHERE session_id=? AND status='ok' AND op != 'mkdir'",
-                             (session_id,)).fetchone()[0]
-            some = c.execute("SELECT COUNT(*) FROM ops WHERE session_id=? AND status='anulada'",
-                             (session_id,)).fetchone()[0]
-            c.execute("UPDATE sessions SET undone=? WHERE id=?", (1 if not left else 2 if some else 0, session_id))
+            c.execute("UPDATE sessions SET undone = CASE "
+                      "WHEN NOT EXISTS (SELECT 1 FROM ops WHERE session_id = sessions.id AND status = 'ok' "
+                      "AND op != 'mkdir') THEN 1 "
+                      "WHEN EXISTS (SELECT 1 FROM ops WHERE session_id = sessions.id AND status = 'anulada') THEN 2 "
+                      "ELSE 0 END WHERE id = ?", (session_id,))
 
     # «n_left»: o que ainda falta anular. As pastas criadas pelo Arruma não contam: saem quando ficam vazias.
+    # «n_items»: os itens que ainda voltam ao sítio (sem as pastas criadas ou removidas), como conta o progresso.
     _SESSION = ("SELECT s.*, (SELECT COUNT(*) FROM ops o WHERE o.session_id = s.id AND o.status = 'ok' "
-                "AND o.op != 'mkdir') AS n_left FROM sessions s")
+                "AND o.op != 'mkdir') AS n_left, (SELECT COUNT(*) FROM ops o WHERE o.session_id = s.id "
+                "AND o.status = 'ok' AND o.op IN ('move', 'move_dir', 'trash')) AS n_items FROM sessions s")
 
     def sessions(self, limit: int = 100) -> list[sqlite3.Row]:
         """As sessões que mudaram alguma coisa, da mais recente para a mais antiga. Uma que não chegou ao fim

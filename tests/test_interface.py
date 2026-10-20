@@ -226,6 +226,35 @@ class PlanPageFolderTests(unittest.TestCase):
             self.page._apply_folder_rename(renamed, "Ecrã")
         self.assertEqual(os.path.dirname(shot.dst), str(self.root / "Imagens" / "Ecrã"))
 
+    def test_merge_with_another_new_folder_asks_first(self):
+        # A outra pasta pode só existir no plano: juntar-se a ela também já não se separa.
+        (self.root / "IMG_20240812_101010.jpg").write_bytes(b"\xff\xd8\xff\xe0 teste")
+        write(self.root / "musica.mp3")
+        self.win.scan_result = scan(self.root)
+        self.plan = Planner(self.win.scan_result, Settings(use_ai=False), MODE_INSIDE).build()
+        self.page.show_plan(self.plan)
+        photos, music = str(self.root / "Imagens" / "Fotografias"), str(self.root / "Música")
+        shot, photo, song = (next(a for a in self.plan.actions if os.path.dirname(a.dst) == d)
+                             for d in (self.new, photos, music))
+        with mock.patch.object(self.page_plan, "confirm", return_value=False) as confirm, \
+                mock.patch.object(self.page_plan, "choose_folder", return_value=str(self.root)):
+            self.page._apply_folder_rename(music, "Capturas de ecrã")  # um nome livre não pergunta
+            self.assertEqual(os.path.dirname(song.dst), str(self.root / "Capturas de ecrã"))
+            self.assertEqual(confirm.call_count, 0)
+            self.page._apply_folder_rename(self.new, "Fotografias")  # F2
+            self.page._choose_folder_dest(self.new)  # «Mover pasta para outro local…»
+            self.page._merge_dropped_folder(self.new, str(self.root))  # largada na árvore
+            self.assertEqual([c.args[1] for c in confirm.call_args_list],
+                             ["Juntar à pasta «Fotografias»?"] + ["Juntar à pasta «Capturas de ecrã»?"] * 2)
+            self.assertTrue(confirm.call_args.args[2].startswith("O plano já tem outra pasta nova com este nome"))
+            self.assertEqual([os.path.dirname(a.dst) for a in (shot, photo)], [self.new, photos])  # «Cancelar»
+        # Largar na árvore pergunta pelo mesmo critério; a própria pasta não conta.
+        self.assertTrue(self.page._is_merge_target(os.path.join(str(self.root), "Capturas de ecrã"), self.new))
+        self.assertFalse(self.page._is_merge_target(self.new, self.new))
+        with mock.patch.object(self.page_plan, "confirm", return_value=True):
+            self.page._apply_folder_rename(self.new, "Fotografias")
+        self.assertEqual([os.path.dirname(a.dst) for a in (shot, photo)], [photos, photos])
+
     def test_hint_is_short_and_the_tooltip_says_it_all(self):
         def walk(w):
             found = [w]

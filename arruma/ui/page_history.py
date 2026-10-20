@@ -37,8 +37,12 @@ def undo_question(s) -> tuple[str, str, str]:
         return ("Anular o resto?",
                 f"{s['title']}. Ainda {'falta' if n == 1 else 'faltam'} {plural(n, 'item', 'itens')} por voltar ao "
                 f"sítio onde {'estava' if n == 1 else 'estavam'}. {keep}", "Anular o resto")
+    # As alterações contam também as pastas vazias removidas; os itens são o que o progresso vai contar.
+    n = s["n_items"]
+    back = (f"{plural(n, 'item volta', 'itens voltam')} ao sítio onde {'estava' if n == 1 else 'estavam'}" if n
+            else "Cada item volta ao sítio onde estava")
     return (f"Anular {plural(s['n_ok'], 'alteração', 'alterações')}?",
-            f"{s['title']}. Cada item volta ao sítio onde estava, incluindo o que foi {TRASH_TO}. {keep}", "Anular")
+            f"{s['title']}. {back}, incluindo o que foi {TRASH_TO}. {keep}", "Anular")
 
 
 def undo_report(res: Result) -> str:

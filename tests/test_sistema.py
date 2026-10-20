@@ -254,15 +254,18 @@ class TrashRoundTripTests(unittest.TestCase):
     """Envia um ficheiro para o Lixo verdadeiro e anula, como o Arruma faz no Histórico."""
 
     def test_trash_and_restore(self):
-        from arruma.core.trash import restore, send_to_trash
+        from arruma.core.trash import in_trash, restore, send_to_trash
         folder = Path(tempfile.mkdtemp(prefix="arruma-lixo-", dir=os.environ.get("ARRUMA_PASTA_LIXO") or None)).resolve()
         try:
             target = folder / "temporario.tmp"
             target.write_text("conteúdo de teste", encoding="utf-8")
+            self.assertFalse(in_trash(str(target)))
             where = send_to_trash(str(target))
             self.assertFalse(target.exists())
+            self.assertTrue(in_trash(str(target), where))
             restore(str(target), where)
             self.assertEqual(target.read_text(encoding="utf-8"), "conteúdo de teste")
+            self.assertFalse(in_trash(str(target), where))
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
