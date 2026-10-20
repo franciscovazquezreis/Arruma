@@ -121,8 +121,8 @@ jobs:
           muda() { sed -i "s/^__version__ = .*/__version__ = \"$1\"/" "$copia"; }
           src/instalar.sh
           test -f ~/.local/bin/arruma
-          # Sem o gtk-update-icon-cache não haveria cache de ícones, e o autoteste do fim não
-          # mostraria se o pacote a invalida.
+          # Sem o gtk-update-icon-cache não haveria cache de ícones, e não se veria se o pacote a
+          # refaz ao retirar a cópia.
           test -f ~/.local/share/icons/hicolor/icon-theme.cache
           src/instalar.sh | tee saida.txt
           grep -q "Não há nada a atualizar" saida.txt
@@ -174,9 +174,14 @@ jobs:
           grep -q "retirada a cópia antiga" apt.txt
           for f in ~/.local/bin/arruma ~/.local/share/arruma-app \
                    ~/.local/share/applications/pt.arruma.Arruma.desktop ~/.local/share/nemo/actions/arruma.nemo_action \
-                   ~/.local/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg; do
+                   ~/.local/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg \
+                   ~/.local/share/icons/hicolor/256x256/apps/pt.arruma.Arruma.png; do
             if [ -e "$f" ]; then echo "::error::Ficou $f"; exit 1; fi
           done
+          c=~/.local/share/icons/hicolor/icon-theme.cache
+          if [ -f "$c" ] && LC_ALL=C grep -qF pt.arruma.Arruma "$c"; then
+            echo "::error::A cache de ícones da pasta pessoal ainda indica os ícones retirados."; exit 1
+          fi
           grep -q teste ~/.config/arruma/marca
           grep -q teste ~/.local/share/arruma/marca
           test "$(command -v arruma)" = /usr/bin/arruma
