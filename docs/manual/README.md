@@ -79,7 +79,7 @@ Não precisas de saber usar o Terminal: copia cada comando, cola-o no Terminal c
 
 5. Quando aparecer `[sudo] senha para ana:` (com o teu nome de utilizador em vez de «ana»), escreve a palavra-passe com que entras no computador e carrega em Enter. No Linux Mint aparece um asterisco por cada carácter que escreves.
 6. Se o Terminal perguntar `Deseja continuar? [S/n]`, carrega em Enter.
-7. Vão aparecendo linhas como `A ler as listas de pacotes... Feito` e `A instalar arruma (0.2.3) ...`. Perto do fim pode aparecer uma linha em inglês que começa por `N: Download is performed unsandboxed as root` e acaba em `(13: Permissão recusada)`: é só um aviso, e a instalação continua. A instalação termina quando o Terminal volta a mostrar a linha de comandos, parecida com `ana@computador:~/Transferências$`, pronta para o comando seguinte. O apt não escreve «concluído».
+7. Vão aparecendo linhas como `A ler as listas de pacotes... Pronto` e `A instalar arruma (0.2.3) ...`. Algumas saem com a grafia antiga (`actualizados`, `seleccionar`) e outras em português do Brasil ou em inglês, conforme as traduções instaladas no sistema. Perto do fim pode aparecer uma linha que começa por `N: O download é executado sem isolamento` (ou, em inglês, `N: Download is performed unsandboxed`) e acaba em `(13: Permissão recusada)`: é só um aviso, e a instalação já ficou feita. A instalação termina quando o Terminal volta a mostrar a linha de comandos, parecida com `ana@computador:~/Transferências$`, pronta para o comando seguinte. O apt não escreve «concluído».
 8. Instala também os extras recomendados. O Linux Mint costuma deixá-los de fora; se já os tiveres, o comando não muda nada. Servem para ler a data e a câmara das fotografias, as etiquetas da música e os PDF digitalizados. O Arruma funciona sem eles, mas arruma melhor com eles.
 
    ```bash
@@ -797,7 +797,7 @@ sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 poppler-utils
 
 ## Mensagens que podem aparecer
 
-Estas tabelas juntam as mensagens que podes ver ao instalar, atualizar ou remover o Arruma, tanto as do sistema operativo como as dos instaladores. As do Arruma estão escritas exatamente como aparecem. As do sistema vêm das traduções oficiais sempre que foi possível confirmá-las; quando não foi, a tabela diz que a redação pode variar ligeiramente. Nos exemplos, «ana» é o nome de utilizador e 0.3.0 é uma versão mais recente imaginária.
+Estas tabelas juntam as mensagens que podes ver ao instalar, atualizar ou remover o Arruma, tanto as do sistema operativo como as dos instaladores. As do Arruma estão escritas exatamente como aparecem. As do sistema vêm das traduções oficiais sempre que foi possível confirmá-las; quando não foi, a tabela diz que a redação pode variar ligeiramente. No Linux, o apt junta traduções de origens diferentes: algumas mensagens saem com a grafia anterior ao Acordo Ortográfico, outras em português do Brasil ou em inglês, e algumas mudam com as atualizações das traduções. A tabela mostra-as como aparecem num Linux Mint 22 atualizado. Nos exemplos, «ana» é o nome de utilizador e 0.3.0 é uma versão mais recente imaginária.
 
 ### Linux
 
@@ -809,20 +809,20 @@ Estas tabelas juntam as mensagens que podes ver ao instalar, atualizar ou remove
 | `Enganou-se, tente de novo.` | A palavra-passe estava errada. | Escreve-a outra vez, com atenção às maiúsculas. |
 | `sudo: 3 tentativas incorrectas` | Erraste três vezes. | Repete o comando desde o início. |
 | `ana não está no ficheiro sudoers.` | A tua conta não é de administrador. | Pede a quem administra o computador que instale o pacote, ou usa o [`instalar.sh`](#só-para-ti-sem-palavra-passe-de-administrador), que não precisa de palavra-passe. |
-| `A ler as listas de pacotes... Feito`, `A preparar para desempacotar ...`, `A descompactar arruma (0.2.3) ...`, `A instalar arruma (0.2.3) ...`, `A processar 'triggers' para ...` | Durante a instalação. | Nada; é o progresso normal. |
-| `Note, a selecionar 'arruma' em vez de './arruma_0.2.3_all.deb'` | O apt reconheceu o ficheiro. | Nada. |
-| `Os pacotes adicionais seguintes serão instalados:` (no Linux Mint 22: `Os seguintes pacotes adicionais vão ser instalados:`) | Faltam peças de que o Arruma precisa e o apt vai descarregá-las. | Responde à pergunta seguinte com Enter. É preciso internet. |
+| `A ler as listas de pacotes... Pronto`, `A preparar para desempacotar ...`, `A descompactar arruma (0.2.3) ...`, `A instalar arruma (0.2.3) ...`, `A processar 'triggers' para ...` | Durante a instalação. | Nada; é o progresso normal. |
+| `Note, a seleccionar 'arruma' em vez de './arruma_0.2.3_all.deb'` | O apt reconheceu o ficheiro. | Nada. |
+| `Os seguintes pacotes adicionais vão ser instalados:` (com traduções mais antigas, como as do Linux Mint 21: `Os pacotes adicionais seguintes serão instalados:`) | Faltam peças de que o Arruma precisa e o apt vai descarregá-las. | Responde à pergunta seguinte com Enter. É preciso internet. |
 | `Pacotes recomendados:` | O sistema não vai instalar os extras recomendados. | Instala-os à parte ([passo 8](#com-o-terminal-recomendado)). |
 | `Pacotes sugeridos:` | O apt lista idiomas extra para a leitura de digitalizações (espanhol, francês, alemão, italiano). | Nada, a não ser que queiras ler PDF digitalizados nesses idiomas. |
 | `Deseja continuar? [S/n]` | Há outros pacotes a instalar (ou a remover). | Carrega em Enter. O «S» maiúsculo é a resposta que vale quando só carregas em Enter. |
-| `N: Download is performed unsandboxed as root as file '/home/ana/Transferências/arruma_0.2.3_all.deb' couldn't be accessed by user '_apt'. - pkgAcquire::Run (13: Permissão recusada)` | O ficheiro está na tua pasta pessoal. | Nada; é só um aviso e a instalação continua. |
+| `N: O download é executado sem isolamento e como root, pois o arquivo '/home/ana/Transferências/arruma_0.2.3_all.deb' não pôde ser acessado pelo usuário '_apt'. - pkgAcquire::Run (13: Permissão recusada)` (em português do Brasil; com traduções mais antigas aparece em inglês: `N: Download is performed unsandboxed as root as file … couldn't be accessed by user '_apt'.`) | O ficheiro está na tua pasta pessoal, que o utilizador `_apt` do sistema não pode ler, e por isso o apt lê-o como administrador. | Nada; é só um aviso e a instalação já ficou feita. Se não o quiseres ver, descarrega o ficheiro para `/tmp` e instala-o de lá. |
 | `bash: cd: /home/ana/Transferências: Ficheiro ou pasta inexistente` | A pasta de transferências tem outro nome (por exemplo `Downloads`). | Escreve `cd ~/Downloads` (ou o nome que a pasta tem no gestor de ficheiros) e continua. |
-| `Waiting for cache lock: Could not get lock …` ou, mais tarde, `E: Could not get lock …` (em inglês; a redação pode variar ligeiramente) | Outro programa, por exemplo o das atualizações do Linux Mint, está a instalar pacotes. | Com a primeira mensagem, espera: o apt continua sozinho quando o outro programa acabar. Se aparecer a mensagem com `E:`, espera que as atualizações terminem e repete o comando. |
+| `Aguardando por trava de cache: Não foi possível obter a trava …` ou, mais tarde, `E: Não foi possível obter a trava …` (em português do Brasil; com traduções mais antigas, em inglês: `Waiting for cache lock: Could not get lock …` e `E: Could not get lock …`) | Outro programa, por exemplo o das atualizações do Linux Mint, está a instalar pacotes. | Com a primeira mensagem, espera: o apt continua sozinho quando o outro programa acabar. Se aparecer a mensagem com `E:`, espera que as atualizações terminem e repete o comando. |
 | `E: Ficheiro não suportado ./arruma_0.2.3_all.deb dado na linha de comandos` | O Terminal está noutra pasta e não encontra o ficheiro. | Escreve `cd ~/Transferências` (ou a pasta onde está o ficheiro) e repete. |
-| `E: Não foi possível encontrar o pacote arruma_0.2.3_all.deb` (no Linux Mint 22: `E: Incapaz de localizar o pacote arruma_0.2.3_all.deb`) | Faltou o `./` antes do nome. | Repete com `./arruma_0.2.3_all.deb`. |
+| `E: Não foi possível encontrar o pacote arruma_0.2.3_all.deb` | Faltou o `./` antes do nome. | Repete com `./arruma_0.2.3_all.deb`. |
 | `Os pacotes a seguir têm dependências não satisfeitas:` seguido de `arruma : Depende: python3 (>= 3.10)` (a redação pode variar ligeiramente) | O sistema é antigo demais (Linux Mint 20 ou anterior). | O Arruma precisa do Linux Mint 21 ou mais recente. |
-| `arruma já é a versão mais recente (0.2.3).` (no Linux Mint 22: `arruma já está na versão mais recente (0.2.3).`) | Já tens esta versão. | Nada. Para reinstalar, vê [Atualizar, reinstalar e desinstalar](#atualizar-reinstalar-e-desinstalar). |
-| `Será reposta uma versão ANTERIOR dos seguintes pacotes:` | Tens instalada uma versão mais recente do que a do ficheiro. | Para ficares com a mais recente, escreve `n` e carrega em Enter. Enter sozinho aceita descer de versão. |
+| `arruma já está na versão mais recente (0.2.3).` (com traduções mais antigas, como as do Linux Mint 21: `arruma já é a versão mais recente (0.2.3).`) | Já tens esta versão. | Nada. Para reinstalar, vê [Atualizar, reinstalar e desinstalar](#atualizar-reinstalar-e-desinstalar). |
+| `Será feito o DOWNGRADE aos seguintes pacotes:` | Tens instalada uma versão mais recente do que a do ficheiro. | Para ficares com a mais recente, escreve `n` e carrega em Enter. Enter sozinho aceita descer de versão. |
 
 #### No Instalador de Pacotes (duplo clique)
 
@@ -951,7 +951,7 @@ cd ~/Transferências
 sudo apt install ./arruma_0.2.3_all.deb
 ```
 
-Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão atualizados os seguintes pacotes:` e `A descompactar arruma (0.2.3) sobre (0.2.1) ...`. Se for a mesma, responde `arruma já é a versão mais recente (0.2.3).` (no Linux Mint 22, `arruma já está na versão mais recente (0.2.3).`) e não muda nada. Se for mais recente, mostra `Será reposta uma versão ANTERIOR dos seguintes pacotes:` e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
+Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão actualizados os seguintes pacotes:` e `A descompactar arruma (0.2.3) sobre (0.2.1) ...`. Se for a mesma, responde `arruma já está na versão mais recente (0.2.3).` (com traduções mais antigas, `arruma já é a versão mais recente (0.2.3).`) e não muda nada. Se for mais recente, mostra `Será feito o DOWNGRADE aos seguintes pacotes:` (descer de versão) e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
 
 Com duplo clique no ficheiro, o Instalador de Pacotes recusa descer de versão e, para a mesma versão, oferece «Reinstalar pacote».
 
