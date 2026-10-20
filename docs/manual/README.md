@@ -122,14 +122,14 @@ Depois de instalar, move a pasta `Arruma-0.2.3` para fora de Transferências (po
 
 As duas instalações não se misturam. Com o pacote `.deb` instalado, o `instalar.sh` recusa-se a instalar. E quando instalas o pacote, ele retira a cópia do `instalar.sh` que encontrar na tua pasta pessoal (o histórico e as definições ficam). Se essa cópia for mais recente do que o pacote, ou estiver numa pasta ligada a outro sítio, fica onde está e o pacote avisa (ver as [linhas «Arruma: …»](#linhas-arruma--durante-a-instalação-do-pacote)).
 
-Se aparecer uma mensagem que não esperavas, ver [Mensagens que podem aparecer](#mensagens-que-podem-aparecer).
+Se aparecer uma mensagem que não esperavas, vê [Mensagens que podem aparecer](#mensagens-que-podem-aparecer).
 
 ### Windows
 
 As imagens do instalador foram tiradas com a versão 0.2.2, num Windows em inglês. Na 0.2.3, as páginas e as caixas são iguais, só muda o número da versão. Por estarem em inglês, a caixa do modo de instalação mostra «Cancel» e as caixas sobre a versão mostram «Cancel», «Yes» e «No»; num Windows em português leem-se «Cancelar», «Sim» e «Não». A pasta de instalação mostra o utilizador da máquina onde as imagens foram tiradas («runneradmin»); no teu computador aparece o teu nome.
 
 1. Descarrega `Arruma-0.2.3-windows-instalador.exe` da página de versões. O ficheiro fica na pasta Transferências. O navegador pode avisar que este ficheiro não costuma ser descarregado. No Microsoft Edge, o aviso aparece na lista de transferências, no canto superior direito: passa o rato por cima do ficheiro, carrega em «…» e escolhe «Manter»; se aparecer outro aviso, carrega em «Mostrar mais» e depois em «Manter mesmo assim» (a redação pode variar ligeiramente). Noutros navegadores, procura a opção para manter ou guardar o ficheiro.
-2. Faz duplo clique no ficheiro. Como o instalador não tem assinatura digital, o Windows mostra o aviso do SmartScreen «O Windows protegeu o seu PC». Carrega em «Mais informações» e depois em «Executar mesmo assim» (a redação pode variar ligeiramente; há versões que dizem «Executar de qualquer forma»). Se não aparecer «Mais informações» nem «Executar mesmo assim» e o Windows disser que bloqueou a aplicação, ver [Controlo Inteligente de Aplicações](#controlo-inteligente-de-aplicações-windows-11).
+2. Faz duplo clique no ficheiro. Como o instalador não tem assinatura digital, o Windows mostra o aviso do SmartScreen «O Windows protegeu o seu PC». Carrega em «Mais informações» e depois em «Executar mesmo assim» (a redação pode variar ligeiramente; há versões que dizem «Executar de qualquer forma»). Se não aparecer «Mais informações» nem «Executar mesmo assim» e o Windows disser que bloqueou a aplicação, vê [Controlo Inteligente de Aplicações](#controlo-inteligente-de-aplicações-windows-11).
 3. Numa primeira instalação, aparece a caixa «Selecione o Modo de Instalação». Escolhe «Instalar apenas para mim (recomendado)».
 
    ![Caixa do modo de instalação, com «Instalar apenas para mim (recomendado)»](imagens/windows-01-modo-de-instalacao.png)
@@ -155,7 +155,7 @@ As imagens do instalador foram tiradas com a versão 0.2.2, num Windows em ingl�
 
 Daí em diante, abres o Arruma no menu Iniciar: escreve «Arruma» na pesquisa, ou procura-o em «Todas as aplicações».
 
-Se aparecer uma mensagem que não esperavas, ver [Mensagens que podem aparecer](#mensagens-que-podem-aparecer).
+Se aparecer uma mensagem que não esperavas, vê [Mensagens que podem aparecer](#mensagens-que-podem-aparecer).
 
 #### Controlo Inteligente de Aplicações (Windows 11)
 
@@ -171,7 +171,7 @@ A versão portátil não cria entrada no menu Iniciar nem clique direito nas pas
 
 1. Descarrega `Arruma-0.2.3-windows-portatil.zip`.
 2. Extrai o ficheiro: clique direito em cima dele → «Extrair tudo…» (o nome pode variar ligeiramente). Não abras o Arruma de dentro do `.zip` sem extrair.
-3. Abre a pasta `Arruma` que foi extraída e faz duplo clique em `Arruma.exe`. O aviso do SmartScreen aparece também, tal como no instalador, e no Windows 11 o Controlo Inteligente de Aplicações, se estiver ativo, também a bloqueia.
+3. Abre a pasta `Arruma` que foi extraída e faz duplo clique em `Arruma.exe`. Tal como com o instalador, aparece o aviso do SmartScreen, e no Windows 11 o Controlo Inteligente de Aplicações, se estiver ativo, também bloqueia a versão portátil.
 
 As definições e o histórico da versão portátil não ficam na pasta do Arruma, mas no mesmo sítio que os da versão instalada (ver [Onde ficam os teus dados](#onde-ficam-os-teus-dados)).
 
@@ -182,7 +182,7 @@ As definições e o histórico da versão portátil não ficam na pasta do Arrum
 3. Abre o menu Apple → Definições do Sistema e, na barra lateral, carrega em «Privacidade e segurança» (pode ser preciso deslocar a barra para baixo).
 4. Desce até «Segurança». Ao lado da indicação de que o instalador do Arruma foi bloqueado, carrega em «Abrir» (o nome do botão pode variar ligeiramente, por exemplo «Abrir mesmo assim»). Este botão só fica disponível durante cerca de uma hora depois da tentativa do passo 2; se já lá não estiver, repete o passo 2.
 5. O aviso volta a aparecer, agora com a opção de abrir. Carrega em «Abrir», escreve a palavra-passe com que entras no Mac (ou usa o Touch ID) e confirma. A partir daqui, o ficheiro abre com duplo clique.
-6. Abre-se o instalador, «Instalar Arruma 0.2.3», na página «Introdução». Carrega em «Continuar». A imagem foi tirada com a versão 0.2.2; tirando o número, o instalador da 0.2.3 é igual.
+6. Abre-se o instalador, «Instalar Arruma 0.2.3», na página «Introdução». Carrega em «Continuar». A imagem foi tirada com a versão 0.2.2; à parte o número, o instalador da 0.2.3 é igual.
 
    ![Instalador do macOS na página «Introdução»](imagens/macos-01-instalador.png)
 
@@ -201,13 +201,13 @@ xattr -d com.apple.quarantine ~/Downloads/Arruma-*-macos-*.pkg
 
 Se o ficheiro já não tiver essa marca, o comando responde com um erro do género `No such xattr: com.apple.quarantine`, que podes ignorar.
 
-Se aparecer uma mensagem que não esperavas, ver [Mensagens que podem aparecer](#mensagens-que-podem-aparecer).
+Se aparecer uma mensagem que não esperavas, vê [Mensagens que podem aparecer](#mensagens-que-podem-aparecer).
 
 ## A primeira arrumação
 
 Para ganhares confiança, começa por uma pasta só, por exemplo Transferências.
 
-Sem a IA local, que é opcional, a barra de cima mostra «Modo regras», o cartão do Início diz «não encontrada» (ou «sem modelo», se o Ollama estiver instalado mas ainda sem modelo) e o plano traz uma nota amarela «IA local indisponível: …». É normal: o Arruma arruma na mesma, com regras e palavras-chave. Para a nota deixar de aparecer, desliga «Usar IA local para classificar documentos» nas [Definições](#definições); para instalar a IA, ver [IA local](#ia-local).
+Sem a IA local, que é opcional, a barra de cima mostra «Modo regras», o cartão do Início diz «não encontrada» (ou «sem modelo», se o Ollama estiver a correr mas ainda sem nenhum modelo) e o plano traz uma nota amarela «IA local indisponível: …». É normal: o Arruma arruma na mesma, com regras e palavras-chave. Para a nota deixar de aparecer, desliga «Usar IA local para classificar documentos» nas [Definições](#definições); para instalar a IA, vê [IA local](#ia-local).
 
 1. No [Início](#início), clica no cartão «Transferências» e carrega depois no botão verde «Analisar «Transferências»». O Arruma só lê; não muda nada.
 2. Na [Análise](#análise), vê o que ele encontrou. Desce até «Pronto para arrumar?», deixa escolhido «Nas pastas pessoais (Documentos, Imagens, Vídeos, Música…)» e carrega em «Criar plano de organização».
@@ -259,7 +259,7 @@ Se escolheres várias e uma delas for recusada, nenhuma é analisada; tira essa 
 
 ![Aviso «Não é possível escolher «etc»»](imagens/12-pasta-protegida.png)
 
-Mais abaixo está o cartão «Inteligência artificial local», que diz se a IA está pronta («ativa»), se não a encontra («não encontrada»), se está desligada («desligada») ou se a está a verificar («a verificar…»). O botão «Como ativar» mostra os passos para a instalar, e o botão da seta circular («Verificar novamente») volta a procurá-la. Sem IA, o Arruma funciona na mesma; ver [IA local](#ia-local).
+Mais abaixo está o cartão «Inteligência artificial local», que diz se a IA está pronta («ativa»), se o Ollama está a correr mas ainda não tem nenhum modelo («sem modelo»), se não a encontra («não encontrada»), se está desligada («desligada») ou se a está a verificar («a verificar…»). O botão «Como ativar» mostra os passos para a instalar (com «sem modelo», só o passo que falta, o do modelo), e o botão da seta circular («Verificar novamente») volta a procurá-la. Sem IA, o Arruma funciona na mesma (ver [IA local](#ia-local)).
 
 ### Análise
 
@@ -290,9 +290,9 @@ Com várias pastas, a primeira opção passa a «Dentro de cada uma das N pastas
 
 Carrega em «Criar plano de organização» para ver o plano. Nada é alterado ainda.
 
-O botão «Analisar novamente», no canto de cima, repete a análise das mesmas pastas. Usa-o sempre que mexeres nos ficheiros fora do Arruma e depois de aplicares um plano: a análise não se atualiza sozinha, e um plano feito a partir de uma análise antiga dá erros «O ficheiro já não existe no local original.». Uma análise nova (incluindo a de «Analisar novamente») apaga o plano que tinhas, com as mudanças que lhe fizeste à mão, sem perguntar.
+O botão «Analisar novamente», no canto de cima, repete a análise das mesmas pastas. Depois de aplicares um plano, e depois de anulares uma arrumação que mexeu nessas pastas, o Arruma repete-a sozinho, em segundo plano. Se mexeres nos ficheiros fora do Arruma, a análise não se atualiza: carrega tu em «Analisar novamente», porque um plano feito a partir de uma análise antiga dá erros «O ficheiro já não existe no local original.». Uma análise nova (incluindo a de «Analisar novamente») apaga o plano que tinhas, com as mudanças que lhe fizeste à mão, sem perguntar.
 
-Se algo correr mal durante a análise, aparece «Erro ao analisar a pasta» com a explicação técnica, e voltas ao Início.
+Se algo correr mal durante a análise, aparece «Erro ao analisar a pasta» com a explicação técnica, e voltas ao Início. Se falhar a análise que o Arruma repete sozinho, ou se a cancelares, a vista Análise fica sem resultado até analisares outra vez: a análise antiga já não mostrava onde estão os ficheiros.
 
 ### Plano
 
@@ -312,7 +312,7 @@ Se não houver nada a mudar, aparece «Já está tudo arrumado!» e «Não há n
 
 No topo, «Plano de organização» e um resumo do que vai acontecer: quantos documentos, imagens, vídeos, ficheiros de áudio e outros ficheiros vão mudar, quantas «pastas inteiras», quantos «itens para limpar» e quantos «nomes novos». Se a IA esteve a trabalhar, uma segunda linha diz quantos documentos ela leu.
 
-Ao lado tens o botão «Mantidas», que abre a lista «Pastas que ficam como estão»: pastas com nome próprio, projetos e pastas de outros programas que o plano deixa intactas, cada uma com o motivo. O campo «Procurar ficheiro ou pasta…» filtra pelo nome ou pelo caminho, de origem ou de destino. A lista à direita filtra por tipo de alteração: «Todas as alterações», «Documentos», «Imagens», «Vídeos», «Música e áudio», «Outros tipos», «Pastas inteiras», «Limpeza», «Com nome novo», «Classificados pela IA» e «A rever (pouca certeza)». Começa por este último: mostra os ficheiros em que o Arruma tem menos de 55 % de certeza.
+Ao lado, se o plano deixar alguma pasta como está, aparece o botão «Mantidas», que abre a lista «Pastas que ficam como estão»: pastas com nome próprio, projetos e pastas de outros programas que o plano deixa intactas, cada uma com o motivo. O campo «Procurar ficheiro ou pasta…» filtra pelo nome ou pelo caminho, de origem ou de destino. A lista à direita filtra por tipo de alteração: «Todas as alterações», «Documentos», «Imagens», «Vídeos», «Música e áudio», «Outros tipos», «Pastas inteiras», «Limpeza», «Com nome novo», «Classificados pela IA» e «A rever (pouca certeza)». Começa por este último: mostra os ficheiros em que o Arruma tem menos de 55 % de certeza.
 
 Às vezes aparece uma nota amarela por cima da lista. «IA local indisponível: …» quer dizer que a IA está ligada nas Definições, mas não respondeu, e o plano foi feito sem ela (é o caso das imagens deste manual). Se não queres usar a IA, desliga-a nas [Definições](#definições) e a nota deixa de aparecer. Outras notas avisam que a IA foi interrompida ou deixou de responder a meio, e que o resto foi classificado por palavras-chave.
 
@@ -336,9 +336,13 @@ Ao clicares num ficheiro, o painel da direita mostra os detalhes: «NOME ATUAL»
 
 ![Fundo do painel de detalhes, com «Abrir», «Mostrar» e «Outro destino…»](imagens/05a-plano-detalhe-fim.png)
 
-Ao clicares numa pasta da árvore «Depois», o painel mostra «LOCAL», «CONTEÚDO» e, se for nova, «Esta pasta ainda não existe e será criada.», além de «MUDAR NOME DA PASTA» e do botão «Mover pasta para outro local…».
+Ao clicares numa pasta da árvore «Depois», o painel mostra «LOCAL» e «CONTEÚDO». Se a pasta for nova, mostra também «Esta pasta ainda não existe e será criada.», o campo «MUDAR NOME DA PASTA» e o botão «Mover pasta para outro local…».
 
 ![Painel de detalhes da pasta nova «Faturas e Recibos»](imagens/05d-plano-pasta.png)
+
+Se a pasta já existir no disco (sem «• nova»), em vez do campo e do botão aparece a nota «Esta pasta já existe, por isso fica com este nome e neste local. No plano só podes mudar o nome ou o local das pastas novas (marcadas com «• nova»).».
+
+![Painel de detalhes da pasta «Finanças», que já existe](imagens/05f-plano-pasta-existente.png)
 
 As regras que o Arruma segue para escolher os destinos, os nomes novos e o que vai para o Lixo estão em [Regras de organização](#regras-de-organização).
 
@@ -356,21 +360,21 @@ Também podes escrever no campo «MUDAR NOME PROPOSTO» do painel e carregar em 
 
 ![O ficheiro com o nome novo «Fatura da luz março 2025.pdf»](imagens/05c-plano-nome-mudado.png)
 
-**Mudar o nome de uma pasta sugerida.** Seleciona a pasta na árvore «Depois» e carrega em F2 (ou clique direito → «Mudar nome da pasta… (F2)», ou o campo «MUDAR NOME DA PASTA»). Tudo o que está lá dentro acompanha a pasta. Se escolheres o nome de outra pasta do plano, os conteúdos juntam-se.
+**Mudar o nome de uma pasta nova.** Seleciona uma pasta marcada com «• nova» na árvore «Depois» e carrega em F2 (ou clique direito → «Mudar nome da pasta… (F2)», ou o campo «MUDAR NOME DA PASTA»). Tudo o que está lá dentro acompanha a pasta. Se escolheres o nome de uma pasta que já existe nesse sítio, ou de outra pasta nova do plano, o Arruma pergunta primeiro, porque as duas se juntam. Por exemplo, se mudares «Faturas e Recibos» para «Banco», que já existe em Finanças, aparece «Juntar à pasta «Banco»?», com o texto «Já existe uma pasta com este nome neste local. Os itens desta pasta nova passam para lá e depois já não os podes separar no plano, a não ser um a um.». Se for outra pasta nova do plano, a primeira frase é «O plano já tem outra pasta nova com este nome neste local.». «Juntar» junta as duas; «Cancelar» deixa tudo como estava.
 
 **Mudar um documento de área.** No painel, escolhe outra área em «MUDAR DE ÁREA». O documento passa para `Documentos/<nova área>` (a subárea perde-se, porque cada área tem as suas).
 
 **Escolher outro destino.** Carrega em «Outro destino…» no painel (ou clique direito → «Escolher outra pasta de destino…») e escolhe a pasta no seletor «Escolhe o destino».
 
-**Mover uma pasta sugerida para outro sítio.** Seleciona a pasta, carrega em «Mover pasta para outro local…» e escolhe, no seletor «Mover pasta para dentro de…», a pasta onde a queres. Vai com tudo o que o plano lá põe.
+**Mover uma pasta nova para outro sítio.** Seleciona a pasta, carrega em «Mover pasta para outro local…» e escolhe, no seletor «Mover pasta para dentro de…», a pasta onde a queres. Vai com tudo o que o plano lá põe. Se lá já existir uma pasta com o mesmo nome, o Arruma faz a mesma pergunta, «Juntar à pasta «…»?».
 
-Mudar o nome ou mover uma pasta que já existe no disco (sem «• nova») não muda a pasta verdadeira. O que muda é o destino dos ficheiros do plano, que passam a ir para uma pasta nova com esse nome ou nesse sítio; a pasta original e o que já lá estava ficam como estavam.
+**As pastas que já existem não mudam de nome nem de sítio.** No plano, só as pastas novas (com «• nova») mudam. Se carregares em F2 numa pasta que já existe, ou se a arrastares, aparece a notificação, por exemplo, ««Finanças» já existe: no plano só podes mudar o nome ou o local das pastas novas.», e o menu do botão direito dessa pasta só tem uma linha desativada, «Já existe: só as pastas novas mudam de nome ou de local». Os itens que o plano lá põe podem ir para outro sítio, um a um.
 
-**Arrastar.** Na árvore «Depois», podes arrastar um ficheiro para outra pasta (ou para cima de outro ficheiro, e vai para a pasta dele) e uma pasta para dentro de outra. Arrastar um item para «Para o Lixo» manda-o para o Lixo; arrastá-lo de lá para uma pasta volta a movê-lo. O grupo «Para o Lixo» aceita também uma pasta inteira, que vai assim toda para o Lixo. A pasta continua recuperável e a arrumação pode ser anulada, mas a confirmação fala em «ficheiros temporários», por isso arrasta pastas para lá só de propósito. Não se pode largar nada em «Pastas vazias a remover».
+**Arrastar.** Na árvore «Depois», podes arrastar um ficheiro para outra pasta (ou para cima de outro ficheiro, e vai para a pasta dele) e uma pasta nova para dentro de outra. É isso que lembra a dica por cima da árvore, «💡 Arrasta itens entre pastas. Só as novas mudam de nome (F2).» (com o rato por cima, aparece a frase completa). Se largares uma pasta nova onde já existe outra com o mesmo nome, o Arruma pergunta, depois de largares, se as queres juntar. Arrastar um item para «Para o Lixo» manda-o para o Lixo; arrastá-lo de lá para uma pasta volta a movê-lo. O grupo «Para o Lixo» aceita também uma pasta inteira, que vai assim toda para o Lixo, com tudo o que tem dentro. Continua recuperável e a arrumação pode ser anulada. Ao clicares em «Para o Lixo», o painel diz o que lá está, por exemplo «Ficheiros temporários ou automáticos e o que arrastaste para aqui. Vai tudo para o Lixo do sistema, de onde o podes recuperar.», e a confirmação de «Aplicar» separa os temporários, os ficheiros que escolheste e as pastas inteiras. Não se pode largar nada em «Pastas vazias a remover».
 
-**Menu do botão direito.** Na árvore «Depois», numa pasta: «Mudar nome da pasta… (F2)» e «Mover pasta para outro local…». Num ficheiro ou numa pasta inteira: «Mudar nome proposto… (F2)», «Escolher outra pasta de destino…» e «Mostrar na pasta atual». Num item que vai para o Lixo, só «Mostrar na pasta atual». A árvore «Antes» não tem menu, F2 nem arrastar: aí só usas as caixas, os detalhes e o duplo clique, que abre o ficheiro.
+**Menu do botão direito.** Na árvore «Depois», numa pasta nova: «Mudar nome da pasta… (F2)» e «Mover pasta para outro local…»; numa pasta que já existe, só a linha desativada «Já existe: só as pastas novas mudam de nome ou de local». Num ficheiro ou numa pasta inteira: «Mudar nome proposto… (F2)», «Escolher outra pasta de destino…» e «Mostrar na pasta atual». Num item que vai para o Lixo, só «Mostrar na pasta atual». A árvore «Antes» não tem menu, F2 nem arrastar: aí só usas as caixas, os detalhes e o duplo clique, que abre o ficheiro.
 
-As mudanças que fazes no plano perdem-se, sem aviso, se carregares outra vez em «Criar plano de organização», se fizeres «Analisar novamente» ou se começares outra análise, incluindo a que o Arruma faz sozinho depois de anulares uma arrumação (no Linux, também se usares o clique direito do Nemo com o Arruma aberto). Aplica primeiro.
+As mudanças que fazes no plano perdem-se, sem aviso, se carregares outra vez em «Criar plano de organização», se fizeres «Analisar novamente» ou se começares outra análise (no Linux, também se usares o clique direito do Nemo com o Arruma aberto). Perdem-se também se anulares uma arrumação que mexeu nas pastas analisadas, porque o Arruma volta então a analisá-las sozinho. Aplica primeiro.
 
 #### Aplicar o plano
 
@@ -378,21 +382,25 @@ Quando estiveres satisfeito, carrega em «Aplicar alterações» (fica desativad
 
 ![Confirmação «Aplicar 56 alterações?»](imagens/06-confirmar.png)
 
-Ao carregares em «Aplicar», o Arruma move primeiro as pastas inteiras, depois os ficheiros, a seguir manda os temporários para o Lixo (no Windows, para a Reciclagem) e, por fim, remove as pastas vazias. Cria pelo caminho as pastas que faltam e nunca substitui um ficheiro: se o destino já tiver um com o mesmo nome, o que chega fica com « (2)», « (3)»… Entre discos diferentes, copia o ficheiro, confirma que a cópia ficou com o mesmo tamanho e só então apaga o original. Uma pasta vazia só é removida se ainda estiver vazia nesse momento, e um erro num item não trava os restantes.
+O resumo tem uma linha por tipo de alteração. Além das que vês na imagem («52 itens vão ser movidos para as novas pastas.», «3 ficheiros temporários vão para o Lixo.», «1 pasta vazia vai ser removida.»), podem aparecer, se arrastaste coisas para «Para o Lixo», linhas como «2 ficheiros que escolheste vão para o Lixo.» e «1 pasta inteira vai para o Lixo, com tudo o que tem dentro (12 ficheiros).». A última linha é sempre «Nada é apagado definitivamente e podes anular tudo no Histórico.».
 
-Nada é apagado de vez. O que vai para o Lixo pode ser recuperado de lá, e tudo pode ser anulado no Histórico.
+Ao carregares em «Aplicar», o Arruma move primeiro as pastas inteiras, depois os ficheiros, a seguir manda para o Lixo (no Windows, para a Reciclagem) o que está em «Para o Lixo» e, por fim, remove as pastas vazias. Cria pelo caminho as pastas que faltam e nunca substitui um ficheiro: se o destino já tiver um com o mesmo nome, o que chega fica com « (2)», « (3)»… Entre discos diferentes, copia o ficheiro, confirma que a cópia ficou com o mesmo tamanho e só então apaga o original. Uma pasta vazia só é removida se ainda estiver vazia nesse momento, e um erro num item não trava os restantes.
 
-Durante a arrumação aparece «A arrumar…», com a nota «Não feches o Arruma até terminar.», o ficheiro em curso e um contador.
+Nada é apagado de vez. O que vai para o Lixo pode ser recuperado de lá, e tudo pode ser anulado no Histórico. No Windows há uma exceção: se um item não couber na Reciclagem (por exemplo, por ser maior do que o espaço que ela tem), o Windows pergunta antes de o apagar de vez. Se disseres que não, o item fica onde estava e aparece na lista dos que não puderam ser alterados.
 
-<!-- aviso: erro conhecido -->
-> **Não feches o Arruma enquanto aparece «A arrumar…».** Se o fechares a meio, os ficheiros já mudados ficam nos sítios novos, mas essa arrumação não fica no Histórico e deixas de a poder anular pelo Arruma. Também não comeces outra análise, não procures duplicados, não cries outro plano nem anules outra arrumação (no Histórico ou numa notificação) até acabar, porque qualquer destas ações a interrompe. Se precisares mesmo de parar, carrega em «Cancelar»: o Arruma termina o ficheiro em curso e regista o que já fez, que podes anular no Histórico.
-<!-- /aviso -->
+Durante a arrumação aparece «A arrumar…», com a nota «Não feches o Arruma até terminar.», o ficheiro em curso, um contador e o botão «Cancelar». Enquanto isso, o Arruma não começa outra análise, outro plano, outra procura de duplicados nem outra anulação, e «Escolher pastas…» também não abre: aparece a notificação «O Arruma ainda está a arrumar. Espera que termine.». Podes mudar de vista na barra lateral à vontade.
+
+Se fechares a janela (ou carregares em Ctrl+Q) a meio, o Arruma pergunta primeiro: «O Arruma ainda está a arrumar», com o texto «Se fechares agora, o Arruma para depois do item em curso e só então fecha. O que já foi arrumado fica no Histórico, onde o podes anular.». «Não fechar» deixa-o continuar. «Parar e fechar» faz o que diz: aparece a notificação «A parar depois do item em curso… O Arruma fecha a seguir.» e nenhum ficheiro fica a meio de ser movido. Não termines a sessão nem desligues o computador enquanto aparece «A arrumar…», porque aí o Arruma não pergunta nada. Se isso acontecer, ou se faltar a luz, o que ficou feito aparece no Histórico como «interrompida» e pode ser anulado.
+
+Para parar sem fechar, carrega em «Cancelar». O Arruma termina o item em curso e mostra «Arrumação parada a meio», com o número de alterações feitas «antes de parares» e a frase «O resto ficou como estava.». O que fez fica no Histórico e pode ser anulado. Para arrumar o resto, cria um plano novo a partir da Análise, que entretanto já mostra onde está cada ficheiro.
 
 No fim aparece «Está arrumado!», com o número de alterações aplicadas, e a notificação em baixo com o botão «Anular».
 
 ![Ecrã «Está arrumado!» com a notificação «56 alterações aplicadas.»](imagens/06b-arrumado.png)
 
-«Abrir pasta» abre a pasta arrumada; se arrumaste nas pastas pessoais, abre sempre Documentos. «Anular» desfaz esta arrumação. «Arrumar outra pasta» volta ao Início. Como diz a dica, podes voltar a analisar daqui a umas semanas: o Arruma respeita o que já está arrumado e só trata do que é novo.
+«Abrir pasta» abre a pasta arrumada; se arrumaste nas pastas pessoais, abre sempre Documentos. «Anular» desfaz esta arrumação, depois de confirmares (ver [Anular](#anular)). «Arrumar outra pasta» volta ao Início. Como diz a dica, podes voltar a analisar daqui a umas semanas: o Arruma respeita o que já está arrumado e só trata do que é novo.
+
+Enquanto este ecrã está à vista, o Arruma volta a analisar as mesmas pastas em segundo plano. A vista Análise passa a mostrar onde os ficheiros estão agora (na imagem, o número ao lado de «Análise» passou de 65 para 5) e a vista Duplicados volta ao botão «Procurar duplicados». Assim, um plano novo ou uma procura de duplicados partem do que está no disco, sem precisares de carregar em «Analisar novamente».
 
 Se algum item não pôde ser alterado, aparece uma secção «N itens não puderam ser alterados» com o caminho e o motivo de cada um:
 
@@ -403,10 +411,10 @@ Se algum item não pôde ser alterado, aparece uma secção «N itens não puder
 | «A cópia não ficou igual ao original.» | A cópia para outro disco falhou; o original ficou onde estava. |
 | «A pasta já não está vazia.» | Uma pasta vazia recebeu ficheiros entretanto e não foi removida. |
 | «Esta unidade não tem Reciclagem; o ficheiro não foi apagado.» | Só no Windows: pens USB e unidades de rede não têm Reciclagem. O ficheiro fica onde estava. |
-| «Não foi possível enviar para a Reciclagem (código N).» / «Não foi possível enviar para o Lixo: …» | O sistema recusou (Windows / macOS). |
+| «Não foi possível enviar para a Reciclagem (código N).» / «Não foi possível enviar para o Lixo: …» | O sistema recusou (Windows / macOS). No Windows, aparece também quando o item não cabia na Reciclagem e disseste que não quando o Windows perguntou se o apagava de vez. |
 | Outras mensagens, na língua do sistema | Por exemplo, falta de permissão. |
 
-Se a operação inteira falhar (é raro), aparece «Erro ao arrumar». Nesse caso, o ecrã pode ficar em «A arrumar…»: muda de vista na barra lateral e vê no Histórico o que ficou feito.
+Se a operação inteira falhar (é raro), aparece «Erro ao arrumar», com a explicação técnica e a frase «O que chegou a ser feito aparece no Histórico, onde o podes anular.». O plano deixa de valer, o Arruma volta a analisar as pastas e mostra a vista Análise.
 
 ### Duplicados
 
@@ -420,21 +428,21 @@ Enquanto procura, aparece «A comparar ficheiros», com um contador e o botão �
 
 ![Resultados: três grupos de cópias, cada um com a cópia a manter](imagens/08-duplicados.png)
 
-Em cada grupo, o Arruma sugere a cópia a manter e assinala-a com «manter», a verde. Dá preferência à que tem o nome sem «(1)» ou «cópia», depois à que está fora de Transferências e da Secretária e, em caso de empate, à mais antiga. **Uma caixa marcada quer dizer que essa cópia vai para o Lixo.** A sugerida vem com a caixa desmarcada e as outras com a caixa marcada, mas podes mudá-las. O «manter» não acompanha essas mudanças; o que conta são as caixas. Não é possível marcar todas as cópias de um grupo: o Arruma avisa «Tem de ficar pelo menos uma cópia de cada ficheiro.».
+Em cada grupo, o Arruma sugere a cópia a manter, assinala-a com «manter», a verde, e usa o nome dela como título do grupo. Dá preferência à que tem o nome sem «(1)» ou «cópia», depois à que está fora de Transferências e da Secretária e, em caso de empate, à mais antiga. **Uma caixa marcada quer dizer que essa cópia vai para o Lixo.** A sugerida vem com a caixa desmarcada e as outras com a caixa marcada, mas podes mudá-las. O «manter» não acompanha essas mudanças; o que conta são as caixas. Não é possível marcar todas as cópias de um grupo: o Arruma avisa «Tem de ficar pelo menos uma cópia de cada ficheiro.».
 
 Na barra de baixo vês quantas cópias estão marcadas e quanto espaço libertam. «Mostrar na pasta» mostra a cópia selecionada no gestor de ficheiros e o duplo clique abre-a. «Procurar de novo» repete a procura. «Enviar para o Lixo» (no Windows, «Enviar para a Reciclagem») pede confirmação:
 
 ![Confirmação «Enviar 3 cópias para o Lixo?»](imagens/08b-duplicados-confirmar.png)
 
-As cópias vão para o Lixo do sistema, de onde as podes recuperar. A operação fica no Histórico como «Remoção de duplicados em «…»», aparece uma notificação com «Anular» e a procura repete-se sozinha.
+As cópias vão para o Lixo do sistema, de onde as podes recuperar. Enquanto o Arruma as envia, tal como ao arrumar, não começa outras tarefas e, se fechares a janela, pergunta primeiro («O Arruma ainda está a enviar cópias para o Lixo»). A operação fica no Histórico como «Remoção de duplicados em «…»», aparece uma notificação com «Anular» e a procura repete-se sozinha.
 
 ![«Não há duplicados» depois de enviar as cópias, com a notificação «3 cópias enviadas para o Lixo.»](imagens/08c-duplicados-enviados.png)
 
-Se uma cópia não puder ir para o Lixo, o Arruma não mostra erro: a cópia fica na lista. No Windows, isso acontece com as cópias em pens USB, que não têm Reciclagem. O ecrã «Não há duplicados» não tem botão para procurar outra vez; para isso, volta à Análise e carrega em «Analisar novamente».
+Se uma cópia não puder ir para o Lixo, o Arruma não mostra erro: a cópia fica na lista. No Windows, isso acontece com as cópias em pens USB, que não têm Reciclagem, e com as que não cabem na Reciclagem, se disseres que não quando o Windows perguntar se as apaga de vez. O ecrã «Não há duplicados» não tem botão para procurar outra vez; para isso, volta à Análise e carrega em «Analisar novamente».
 
 ### Histórico
 
-Cada arrumação e cada envio de duplicados para o Lixo ficam registados aqui, do mais recente para o mais antigo (até 100). Enquanto não houver nenhum, a vista diz «Ainda não há histórico».
+Cada arrumação e cada envio de duplicados para o Lixo ficam registados aqui, do mais recente para o mais antigo (até 100). Enquanto não houver nenhum registo, a vista diz «Ainda não há histórico».
 
 ![Vista Histórico vazia](imagens/14-historico-vazio.png)
 
@@ -442,24 +450,54 @@ Cada linha diz o que foi feito («Arrumação de «Transferências»» ou «Remo
 
 ![Histórico com uma arrumação e uma remoção de duplicados](imagens/07-historico.png)
 
+Uma linha pode ter também uma destas indicações:
+
+| Indicação | O que quer dizer |
+|---|---|
+| «A decorrer», à direita | É a arrumação (ou o envio de duplicados) que está a ser feita agora. |
+| «interrompida», na linha de baixo | O Arruma fechou antes de acabar, por exemplo porque o computador se desligou. O que chegou a fazer ficou registado e pode ser anulado. |
+| «Anulada», à direita, no lugar do botão | Já foi anulada por inteiro. |
+| «Anulada em parte» e o botão «Anular o resto», à direita, com «1 item por anular» (ou «N itens por anular») na linha de baixo | Uma anulação falhou nalguns itens ou foi parada a meio. Ver [Anular](#anular). |
+
 #### Anular
 
-Podes anular uma arrumação em três sítios: na notificação que aparece logo a seguir (durante 7 segundos), no botão «Anular» do ecrã «Está arrumado!» e no Histórico. O Arruma anula logo, sem pedir confirmação.
+Podes anular uma arrumação em três sítios: na notificação que aparece logo a seguir (durante 7 segundos), no botão «Anular» do ecrã «Está arrumado!» e no Histórico. Um envio de duplicados para o Lixo anula-se da mesma maneira, na notificação ou no Histórico. Em qualquer caso, o Arruma pede confirmação primeiro:
 
-Anular devolve cada ficheiro e cada pasta ao sítio onde estavam (recriando a pasta original, se for preciso), retira as pastas que a arrumação criou se tiverem ficado vazias, recria as pastas vazias que tinha removido e tira do Lixo o que lá pôs. Nunca substitui nada: se no sítio original já houver um ficheiro com o mesmo nome, esse item fica por anular.
+![Confirmação «Anular 56 alterações?»](imagens/07a-anular-confirmar.png)
 
-Se correr tudo bem, aparece «Alterações anuladas. Tudo voltou ao local original.» e a linha do Histórico passa a mostrar «Anulada». Depois disso, o Arruma volta a analisar as pastas da análise que tens aberta e mostra a vista Análise.
+A pergunta diz quantas alterações vão ser anuladas e quantos itens voltam ao sítio (as alterações contam também as pastas vazias removidas, por isso o segundo número pode ser menor), por exemplo: «Arrumação de «Transferências». 55 itens voltam ao sítio onde estavam, incluindo o que foi para o Lixo. Nada é substituído: se já houver outro com o mesmo nome no sítio original, esse item fica onde está.». Carrega em «Anular» para continuar, ou em «Cancelar» para desistir. Se a arrumação já tiver sido anulada (por exemplo, no Histórico), o «Anular» do ecrã «Está arrumado!» ou da notificação só avisa que ela «já foi anulada».
+
+Anular devolve cada ficheiro e cada pasta ao sítio onde estavam (recriando a pasta original, se for preciso), retira as pastas que a arrumação criou se tiverem ficado vazias, recria as pastas vazias que tinha removido e tira do Lixo o que lá pôs. Se já tiveres posto algum ficheiro de volta à mão, o Arruma dá-o como anulado e segue em frente.
+
+Enquanto anula, o Arruma mostra o Histórico, com «A anular…», o nome da arrumação, o ficheiro em curso, um contador e o botão «Cancelar». Tal como ao arrumar, o Arruma não começa outras tarefas entretanto e, se fechares a janela, pergunta primeiro: «O Arruma ainda está a anular», com «O que faltar fica no Histórico, onde podes anular o resto.».
+
+Se correr tudo bem, aparece «Alterações anuladas. Tudo voltou ao local original.» e a linha do Histórico passa a mostrar «Anulada». Continuas no Histórico. Se a anulação mexeu nas pastas da análise que tens aberta, o Arruma volta a analisá-las em segundo plano, e o plano que tinhas deixa de valer; se mexeu noutras pastas, a análise e o plano ficam como estavam.
 
 ![Arrumação anulada, com «Anulada» e a notificação «Alterações anuladas. Tudo voltou ao local original.»](imagens/07b-historico-anulada.png)
 
-Se alguns itens falharem, aparece «Anulação concluída com avisos», com quantas operações foram revertidas e quantos itens «já tinham sido movidos manualmente». A frase diz sempre «movidos manualmente», seja qual for a causa. A arrumação fica «Anulada» na mesma e não há segunda tentativa, por isso esses itens tens de os tratar à mão (os motivos possíveis estão na tabela abaixo). Se quiseres anular várias arrumações, começa pela mais recente: anular uma antiga depois de outras pode falhar nos ficheiros em que as mais recentes mexeram.
+Se carregares em «Cancelar», o Arruma para depois do item em curso e avisa «Anulação parada a meio. Para continuar, carrega em «Anular o resto».».
+
+Se alguns itens não voltarem ao sítio, aparece «Anulação incompleta», com quantos itens voltaram e quantos não voltaram e, para cada um destes, o caminho e o motivo. Resolve o que a mensagem indica (por exemplo, muda o nome ao ficheiro que ocupa o sítio original, ou tira-o de lá) e tenta outra vez.
+
+![Aviso «Anulação incompleta»: um item não voltou porque já existe um ficheiro no local original](imagens/07c-anulacao-incompleta.png)
+
+Na imagem, depois de uma remoção de duplicados, o currículo voltou a ser descarregado e ficou outra vez com o nome «CV_2025 (1).docx». A cópia que estava no Lixo não pode voltar ao sítio, porque esse nome já está ocupado.
+
+Quando há itens que não voltaram, ou quando paraste a meio, a linha do Histórico fica «Anulada em parte», com quantos itens faltam, e o botão passa a «Anular o resto».
+
+![Histórico com a remoção de duplicados «Anulada em parte», «1 item por anular» e o botão «Anular o resto»](imagens/07d-historico-anulada-em-parte.png)
+
+«Anular o resto» pergunta «Anular o resto?» e só tenta os itens que faltam; o que já voltou ao sítio não é tocado outra vez. Se quiseres anular várias arrumações, começa pela mais recente: anular uma antiga depois de outras pode falhar nos ficheiros em que as mais recentes mexeram.
 
 | Mensagem | O que quer dizer |
 |---|---|
 | «O ficheiro já não está onde foi colocado.» | Moveste ou apagaste o ficheiro depois da arrumação. |
-| «Já existe um ficheiro no local original.» ou «Já existe» | Há outro ficheiro com o mesmo nome no sítio original. |
+| «Já existe um item com o mesmo nome no local original.» | Há outro ficheiro ou pasta com o mesmo nome no sítio para onde o item devia voltar. |
+| «Já existe um ficheiro no local original.» | O mesmo, num item que tinha ido para o Lixo. |
 | «O ficheiro já não está no Lixo.» (no Windows, «… na Reciclagem.») | O Lixo foi esvaziado ou o ficheiro já foi recuperado. |
 | «O macOS não deixou tirar o ficheiro do Lixo. Usa «Pôr de volta» no Finder.» | Só no macOS: recupera-o tu no Lixo, com «Pôr de volta». |
+
+Se a anulação falhar por inteiro (é raro), aparece «Erro ao anular», com a explicação técnica e a frase «O que ficou por anular continua no Histórico.».
 
 O histórico fica guardado num ficheiro (`arruma.db`, ver [Onde ficam os teus dados](#onde-ficam-os-teus-dados)). Se o apagares, deixas de poder anular as arrumações antigas.
 
@@ -485,7 +523,7 @@ As definições guardam-se sozinhas assim que as mudas; não há botão para gua
 | «Agrupar fotografias por ano e mês» (ligada) | Cria pastas de mês (`Imagens/Fotografias/2024/2024-08 Agosto`) quando há 40 ou mais fotografias desse ano. Desligada, agrupa só por ano. |
 | «Sugerir nomes claros para ficheiros com nomes vagos» (ligada) | Propõe nomes para ficheiros como «scan_003.pdf». Nos documentos, só funciona com a IA; na música, usa as etiquetas. |
 | «Propor envio de ficheiros temporários para o Lixo» (ligada) | Põe os restos no grupo «Para o Lixo» do plano. Desligada, ficam onde estão. |
-| «Remover pastas genéricas que fiquem vazias» (ligada) | Apaga pastas como «Nova pasta» depois de a arrumação as esvaziar. Não afeta as pastas que já estavam vazias, que continuam a aparecer no plano. |
+| «Remover pastas genéricas que fiquem vazias» (ligada) | A descrição diz: «Pastas como «Nova pasta» que já estavam vazias ou que ficam vazias depois de os seus ficheiros serem arrumados. As pastas com nome próprio nunca são removidas.». Ligada, o plano propõe as pastas genéricas já vazias em «Pastas vazias a remover», e as que a arrumação esvazia são apagadas no fim. Desligada, não remove nenhuma pasta. |
 | «Incluir ficheiros e pastas ocultos (começados por ponto)» (desligada) | Inclui os ficheiros ocultos na análise. No Windows e no macOS abrange também os que o sistema marca como ocultos. Convém deixá-la desligada, para não mexer nos ficheiros onde os programas guardam as suas definições. |
 | «Leitura de digitalizações (OCR)» | Só informa: «instalado», com os idiomas encontrados, ou «não instalado», com a dica para o teu sistema. Ver [Leitura de digitalizações](#leitura-de-digitalizações). |
 
@@ -493,7 +531,7 @@ As definições guardam-se sozinhas assim que as mudas; não há botão para gua
 
 ![Definições: «Pastas a ignorar sempre»](imagens/09b-definicoes-fim.png)
 
-«Adicionar pasta…» acrescenta uma pasta que o Arruma nunca deve ler nem alterar. Na análise seguinte, essa pasta e tudo o que tem dentro aparecem como protegidos («excluída nas definições»). O botão do caixote, à direita de cada pasta, deixa de a ignorar. Projetos de programação, bibliotecas e pastas sincronizadas já são protegidos sem precisares de os acrescentar. Atenção: se escolheres diretamente uma destas pastas para analisar, ela é analisada e arrumada na mesma.
+«Adicionar pasta…» acrescenta uma pasta que o Arruma nunca deve ler nem alterar. Na análise seguinte, essa pasta e tudo o que tem dentro aparecem como protegidos («excluída nas definições»). Com «Todo o computador», isto vale também para um disco inteiro que esteja na lista. O botão do caixote, à direita de cada pasta, deixa de a ignorar. Projetos de programação, bibliotecas e pastas sincronizadas já são protegidos sem precisares de os acrescentar. Se escolheres diretamente uma pasta desta lista, ou uma pasta que está dentro de uma delas, o Arruma recusa-a (ver [Início](#início)); para a arrumares, tira-a primeiro da lista.
 
 ### Acerca
 
@@ -570,7 +608,7 @@ A regra dos 3 não vale para tudo. A área em si (por exemplo `Documentos/Finan�
 
 **Pastas protegidas.** Algumas pastas nunca são alteradas: aparecem nas observações da Análise e na lista «Mantidas», com o motivo. São, entre outras, as pastas sincronizadas (Dropbox, OneDrive, Nextcloud, ownCloud, MEGA, pCloud, Insync, Google Drive, iCloud, Adobe Creative Cloud), as bibliotecas de programas (Calibre, Zotero, digiKam, darktable, catálogos do Lightroom, Steam, jogos), as máquinas virtuais, os projetos de programação, as pastas de aplicações instaladas, «Modelos» e «Público», a pasta de dados de programas do Windows e a Biblioteca do macOS, as cópias do Time Machine e os pacotes que o macOS trata como um só ficheiro (aplicações `.app`, a biblioteca das Fotografias, documentos do Pages…). Também ficam de fora os ficheiros e pastas ocultos (salvo se ligares a definição) e os atalhos.
 
-Para proteger uma pasta tua, há duas maneiras: acrescenta-a em Definições → «Pastas a ignorar sempre», ou cria dentro dela um ficheiro vazio chamado `.arruma-ignorar`. Atenção à diferença: a proteção só vale para as pastas que o Arruma encontra dentro das pastas que escolheste. Se escolheres diretamente uma pasta do Dropbox, um projeto ou uma pasta da lista «Pastas a ignorar sempre», ela é analisada e arrumada como outra qualquer. Só o ficheiro `.arruma-ignorar` (ou um `.nomedia`, ou os ficheiros que identificam bibliotecas como a do Calibre) protege também a própria pasta escolhida.
+Para proteger uma pasta tua, há duas maneiras: acrescenta-a em Definições → «Pastas a ignorar sempre», ou cria dentro dela um ficheiro vazio chamado `.arruma-ignorar`. As pastas protegidas que o Arruma encontra dentro das pastas que escolheste ficam de fora da análise e do plano. Se escolheres diretamente uma pasta protegida (uma pasta do Dropbox, um projeto, uma biblioteca, uma pasta com `.arruma-ignorar` ou uma pasta da lista «Pastas a ignorar sempre» ou de dentro dela), o Arruma recusa-a e diz porquê (ver [Início](#início)). Há exceções: a pasta pessoal, as pastas dos cartões do Início (Transferências, Documentos…) e os discos nunca são recusados pelo nome nem por parecerem um projeto, porque é normal terem ficheiros soltos como um «Makefile»; essas só ficam protegidas com um `.arruma-ignorar` (ou um `.nomedia`, ou os ficheiros que identificam bibliotecas como a do Calibre). E uma subpasta de uma pasta sincronizada ou de um projeto, como `~/Dropbox/Fotos`, pode ser escolhida e é arrumada como outra qualquer.
 
 **Nomes novos.** O Arruma só propõe outro nome para ficheiros com nomes vagos, como «scan_003.pdf», «Documento (1).docx» ou «Contrato.pdf», e só com a definição «Sugerir nomes claros para ficheiros com nomes vagos» ligada. Nos documentos, é a IA que propõe o título, por isso sem IA os documentos mantêm sempre o nome. Se a data estiver escrita no documento ou no nome, vai para o início: `2025-02-20 Contrato de arrendamento para habitação.pdf`. Um título que cite uma empresa ou pessoa que não aparece no texto é recusado. Na música, o nome novo vem das etiquetas do ficheiro («Artista - Título.mp3»).
 
@@ -585,7 +623,7 @@ Para proteger uma pasta tua, há duas maneiras: acrescenta-a em Definições →
 
 No macOS, o Arruma deixa os ficheiros .DS_Store em paz, e no Windows os desktop.ini, porque esses sistemas precisam deles.
 
-As pastas vazias aparecem em «Pastas vazias a remover», marcadas, com o motivo «Pasta vazia sem nome próprio.». Revê esta lista com atenção: quando esvazias Transferências ou a Secretária para as pastas pessoais, entram aqui também as subpastas vazias que têm nome próprio. E a lista continua a aparecer mesmo com «Remover pastas genéricas que fiquem vazias» desligada, porque essa definição só trata das pastas que a arrumação esvazia. Desmarca as que queres guardar.
+As pastas vazias aparecem em «Pastas vazias a remover», marcadas, com o motivo «Pasta vazia sem nome próprio.». Só entram pastas genéricas (como «Nova pasta») sem ficheiro nenhum lá dentro, nem sequer oculto, e cujas subpastas, se as houver, também são genéricas. Uma pasta vazia com nome próprio, como um «Férias Algarve» vazio em Transferências, fica onde está, e uma pasta que vai receber ficheiros deste plano também não entra. Com a definição «Remover pastas genéricas que fiquem vazias» desligada, o grupo não aparece. Desmarca as que queres guardar.
 
 ## IA local e leitura de digitalizações (opcionais)
 
@@ -619,16 +657,19 @@ ollama pull qwen2.5:3b
 ollama pull qwen2.5:3b
 ```
 
+Se o Ollama já estiver a correr e só faltar o modelo, o cartão do Início diz «sem modelo» e o botão «Como ativar» abre a mesma janela, mas só com o passo que falta: «O Ollama já está a correr neste computador: só falta descarregar o modelo (cerca de 2 GB), uma única vez e com internet. No Terminal:» (no Windows, «No PowerShell:»), seguido do comando `ollama pull qwen2.5:3b`. Nesse caso, a janela não tem o botão da página de transferência do Ollama.
+
 No fim, carrega em «Verificar agora». A resposta não aparece na própria janela: vê-se, por trás dela, no cartão do Início e no indicador da barra de cima. Fecha a janela com «Fechar».
 
 | Cartão do Início | Indicador na barra de cima | O que quer dizer |
 |---|---|---|
-| «a verificar…» | «IA local» | O Arruma está a ver se o Ollama responde. Se o Ollama estiver instalado mas parado, tenta arrancá-lo e espera até cerca de 8 segundos. |
+| «a verificar…» | «IA local» | O Arruma está a ver se o Ollama responde. Com a IA ligada, se o Ollama estiver instalado mas parado, tenta arrancá-lo e espera até cerca de 8 segundos. |
 | «ativa» | «IA local: qwen2.5:3b» | A IA está pronta. |
-| «não encontrada» | «Modo regras» | O Ollama não está instalado, está parado ou não tem nenhum modelo («O Ollama está a correr, mas ainda não tem nenhum modelo instalado. Executa: ollama pull qwen2.5:3b»). O Arruma funciona na mesma, com regras e palavras-chave. |
+| «sem modelo» | «Modo regras» | O Ollama está a correr, mas não tem nenhum modelo. O cartão explica: «O Ollama está a correr, mas ainda não tem nenhum modelo instalado. Podes usar o Arruma na mesma (com regras e palavras-chave) ou ativar a IA: basta instalar o modelo qwen2.5:3b (ollama pull qwen2.5:3b).» Se tiveres outro modelo instalado, o Arruma usa esse e o cartão diz «ativa». |
+| «não encontrada» | «Modo regras» | O Ollama não está instalado ou está parado. O Arruma funciona na mesma, com regras e palavras-chave. |
 | «desligada» | «IA desligada» | Desligaste a IA nas Definições. |
 
-Quando ligas ou desligas «Usar IA local para classificar documentos» nas Definições, o cartão do Início muda logo, mas o indicador da barra de cima só muda depois de carregares em «Testar» ou «Verificar novamente», ou de reabrires o Arruma. E, mesmo com a IA desligada, o Arruma verifica o Ollama quando abre e, se ele estiver instalado mas parado, arranca-o em segundo plano.
+Quando ligas ou desligas «Usar IA local para classificar documentos» nas Definições, o cartão do Início e o indicador da barra de cima mudam logo. Ao ligá-la, o Arruma verifica o Ollama e, se ele estiver instalado mas parado, arranca-o. Com a IA desligada, o Arruma nunca arranca o Ollama: quando abre, e quando carregas em «Testar» ou «Verificar agora», só vê em que estado ele está, para o mostrar na linha «Estado» das Definições.
 
 A IA corre no processador e demora: para teres uma ideia, num servidor sem placa gráfica levou 7 a 8 segundos por documento. Enquanto prepara o plano, o Arruma mostra o tempo que falta e o botão «Continuar sem IA». Os resultados ficam guardados, por isso voltar a criar o plano para os mesmos ficheiros, com o mesmo modelo, é muito mais rápido.
 
@@ -667,7 +708,7 @@ brew install tesseract tesseract-lang poppler
 
 No gestor de ficheiros do Linux Mint, seleciona uma ou mais pastas, clica com o botão direito e escolhe «Arrumar com o Arruma». O Arruma abre e começa logo a análise; com várias pastas, analisa-as todas juntas. A opção só aparece com pastas selecionadas: não aparece no fundo de uma pasta aberta nem em ficheiros. Se não aparecer logo a seguir à instalação, fecha e volta a abrir o gestor de ficheiros.
 
-No Linux, o Arruma tem uma só janela. Se já estiver aberto, o pedido do Nemo vai para essa janela e começa uma análise nova, que substitui a análise e o plano que lá estavam, sem perguntar. Aplica ou abandona o plano antes de usares o clique direito.
+No Linux, o Arruma tem uma só janela. Se já estiver aberto, o pedido do Nemo vai para essa janela e começa uma análise nova, que substitui a análise e o plano que lá estavam, sem perguntar. Aplica ou abandona o plano antes de usares o clique direito. Enquanto o Arruma estiver a arrumar, o pedido do Nemo é recusado com a notificação «O Arruma ainda está a arrumar. Espera que termine.»; o mesmo acontece enquanto anula.
 
 ### Windows (Explorador de Ficheiros)
 
@@ -724,8 +765,6 @@ sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 poppler-utils
 
 **O instalador diz que o Arruma já está instalado e fecha.** Já tens esta versão. Para reinstalar, desinstala primeiro.
 
-**Aparece «Erro ao analisar a pasta» com «Paths don't have the same drive».** Escolheste pastas de unidades diferentes, ou «Todo o computador» com outro disco ou uma pen USB ligada. Nesta versão, analisa cada unidade à parte (ver [Início](#início)).
-
 **Aparece «Esta unidade não tem Reciclagem; o ficheiro não foi apagado.».** As pens USB e as unidades de rede não têm Reciclagem, por isso o Arruma não manda para lá nada dessas unidades. O ficheiro fica onde estava; se o quiseres apagar, fá-lo tu.
 
 ### macOS
@@ -742,19 +781,19 @@ sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0 poppler-utils
 
 ### Em qualquer sistema
 
-**A IA aparece como «não encontrada».** O Ollama não está instalado, está parado ou não tem modelo. Segue os passos de [IA local](#ia-local). No Linux, para o pôr a correr: `sudo systemctl start ollama`. Se só faltar o modelo: `ollama pull qwen2.5:3b`. Depois carrega no botão «Verificar novamente» do cartão do Início.
+**A IA aparece como «não encontrada».** O Ollama não está instalado ou está parado. Segue os passos de [IA local](#ia-local). No Linux, para o pôr a correr: `sudo systemctl start ollama`. Depois carrega no botão «Verificar novamente» do cartão do Início.
+
+**A IA aparece como «sem modelo».** O Ollama está a correr, mas falta o modelo. Corre `ollama pull qwen2.5:3b` no Terminal (no Windows, no PowerShell) e carrega em «Verificar novamente».
 
 **Instalei o Tesseract, mas o OCR continua «não instalado».** Fecha e volta a abrir o Arruma: o estado só é lido quando ele abre.
 
-**Um plano novo dá erros «O ficheiro já não existe no local original.».** A análise ficou desatualizada, porque os ficheiros mudaram de sítio depois dela (por exemplo, depois de aplicares um plano). Carrega em «Analisar novamente» e cria o plano outra vez.
+**Um plano novo dá erros «O ficheiro já não existe no local original.».** A análise ficou desatualizada, porque os ficheiros mudaram de sítio depois dela, fora do Arruma (por exemplo, moveste-os no gestor de ficheiros). Carrega em «Analisar novamente» e cria o plano outra vez. Depois de aplicares um plano ou de anulares uma arrumação, o Arruma já volta a analisar sozinho.
 
-**Aparece «Não é possível escolher esta pasta».** É uma pasta do sistema, uma pasta onde os programas guardam as suas definições, uma pasta que já não existe ou uma pasta em que não podes escrever. Escolhe outra.
+**Aparece «Não é possível escolher «…»».** É uma pasta do sistema, uma pasta onde os programas guardam as suas definições, uma pasta que já não existe, uma pasta em que não podes escrever, uma pasta protegida (sincronizada, projeto, biblioteca) ou uma pasta de «Pastas a ignorar sempre». O motivo vem por baixo do título. Escolhe outra; se for uma pasta da lista, e a quiseres mesmo arrumar, tira-a primeiro da lista nas Definições.
 
-**Aparece «Anulação concluída com avisos».** Alguns ficheiros não voltaram ao sítio: ou já não estavam onde o Arruma os pôs, ou o sítio original tem outro ficheiro com o mesmo nome, ou saíram do Lixo. Procura-os e move-os à mão. Ver [Anular](#anular).
+**Aparece «Anulação incompleta».** Alguns itens não voltaram ao sítio: ou já não estavam onde o Arruma os pôs, ou o sítio original tem outro ficheiro com o mesmo nome, ou saíram do Lixo. A mensagem diz o motivo de cada um. Resolve-o e carrega em «Anular o resto», no Histórico. Ver [Anular](#anular).
 
-<!-- aviso: erro conhecido -->
-**Fechei o Arruma enquanto arrumava.** Os ficheiros que já tinham mudado ficaram nos sítios novos, mas essa arrumação não aparece no Histórico e não a podes anular pelo Arruma. Abre o Arruma, analisa outra vez a pasta para veres como ficou e, se for preciso, move os ficheiros à mão.
-<!-- /aviso -->
+**Uma linha do Histórico diz «interrompida».** O Arruma fechou a meio dessa arrumação, por exemplo porque a sessão terminou ou o computador se desligou. O que chegou a fazer ficou registado: se quiseres desfazê-lo, carrega em «Anular» nessa linha. Para arrumar o resto, analisa outra vez a pasta e cria um plano novo.
 
 ## Mensagens que podem aparecer
 
@@ -782,7 +821,7 @@ Estas tabelas juntam as mensagens que podes ver ao instalar, atualizar ou remove
 | `E: Ficheiro não suportado ./arruma_0.2.3_all.deb dado na linha de comandos` | O Terminal está noutra pasta e não encontra o ficheiro. | Escreve `cd ~/Transferências` (ou a pasta onde está o ficheiro) e repete. |
 | `E: Não foi possível encontrar o pacote arruma_0.2.3_all.deb` (no Linux Mint 22: `E: Incapaz de localizar o pacote arruma_0.2.3_all.deb`) | Faltou o `./` antes do nome. | Repete com `./arruma_0.2.3_all.deb`. |
 | `Os pacotes a seguir têm dependências não satisfeitas:` seguido de `arruma : Depende: python3 (>= 3.10)` (a redação pode variar ligeiramente) | O sistema é antigo demais (Linux Mint 20 ou anterior). | O Arruma precisa do Linux Mint 21 ou mais recente. |
-| `arruma já é a versão mais recente (0.2.3).` (no Linux Mint 22: `arruma já está na versão mais recente (0.2.3).`) | Já tens esta versão. | Nada. Para reinstalar, ver [Atualizar, reinstalar e desinstalar](#atualizar-reinstalar-e-desinstalar). |
+| `arruma já é a versão mais recente (0.2.3).` (no Linux Mint 22: `arruma já está na versão mais recente (0.2.3).`) | Já tens esta versão. | Nada. Para reinstalar, vê [Atualizar, reinstalar e desinstalar](#atualizar-reinstalar-e-desinstalar). |
 | `Será reposta uma versão ANTERIOR dos seguintes pacotes:` | Tens instalada uma versão mais recente do que a do ficheiro. | Para ficares com a mais recente, escreve `n` e carrega em Enter. Enter sozinho aceita descer de versão. |
 
 #### No Instalador de Pacotes (duplo clique)
@@ -814,7 +853,7 @@ Só aparecem se houver uma cópia do `instalar.sh` na pasta pessoal de algum uti
 |---|---|---|
 | «✓ Arruma instalado com sucesso!», com a lista dos sítios onde o encontras | Fim da instalação ou da atualização. | Abre o Arruma no menu, em Acessórios. |
 | «O Arruma 0.2.3 já está instalado. Não há nada a atualizar.» | Já tens esta versão. | Nada. |
-| «A atualizar o Arruma de 0.2.3 para 0.2.3 (o histórico e as definições ficam).» | Tens uma versão mais antiga. | Nada; a atualização continua sozinha. |
+| «A atualizar o Arruma de 0.2.2 para 0.2.3 (o histórico e as definições ficam).» | Tens uma versão mais antiga. | Nada; a atualização continua sozinha. |
 | «Está instalado o Arruma 0.3.0, mais recente do que a versão desta cópia (0.2.3). Substituir? [s/N]» | Tens uma versão mais recente. | Enter (ou `n`) mantém a que tens e responde «Nada foi alterado.»; `s` substitui. |
 | «Está instalado o Arruma de versão desconhecida, que não se consegue comparar com esta cópia (0.2.3). Substituir? [s/N]» | Não foi possível ler a versão instalada. | `s` substitui; Enter mantém. |
 | «O pacote arruma 0.2.3 já está instalado no sistema.» | Tens o pacote `.deb` instalado. O `instalar.sh` recusa-se sempre. | Lê a linha seguinte; ver também [Problemas frequentes](#problemas-frequentes). |
@@ -843,7 +882,7 @@ Aparecem logo que abres o instalador, quando o Arruma já está instalado (nesse
 | «O Arruma vai ser atualizado da versão … para a 0.2.3.» / «O histórico e as definições ficam.» | Tens uma versão mais antiga. | «OK» continua com a atualização; «Cancelar» fecha sem mudar nada. |
 | «Está instalado o Arruma …, mais recente do que a versão deste instalador (0.2.3).» / «Queres mesmo substituí-lo pela versão mais antiga?» | Tens uma versão mais recente. | «Não» fecha sem mudar nada, e é quase sempre o que convém. «Sim» substitui pela versão mais antiga. |
 
-As imagens foram tiradas com a versão 0.2.2, que aparece onde, na 0.2.3, aparece o número novo. As versões 0.1.0 e 9.9.9 são versões de teste, usadas só para fazer aparecer estas caixas.
+As imagens foram tiradas com a versão 0.2.2; na 0.2.3, as caixas são iguais, com o número novo. As versões 0.1.0 e 9.9.9 são versões de teste, usadas só para fazer aparecer estas caixas.
 
 ![Caixa «O Arruma 0.2.2 já está instalado»](imagens/windows-07-mesma-versao.png)
 
@@ -914,7 +953,7 @@ cd ~/Transferências
 sudo apt install ./arruma_0.2.3_all.deb
 ```
 
-Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão atualizados os seguintes pacotes:` e `A descompactar arruma (0.2.3) sobre (0.2.3) ...`. Se for a mesma, responde `arruma já é a versão mais recente (0.2.3).` (no Linux Mint 22, `arruma já está na versão mais recente (0.2.3).`) e não muda nada. Se for mais recente, mostra `Será reposta uma versão ANTERIOR dos seguintes pacotes:` e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
+Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão atualizados os seguintes pacotes:` e `A descompactar arruma (0.2.3) sobre (0.2.2) ...`. Se for a mesma, responde `arruma já é a versão mais recente (0.2.3).` (no Linux Mint 22, `arruma já está na versão mais recente (0.2.3).`) e não muda nada. Se for mais recente, mostra `Será reposta uma versão ANTERIOR dos seguintes pacotes:` e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
 
 Com duplo clique no ficheiro, o Instalador de Pacotes recusa descer de versão e, para a mesma versão, oferece «Reinstalar pacote».
 

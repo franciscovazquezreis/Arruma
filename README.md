@@ -4,9 +4,11 @@ Organizador de ficheiros que corre no teu computador, sem internet. Analisa as p
 
 Funciona em **Linux** (pensado para o Linux Mint), **Windows 10/11** e **macOS 15 ou mais recente**.
 
+Para instalar e usar o Arruma passo a passo, com imagens, lê o [manual de utilização](docs/manual/README.md).
+
 ## Instalar
 
-As versões prontas a instalar são geradas automaticamente pelo GitHub a cada alteração no ramo `main`. Ficam na página [Releases](https://github.com/franciscovazquezreis/Arruma/releases) quando é publicada uma versão, ou em [Actions → Construir e testar](https://github.com/franciscovazquezreis/Arruma/actions/workflows/construir.yml) → última execução do `main` → *Artifacts*, durante 14 dias. Quem tem acesso de escrita ao repositório pode também pedi-las à mão, para qualquer ramo, no botão *Run workflow* dessa página.
+O GitHub gera automaticamente as versões prontas a instalar a cada alteração no ramo `main`. Ficam na página [Releases](https://github.com/franciscovazquezreis/Arruma/releases) quando se publica uma versão, ou em [Actions → Construir e testar](https://github.com/franciscovazquezreis/Arruma/actions/workflows/construir.yml) → última execução do `main` → *Artifacts*, durante 14 dias. Quem tem acesso de escrita ao repositório pode também pedi-las à mão, para qualquer ramo, no botão *Run workflow* dessa página.
 
 ### Linux Mint, Ubuntu e Debian
 
@@ -30,15 +32,15 @@ As duas formas não se misturam. A cópia do `instalar.sh` fica na tua pasta pes
 
 ### Windows
 
-Corre `Arruma-<versão>-windows-instalador.exe`. Não pede permissões de administrador, cria a entrada no menu Iniciar e acrescenta «Arrumar com o Arruma» ao clique direito das pastas (no Windows 11 aparece em «Mostrar mais opções»). Há também uma versão portátil em `.zip`, que não precisa de instalação.
+Abre o instalador `Arruma-<versão>-windows-instalador.exe`. Não pede permissões de administrador, cria a entrada no menu Iniciar e acrescenta «Arrumar com o Arruma» ao clique direito das pastas (no Windows 11 aparece em «Mostrar mais opções»). Há também uma versão portátil em `.zip`, que não precisa de instalação.
 
-O instalador não está assinado com um certificado de assinatura de código, por isso o Windows pode mostrar o aviso «O Windows protegeu o seu PC». Para continuar: **Mais informações → Executar mesmo assim**.
+O instalador não tem um certificado de assinatura de código, por isso o Windows pode mostrar o aviso «O Windows protegeu o seu PC». Para continuar, carrega em «Mais informações» e depois em «Executar mesmo assim» (a redação pode variar ligeiramente; há versões que dizem «Executar de qualquer forma»). No Windows 11, se o Controlo Inteligente de Aplicações (Smart App Control) estiver ativo, é muito provável que bloqueie o Arruma, por não estar assinado, sem opção para continuar; o [manual](docs/manual/README.md#controlo-inteligente-de-aplicações-windows-11) explica como ver se está ativo.
 
 ### macOS
 
 Abre o instalador `.pkg` certo para o teu Mac (`apple-silicon` para os modelos M1, M2, M3… e `intel` para os mais antigos). O Arruma fica na pasta Aplicações; o instalador pede a palavra-passe de administrador.
 
-O instalador não está assinado com um certificado de programador da Apple nem passou pela notarização da Apple, por isso na primeira vez o macOS recusa abri-lo. Para autorizar: **Definições do Sistema → Privacidade e segurança → Abrir mesmo assim**. Em alternativa, no Terminal (com o nome do ficheiro que descarregaste):
+O instalador não está assinado com um certificado de programador da Apple nem passou pela notarização, por isso, da primeira vez, o macOS recusa abri-lo. Para autorizar, vai a **Definições do Sistema → Privacidade e segurança** e, em «Segurança», carrega em «Abrir» ao lado da indicação de que o instalador foi bloqueado (o nome do botão pode variar ligeiramente, por exemplo «Abrir mesmo assim»). Em alternativa, no Terminal (com o nome do ficheiro que descarregaste):
 
 ```bash
 xattr -d com.apple.quarantine ~/Downloads/Arruma-*-macos-*.pkg
@@ -79,7 +81,7 @@ Para evitar pastas que não fazem sentido:
 
 Os ficheiros com nomes vagos («scan_003.pdf», «Documento (1).docx», «Contrato.pdf») podem receber um nome claro, com a data no início quando ela está escrita no documento (por exemplo `2025-02-20 Contrato de arrendamento para habitação.pdf`). Um nome proposto pela IA é recusado se citar uma empresa ou pessoa que não aparece no texto.
 
-Pastas de programas, projetos de programação, bibliotecas (Calibre, Fotografias do macOS, Steam…), pastas sincronizadas (Dropbox, OneDrive, Nextcloud…) e pastas do sistema nunca são tocadas.
+O Arruma nunca toca em pastas de programas, projetos de programação, bibliotecas (Calibre, Fotografias do macOS, Steam…), pastas sincronizadas (Dropbox, OneDrive, Nextcloud…) nem em pastas do sistema.
 
 ## Qualidade da organização
 
@@ -99,7 +101,7 @@ Resultados da avaliação de 16 de outubro de 2026 (versão original 0.1.0 e ver
 | Profundidade máxima | 4 | 3 | 2 | 2 |
 | Tempo da análise | 274 s | 285 s | 163 s | 177 s |
 
-Nos documentos que nunca serviram para afinar nada, a versão 0.2.0 acerta na área de 81 % (21 de 26), contra 73 % na original, e deixou de criar subpastas com nomes inventados, como «Casa/Manutenção Veículos» ou «Saúde/Vacinas». Os cinco documentos que ainda ficam fora da área esperada são casos em que um modelo de 3 mil milhões de parâmetros hesita: um manual de televisor em «Pessoal», uma multa em «Finanças», um contrato de ginásio em «Trabalho», um artigo de revista em «Lazer» e uma lista de compras em «Compras e Garantias». Como o plano é sempre revisto antes de ser aplicado, estes casos corrigem-se na página do plano.
+Nos documentos que nunca serviram para afinar nada, a versão 0.2.0 acerta na área de 81 % (21 de 26), contra 73 % na original, e deixou de criar subpastas com nomes inventados, como «Casa/Manutenção Veículos» ou «Saúde/Vacinas». Os cinco documentos que ainda ficam fora da área esperada são casos em que um modelo de 3 mil milhões de parâmetros hesita: um manual de televisor em «Pessoal», uma multa em «Finanças», um contrato de ginásio em «Trabalho», um artigo de revista em «Lazer» e uma lista de compras em «Compras e Garantias». Como o plano é sempre revisto antes de ser aplicado, estes casos corrigem-se na vista Plano.
 
 Os números variam um pouco de uma execução para outra, mesmo com o mesmo código, porque o modelo nem sempre responde exatamente da mesma forma em máquinas diferentes: numa execução anterior, a versão original acertou 27 de 36 no conjunto de desenvolvimento, em vez de 28. Num servidor do GitHub sem placa gráfica, a IA demora 7 a 8 segundos por documento.
 

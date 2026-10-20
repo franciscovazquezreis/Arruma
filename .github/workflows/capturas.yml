@@ -132,9 +132,8 @@ jobs:
           "$APP/Contents/MacOS/Arruma" >/dev/null 2>&1 & pid=$!
           captura macos-04-arruma 15
           kill "$pid" || true
-          # Com a quarentena de um ficheiro descarregado, se o Gatekeeper estiver ligado nesta máquina.
-          xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" "$PKG"
-          open "$PKG"; captura macos-05-gatekeeper 10; fecha
+          # O aviso do Gatekeeper (instalador não verificado pela Apple) não se consegue mostrar aqui: com a
+          # quarentena de um ficheiro descarregado, o diálogo fica à espera de resposta e a máquina pára.
       - uses: actions/upload-artifact@v7
         if: always()
         with:
