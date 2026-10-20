@@ -165,12 +165,19 @@ class DrivesTests(unittest.TestCase):
         with mock.patch.object(os, "path", ntpath):
             with self.assertRaises(ValueError):
                 ntpath.commonpath(["C:\\Users\\ana", "D:\\"])
+            # O Python do MSYS2 (o dos instaladores do Windows) escreve os caminhos com «/».
+            def same(a, b):
+                return a.replace("\\", "/") == b.replace("\\", "/")
             self.assertIsNone(common_root(["C:\\Users\\ana", "D:\\"]))
-            self.assertEqual(common_root(["C:\\Users\\ana\\Documentos", "C:\\Users\\ana\\Imagens"]), "C:\\Users\\ana")
+            self.assertTrue(same(common_root(["C:\\Users\\ana\\Documentos", "C:\\Users\\ana\\Imagens"]),
+                                 "C:\\Users\\ana"))
             # Sem pasta comum, a árvore do plano começa em cada disco e o caminho volta a montar-se.
-            self.assertEqual(path_parts("D:\\Fotos\\2024", ""), ["D:\\", "Fotos", "2024"])
-            for path in ("D:\\Fotos\\2024", "C:\\Users\\ana\\Documentos", "\\\\servidor\\partilha\\Fotos"):
-                self.assertEqual(os.path.join("", *path_parts(path, "")), path)
+            parts = path_parts("D:\\Fotos\\2024", "")
+            self.assertTrue(same(parts[0], "D:\\"))
+            self.assertEqual(parts[1:], ["Fotos", "2024"])
+            for path in ("D:\\Fotos\\2024", "C:\\Users\\ana\\Documentos", "\\\\servidor\\partilha\\Fotos",
+                         "D:/Fotos/2024"):
+                self.assertTrue(same(os.path.join("", *path_parts(path, "")), path))
             self.assertEqual(path_parts("C:\\Users\\ana\\Documentos\\Finanças", "C:\\Users\\ana"),
                              ["Documentos", "Finanças"])
             result = ScanResult(root="C:\\Trabalho", files=[], folders={}, protected=[], skipped_hidden=0,

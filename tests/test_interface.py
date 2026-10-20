@@ -2,6 +2,7 @@
 """Testes da interface GTK. Saltam sem o PyGObject (gi) e, os que criam janelas, sem ecrã
 (no Linux sem ambiente gráfico: xvfb-run -a python3 -m unittest discover -s tests)."""
 
+import itertools
 import os
 import shutil
 import sys
@@ -23,6 +24,7 @@ except (ImportError, ValueError):
     Gtk = None
 
 HAS_DISPLAY = Gtk is not None and Gtk.init_check()[0]
+_APP_IDS = itertools.count(1)
 
 from arruma.core import taxonomy as tx  # noqa: E402
 from arruma.core.planner import MODE_INSIDE, Action, Planner  # noqa: E402
@@ -339,7 +341,8 @@ class DuplicatesPageTests(unittest.TestCase):
         self.assertTrue(title.startswith("<b>foto.jpg</b>"), title)
 
 
-@unittest.skipUnless(HAS_DISPLAY, "sem o PyGObject (gi) ou sem ecrã")
+@unittest.skipUnless(HAS_DISPLAY and Gdk.Display.get_default().__gtype__.name == "GdkX11Display",
+                     "precisa de desenhar a janela fora do ecrã como no X11")
 class ToastTests(unittest.TestCase):
     def test_no_grey_box_around_the_toast(self):
         # A sombra do aviso cabia mal no Gtk.Revealer, que a cortava: via-se um retângulo cinzento à volta.
@@ -451,7 +454,8 @@ class WindowStateTests(unittest.TestCase):
                   mock.patch.object(LocalAI, "_try_autostart", self.autostart)):
             p.start()
             self.addCleanup(p.stop)
-        self.application = Gtk.Application()
+        # Cada aplicação com um nome próprio: sem nome, no Windows (com D-Bus) a segunda colide com a primeira.
+        self.application = Gtk.Application(application_id=f"pt.arruma.TesteInterface{next(_APP_IDS)}")
         self.application.register(None)
         self.win = app.ArrumaWindow(self.application)
         self.addCleanup(lambda: (self.win.destroy(), pump(lambda: False, 0.05)))

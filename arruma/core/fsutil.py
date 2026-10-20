@@ -184,11 +184,13 @@ def common_root(paths: list[str]) -> str | None:
 def path_parts(path: str, anchor: str) -> list[str]:
     """Partes de «path» a partir de «anchor». Sem âncora (discos diferentes), a primeira parte é o disco
     («D:\\»), e os.path.join("", *partes) volta a dar o caminho."""
+    # No Windows os caminhos podem vir com «\» ou com «/» (o Python do MSYS2 usa «/»).
+    seps = "[" + re.escape(os.path.sep + (os.path.altsep or "")) + "]"
     if anchor:
         rel = os.path.relpath(path, anchor)
-        return [] if rel == "." else [p for p in rel.split(os.path.sep) if p]
+        return [] if rel == "." else [p for p in re.split(seps, rel) if p]
     drive, rest = os.path.splitdrive(path)
-    return [drive + os.path.sep] + [p for p in rest.split(os.path.sep) if p]
+    return [drive + os.path.sep] + [p for p in re.split(seps, rest) if p]
 
 
 SYSTEM_PATHS = system_paths()

@@ -3,6 +3,7 @@
 o que mudou e anular pergunta, mostra o progresso e diz porque falhou. Os testes da janela precisam do
 PyGObject e de ecrã (no Linux sem ambiente gráfico: xvfb-run -a python3 -m unittest discover -s tests)."""
 
+import itertools
 import os
 import shutil
 import sqlite3
@@ -25,6 +26,7 @@ except (ImportError, ValueError):
     Gtk = None
 
 HAS_DISPLAY = Gtk is not None and Gtk.init_check()[0]
+_APP_IDS = itertools.count(1)
 
 from arruma.core import executor as executor_mod  # noqa: E402
 from arruma.core import taxonomy as tx  # noqa: E402
@@ -381,7 +383,8 @@ class WindowTests(unittest.TestCase):
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
-        self.application = Gtk.Application()
+        # Cada aplicação com um nome próprio: sem nome, no Windows (com D-Bus) a segunda colide com a primeira.
+        self.application = Gtk.Application(application_id=f"pt.arruma.TesteAplicar{next(_APP_IDS)}")
         self.application.register(None)
         self.win = app.ArrumaWindow(self.application)
         self.closed = False
