@@ -4,8 +4,9 @@
 Cria uma pasta pessoal de exemplo (a da «Ana», com uma pasta Transferências desarrumada), abre o
 Arruma com essa pasta pessoal e percorre as vistas pelos mesmos caminhos que uma pessoa: escolher a
 pasta, analisar, procurar duplicados, criar o plano, rever um ficheiro, aplicar, ver o histórico,
-anular, Definições, Acerca e a ajuda da IA. Cada imagem é só a janela (ou o diálogo), sem o
-ambiente de trabalho à volta.
+anular, Definições, Acerca e a ajuda da IA, e responde às perguntas do Arruma (aplicar, enviar para
+o Lixo, anular) como ela. Cada imagem é só a janela (ou o diálogo), sem o ambiente de trabalho à
+volta.
 
 Uso (o Python tem de ter o PyGObject, o Pillow e o mutagen):
 
@@ -571,6 +572,13 @@ def correr(casa: Path, saida: Path) -> int:
             yield 1.0
             self.captura("05d-plano-pasta")
 
+            # Uma pasta que já existe: fica com o nome e o local que tem (só as novas se mudam no plano).
+            caminho = self._caminho(store, -1, "Finanças")
+            tv.set_cursor(caminho, None, False)
+            tv.scroll_to_cell(caminho, None, True, 0.3, 0)
+            yield 1.0
+            self.captura("05f-plano-pasta-existente")
+
             # A árvore «Antes» (onde os ficheiros estão agora), com uma pasta que vai inteira.
             plano.views.set_visible_child_name("before")
             yield 0.6
@@ -629,13 +637,19 @@ def correr(casa: Path, saida: Path) -> int:
             yield lambda: dialogo(Gtk.Dialog) is None
             self.focar(win)
 
-            # Anular a arrumação no Histórico.
+            # Anular a arrumação no Histórico: o Arruma pergunta primeiro e, no fim, volta a analisar a pasta.
             win.navigate("history")
             yield 0.8
             linha = next(r for r in hist.list.get_children() if any(t.startswith("Arrumação") for t in textos(r)))
-            botao(linha, "Anular").clicked()
-            yield lambda: any("Anulada" in textos(r) for r in hist.list.get_children()) and \
+            depois(botao(linha, "Anular").clicked)
+            yield lambda: dialogo(Gtk.MessageDialog) is not None
+            yield 0.8
+            self.captura("07a-anular-confirmar", dialogo(Gtk.MessageDialog))
+            dialogo(Gtk.MessageDialog).response(Gtk.ResponseType.OK)
+            yield lambda: dialogo(Gtk.MessageDialog) is None and \
+                any("Anulada" in textos(r) for r in hist.list.get_children()) and \
                 analise.get_visible_child_name() == "content"
+            self.focar(win)
             win.navigate("history")
             yield 1.0
             self.captura("07b-historico-anulada")
