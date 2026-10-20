@@ -482,6 +482,18 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         run_bg(work, done)
 
 
+def icone_do_tema_abre() -> bool:
+    """Verdadeiro se o ícone do Arruma no tema do sistema abre mesmo. O has_icon() fia-se na cache
+    do tema, que pode indicar um ficheiro já apagado; com esse, a janela ficaria sem ícone."""
+    info = Gtk.IconTheme.get_default().lookup_icon(APP_ID, 64, 0)
+    if info is None:
+        return False
+    try:
+        return info.load_icon() is not None
+    except GLib.Error:
+        return False
+
+
 class ArrumaApp(Gtk.Application):
     def __init__(self, self_test: str | None = None):
         flags = Gio.ApplicationFlags.HANDLES_COMMAND_LINE
@@ -503,7 +515,7 @@ class ArrumaApp(Gtk.Application):
                 Gtk.Window.set_default_icon_from_file(str(ICON_PNG))
             except GLib.Error:
                 pass
-        if IS_LINUX and Gtk.IconTheme.get_default().has_icon(APP_ID):
+        if IS_LINUX and icone_do_tema_abre():
             Gtk.Window.set_default_icon_name(APP_ID)
 
     def do_command_line(self, command_line: Gio.ApplicationCommandLine) -> int:
@@ -578,15 +590,7 @@ class ArrumaApp(Gtk.Application):
             ok = ok and logo_ok
             if IS_LINUX and Path(__file__).resolve().is_relative_to("/usr"):
                 # Instalado pelo .deb: o menu e a barra de tarefas procuram o ícone no tema do sistema.
-                # O has_icon() fia-se na cache do tema, que pode indicar um ficheiro já apagado, por
-                # isso o ícone tem mesmo de abrir.
-                no_tema = False
-                info = Gtk.IconTheme.get_default().lookup_icon(APP_ID, 64, 0)
-                if info is not None:
-                    try:
-                        no_tema = info.load_icon() is not None
-                    except GLib.Error:
-                        pass
+                no_tema = icone_do_tema_abre()
                 lines.append(f"Ícone no tema do sistema: {'OK' if no_tema else 'EM FALTA'}")
                 ok = ok and no_tema
             about = self.win.build_about()

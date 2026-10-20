@@ -188,6 +188,20 @@ jobs:
           cat saida.txt
           grep -q "já está instalado no sistema" saida.txt
           test ! -e ~/.local/share/arruma-app
+      - name: Cache de ícones da pasta pessoal a indicar um ícone apagado à mão (o pacote refá-la)
+        run: |
+          # Sem isto, o menu e a barra de tarefas mostram um quadrado vazio em vez do ícone.
+          mkdir -p ~/.local/share/icons/hicolor/scalable/apps
+          cp src/arruma/ui/arruma.svg ~/.local/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg
+          gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor
+          rm ~/.local/share/icons/hicolor/scalable/apps/pt.arruma.Arruma.svg
+          LC_ALL=C grep -qF pt.arruma.Arruma ~/.local/share/icons/hicolor/icon-theme.cache
+          sudo apt-get install -y --reinstall "./deb/arruma_${VERSAO}_all.deb"
+          if [ -f ~/.local/share/icons/hicolor/icon-theme.cache ] &&
+             LC_ALL=C grep -qF pt.arruma.Arruma ~/.local/share/icons/hicolor/icon-theme.cache; then
+            echo "::error::A cache de ícones da pasta pessoal ainda indica o ícone apagado."; exit 1
+          fi
+          echo "A cache de ícones da pasta pessoal já não indica o ícone apagado."
       - name: Com uma versão mais recente instalada, o apt não desce sem confirmação
         run: |
           sudo apt-get install -y ./deb-9.9.9/arruma_9.9.9_all.deb

@@ -32,8 +32,27 @@ retira() {  # $1 = pasta pessoal, $2 = caminho relativo
 
 versao_em() { sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$1/arruma/__init__.py" 2>/dev/null; }
 
+# A cache de ícones da pasta pessoal ($1) pode ainda indicar ícones do Arruma já apagados (por
+# esta limpeza, pelo instalar.sh --remover antigo, ou à mão), e então o GTK mostra um quadrado
+# vazio no menu e na barra de tarefas em vez do ícone do pacote. Refaz-se ou, sem o
+# gtk-update-icon-cache, apaga-se (o GTK passa a ler as pastas).
+refaz_cache_icones() {
+    cache=".local/share/icons/hicolor/icon-theme.cache"
+    if [ -f "$1/$cache" ] && sem_ligacoes "$1" "$cache" \
+            && LC_ALL=C grep -qF "pt.arruma.Arruma" "$1/$cache" 2>/dev/null; then
+        gtk-update-icon-cache -f -t -q "$1/.local/share/icons/hicolor" >/dev/null 2>&1 \
+            || rm -f "$1/$cache" 2>/dev/null || true
+    fi
+}
+
 # Trata a pasta pessoal $1; $2 é a versão deste pacote.
 limpa_pasta_pessoal() {
+    retira_copia "$1" "$2"
+    refaz_cache_icones "$1"
+}
+
+# Retira a cópia do instalar.sh da pasta pessoal $1, se a houver; $2 é a versão deste pacote.
+retira_copia() {
     casa="$1"
     NOVA="$2"
     app=".local/share/arruma-app"
@@ -92,13 +111,6 @@ limpa_pasta_pessoal() {
                  .local/share/icons/hicolor/256x256/apps/pt.arruma.Arruma.png; do
         retira "$casa" "$icone" || true
     done
-    # A cache de ícones da pasta pessoal ainda indica os ícones apagados, e o GTK não encontraria
-    # o do pacote: refaz-se ou, sem o gtk-update-icon-cache, apaga-se (o GTK passa a ler as pastas).
-    cache=".local/share/icons/hicolor/icon-theme.cache"
-    if [ -f "$casa/$cache" ] && sem_ligacoes "$casa" "$cache"; then
-        gtk-update-icon-cache -f -t -q "$casa/.local/share/icons/hicolor" >/dev/null 2>&1 \
-            || rm -f "$casa/$cache" 2>/dev/null || true
-    fi
     echo "Arruma: retirada a cópia antiga em $casa/.local (o histórico e as definições ficam)."
 }
 
