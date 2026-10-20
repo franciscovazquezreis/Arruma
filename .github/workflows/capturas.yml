@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Tira as capturas de ecrã dos instaladores de Windows e macOS para o manual (docs/manual), a partir
+# dos instaladores de uma execução do «Construir e testar». Só corre à mão: Actions → Capturas para o
+# manual → Run workflow, com o número da execução (o que aparece no endereço dela). As imagens
+# ficam em Artifacts, durante 7 dias.
+#
+# As máquinas do GitHub estão em inglês: os textos do Arruma e do assistente de instalação do
+# Windows saem em português, mas os botões das caixas de mensagem do Windows («Yes», «No») e os
+# avisos de segurança do Windows e do macOS não aparecem como num computador em português.
+name: Capturas para o manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      execucao:
+        description: "Número da execução do «Construir e testar» com os instaladores"
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: arruma-windows
+          path: dist
+          run-id: ${{ inputs.execucao }}
+          github-token: ${{ github.token }}
+      - name: Capturas
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public static class Janela {
+            [StructLayout(LayoutKind.Sequential)] public struct R { public int L, T, Rt, B; }
+            [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+            [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out R r);
+          }
+          "@
+          New-Item -ItemType Directory -Force capturas | Out-Null
+          $shell = New-Object -ComObject WScript.Shell
+          # A janela em primeiro plano (ou o ecrã inteiro, se não houver).
+          function Captura($nome) {
+            Start-Sleep -Seconds 3
+            $r = New-Object Janela+R
+            $ok = [Janela]::GetWindowRect([Janela]::GetForegroundWindow(), [ref]$r)
+            $w = $r.Rt - $r.L; $h = $r.B - $r.T
+            if (-not $ok -or $w -lt 100 -or $h -lt 80) {
+              $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $r.L = $b.X; $r.T = $b.Y; $w = $b.Width; $h = $b.Height
+            }
+            $bmp = New-Object System.Drawing.Bitmap $w, $h
+            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
+            $bmp.Save("capturas\$nome.png"); Write-Output "capturas\$nome.png ($w x $h)"
+          }
+          function Teclas($titulo, $teclas) {
+            $null = $shell.AppActivate($titulo); Start-Sleep -Milliseconds 500; $shell.SendKeys($teclas)
+          }
+          $instalador = (Get-Item "dist\Arruma-*-windows-instalador.exe").FullName
+          $chave = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{18C83DB7-5EF6-4B5E-B0F4-8D1E10EE1738}_is1'
+
+          # Primeira instalação: o modo de instalação e as páginas do assistente.
+          $p = Start-Process $instalador -PassThru
+          Captura 'windows-01-modo-de-instalacao'
+          Get-Process | Where-Object { $_.Path -like '*\is-*\Arruma-*.tmp' -or $_.Id -eq $p.Id } | Stop-Process -Force
+          Start-Sleep -Seconds 2
+          Start-Process $instalador -ArgumentList '/CURRENTUSER'
+          Captura 'windows-02-pasta'
+          Teclas 'Instalação - Arruma' '{ENTER}'; Captura 'windows-03-tarefas'
+          Teclas 'Instalação - Arruma' '{ENTER}'; Captura 'windows-04-pronto'
+          Teclas 'Instalação - Arruma' '{ENTER}'; Start-Sleep -Seconds 15; Captura 'windows-05-concluido'
+          Teclas 'Instalação - Arruma' '{ENTER}'; Start-Sleep -Seconds 12; Captura 'windows-06-arruma'
+          Get-Process Arruma -ErrorAction SilentlyContinue | Stop-Process -Force
+
+          # Já instalado: a mesma versão, uma anterior e uma mais recente.
+          $versao = (Get-ItemProperty $chave).DisplayVersion
+          Start-Process $instalador -ArgumentList '/CURRENTUSER'; Captura 'windows-07-mesma-versao'
+          Teclas 'Instalação' '{ENTER}'; Start-Sleep -Seconds 2
+          Set-ItemProperty $chave DisplayVersion '0.1.0'
+          Start-Process $instalador -ArgumentList '/CURRENTUSER'; Captura 'windows-08-atualizar'
+          Teclas 'Instalação' '{ESC}'; Start-Sleep -Seconds 2
+          Set-ItemProperty $chave DisplayVersion '9.9.9'
+          Start-Process $instalador -ArgumentList '/CURRENTUSER'; Captura 'windows-09-versao-mais-recente'
+          Teclas 'Instalação' '{ESC}'; Start-Sleep -Seconds 2
+          Set-ItemProperty $chave DisplayVersion $versao
+          Get-Process | Where-Object { $_.Path -like '*\is-*\Arruma-*.tmp' } | Stop-Process -Force -ErrorAction SilentlyContinue
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: capturas-windows
+          retention-days: 7
+          path: capturas/*.png
+
+  macos:
+    name: macOS
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: arruma-macos-apple-silicon
+          path: dist
+          run-id: ${{ inputs.execucao }}
+          github-token: ${{ github.token }}
+      - name: Capturas
+        run: |
+          mkdir -p capturas
+          PKG="$(ls "$PWD"/dist/Arruma-*-macos-apple-silicon.pkg)"
+          APP=/Applications/Arruma.app
+          INSTALLER=/System/Library/CoreServices/Installer.app/Contents/MacOS/Installer
+          captura() { sleep "${2:-8}"; screencapture -x "capturas/$1.png" && echo "capturas/$1.png"; }
+          # O instalador em português de Portugal, como num Mac configurado assim.
+          janela() { "$INSTALLER" -AppleLanguages '(pt-PT)' -AppleLocale pt_PT "$PKG" >/dev/null 2>&1 & }
+          fecha() { pkill -x Installer || true; sleep 2; }
+          spctl --status || true
+
+          janela; captura macos-01-instalador; fecha
+          sudo installer -pkg "$PKG" -target / >/dev/null
+          janela; captura macos-02-mesma-versao; fecha
+          sudo plutil -replace CFBundleShortVersionString -string 9.9.9 "$APP/Contents/Info.plist"
+          janela; captura macos-03-versao-mais-recente; fecha
+          sudo rm -rf "$APP"; sudo installer -pkg "$PKG" -target / >/dev/null
+          "$APP/Contents/MacOS/Arruma" >/dev/null 2>&1 & pid=$!
+          captura macos-04-arruma 15
+          kill "$pid" || true
+          # Com a quarentena de um ficheiro descarregado, se o Gatekeeper estiver ligado nesta máquina.
+          xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" "$PKG"
+          open "$PKG"; captura macos-05-gatekeeper 10; fecha
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: capturas-macos
+          retention-days: 7
+          path: capturas/*.png
