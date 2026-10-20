@@ -298,6 +298,14 @@ class OcrLanguageTests(unittest.TestCase):
         self.assertEqual(text, self.ES)  # a leitura em português
         self.assertEqual(self.reads(), ["por+eng", "spa+eng"])
 
+    def test_portuguese_receipt_with_italian_dishes_is_read_once(self):
+        recibo = ("FATURA SIMPLIFICADA Trattoria Da Marco Rua das Flores Lisboa Spaghetti alla carbonara "
+                  "Gnocchi di patate al pesto Tiramisù della casa Água das Pedras IVA incluído "
+                  "Obrigado pela preferência")
+        self.run_ocr(["eng", "ita", "por"], {"por+eng": _tsv([(w, 93.0) for w in recibo.split()]),
+                                              "ita+eng": _tsv([(w, 94.0) for w in recibo.split()])})
+        self.assertEqual(self.reads(), ["por+eng"])
+
     def test_language_not_installed_is_not_tried(self):
         self.run_ocr(["eng", "por", "fra"], {"por+eng": _tsv([(w, 89.0) for w in self.ES.split()])})
         self.assertEqual(self.reads(), ["por+eng"])

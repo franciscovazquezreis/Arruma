@@ -105,11 +105,13 @@ def _tsv_reading(tsv: str) -> tuple[str, float]:
 
 def _foreign_language(text: str, candidates: list[str]) -> str | None:
     """O idioma de candidates em que o texto parece estar escrito, se for claramente outro que não
-    o português (tem mais palavras pequenas desse idioma do que portuguesas, e pelo menos 3)."""
+    o português: pelo menos 3 palavras pequenas desse idioma, e mais do dobro das portuguesas. Não
+    basta ter mais: um recibo português de um restaurante italiano quase não tem palavras pequenas
+    portuguesas, e «Spaghetti alla carbonara» e «Tiramisù della casa» já dão 3 italianas."""
     words = _WORD.findall(text.lower())
     count = {lang: sum(word in _FUNCTION_WORDS[lang] for word in words) for lang in ["por", *candidates]}
     best = max(candidates, key=lambda lang: count[lang], default=None)
-    if best is None or count[best] < 3 or count[best] <= count["por"]:
+    if best is None or count[best] < 3 or count[best] <= 2 * count["por"]:
         return None
     return best
 
