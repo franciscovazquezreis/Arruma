@@ -376,6 +376,11 @@ def correr(casa: Path, saida: Path) -> int:
                 return w
         return None
 
+    def aviso(titulo: str):
+        """A caixa de mensagem aberta, se tiver este título (a anterior pode ainda estar a fechar)."""
+        d = dialogo(Gtk.MessageDialog)
+        return d if d is not None and d.get_property("text") == titulo else None
+
     def depois(funcao) -> None:
         """Corre «funcao» fora do passo atual (para os diálogos que esperam pela resposta)."""
         GLib.idle_add(lambda: (funcao(), False)[1])
@@ -640,8 +645,7 @@ def correr(casa: Path, saida: Path) -> int:
             # Anular a arrumação no Histórico: o Arruma pergunta primeiro e, no fim, volta a analisar a pasta.
             win.navigate("history")
             yield 0.8
-            linha = next(r for r in hist.list.get_children() if any(t.startswith("Arrumação") for t in textos(r)))
-            depois(botao(linha, "Anular").clicked)
+            depois(self._anular(hist, "Arrumação").clicked)
             yield lambda: dialogo(Gtk.MessageDialog) is not None
             yield 0.8
             self.captura("07a-anular-confirmar", dialogo(Gtk.MessageDialog))
@@ -653,6 +657,33 @@ def correr(casa: Path, saida: Path) -> int:
             win.navigate("history")
             yield 1.0
             self.captura("07b-historico-anulada")
+
+            # Anular a remoção dos duplicados depois de descarregar outra vez o CV: a cópia «CV_2025 (1).docx»
+            # já não pode sair do Lixo (ficaria por cima da nova), e o Arruma diz porquê.
+            tr = casa / "Transferências"
+            shutil.copy2(tr / "CV_2025.docx", tr / "CV_2025 (1).docx")
+            yield lambda: not win.toast.get_child_revealed()
+            depois(self._anular(hist, "Remoção").clicked)
+            yield lambda: dialogo(Gtk.MessageDialog) is not None
+            dialogo(Gtk.MessageDialog).response(Gtk.ResponseType.OK)
+            yield lambda: aviso("Anulação incompleta") is not None
+            yield 0.8
+            self.captura("07c-anulacao-incompleta", aviso("Anulação incompleta"))
+            dialogo(Gtk.MessageDialog).response(Gtk.ResponseType.OK)
+            yield lambda: dialogo(Gtk.MessageDialog) is None and \
+                any("Anulada em parte" in textos(r) for r in hist.list.get_children()) and \
+                analise.get_visible_child_name() == "content"
+            self.focar(win)
+            yield 1.0
+            self.captura("07d-historico-anulada-em-parte")
+
+        @staticmethod
+        def _anular(hist, titulo: str) -> Gtk.Button:
+            """O botão «Anular» da linha do Histórico cujo título começa por «titulo». A linha não fica
+            guardada no guião: o Histórico refaz as linhas, e uma linha velha ainda viva levava o GTK a
+            tentar dar-lhe o foco fora da lista (Gtk-CRITICAL em gtk_list_box_row_grab_focus)."""
+            return botao(next(r for r in hist.list.get_children() if any(t.startswith(titulo) for t in textos(r))),
+                         "Anular")
 
         @staticmethod
         def _caminho(store, aid: int, pasta: str = ""):
