@@ -69,6 +69,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         self._task: str | None = None  # o que o «_cancel» cancela: scan, plan, duplicates ou uma de BUSY
         self._busy: str | None = None  # a mudar ficheiros (chave de BUSY)
         self._closing = False  # pediste para fechar a meio: fecha quando a tarefa parar
+        self._inhibit = 0  # pedido à sessão para não terminar a meio de mudar ficheiros (ver _start_busy)
         self._scan_target: str | list[str] = []
         self._skip_ai: threading.Event | None = None
 
@@ -118,6 +119,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         overlay.add(main_box)
         self.toast = Toast()
         overlay.add_overlay(self.toast)
+        overlay.set_overlay_pass_through(self.toast, True)  # a margem à volta do aviso não tapa a janela
         self.add(overlay)
 
         self._setup_shortcuts()
@@ -230,37 +232,58 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
     # ------------------------------------------------------------------ IA local
     def refresh_ai(self) -> None:
-        url, model = self.settings.ollama_url, self.settings.model
+        """Verifica o Ollama. Com a IA desligada nas Definições só vê o estado: não arranca o Ollama."""
+        url, model, autostart = self.settings.ollama_url, self.settings.model, self.settings.use_ai
+        self.ai_status = None  # «a verificar…» até haver resposta
+        self.show_ai_state()
 
         def work():
             try:
-                return LocalAI(url, model).check()
+                return LocalAI(url, model).check(autostart=autostart)
             except AIError as e:
                 return AIStatus(ok=False, error=str(e))
 
         def done(status: AIStatus):
             self.ai_status = status
-            self.home_page.update_ai(status, self.settings.use_ai)
             self.settings_page.update_ai(status)
-            ctx = self.ai_header_pill.get_style_context()
-            for c in ("ok", "off", "info"):
-                ctx.remove_class(c)
-            if self.settings.use_ai and status.ok:
-                ctx.add_class("ok")
-                self.ai_header_pill.set_text(f"IA local: {status.model}")
-                self.ai_header_pill.set_tooltip_text("A IA local está pronta e corre neste computador.")
-            elif not self.settings.use_ai:
-                ctx.add_class("off")
-                self.ai_header_pill.set_text("IA desligada")
-                self.ai_header_pill.set_tooltip_text("A usar regras e palavras-chave.")
-            else:
-                ctx.add_class("off")
-                self.ai_header_pill.set_text("Modo regras")
-                self.ai_header_pill.set_tooltip_text(status.error)
+            self.show_ai_state()
 
         run_bg(work, done)
 
-    def show_ai_help(self) -> None:
+    def show_ai_state(self) -> None:
+        """Mostra o estado da IA no Início e na barra superior (também quando a ligas ou desligas nas
+        Definições)."""
+        status, enabled = self.ai_status, self.settings.use_ai
+        self.home_page.update_ai(status, enabled)
+        ctx = self.ai_header_pill.get_style_context()
+        for c in ("ok", "off", "info"):
+            ctx.remove_class(c)
+        if not enabled:
+            ctx.add_class("off")
+            self.ai_header_pill.set_text("IA desligada")
+            self.ai_header_pill.set_tooltip_text("A usar regras e palavras-chave.")
+        elif status is None:
+            ctx.add_class("info")
+            self.ai_header_pill.set_text("IA local")
+            self.ai_header_pill.set_tooltip_text("A verificar a IA local…")
+        elif status.ok:
+            ctx.add_class("ok")
+            self.ai_header_pill.set_text(f"IA local: {status.model}")
+            self.ai_header_pill.set_tooltip_text("A IA local está pronta e corre neste computador.")
+        else:
+            ctx.add_class("off")
+            self.ai_header_pill.set_text("Modo regras")
+            self.ai_header_pill.set_tooltip_text(status.error)
+
+    def show_ai_help(self, model_only: bool = False) -> None:
+        dlg = self.build_ai_help(model_only)
+        dlg.show_all()
+        while dlg.run() == Gtk.ResponseType.APPLY:
+            self.refresh_ai()
+        dlg.destroy()
+
+    def build_ai_help(self, model_only: bool = False) -> Gtk.Dialog:
+        """«model_only»: o Ollama já está a correr e só falta o modelo (não se pede para o instalar outra vez)."""
         dlg = Gtk.Dialog(title="Como ativar a IA local (Ollama)", transient_for=self, modal=True)
         dlg.add_button("Verificar agora", Gtk.ResponseType.APPLY)
         dlg.add_button("Fechar", Gtk.ResponseType.CLOSE)
@@ -273,7 +296,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             "Para ler documentos e sugerir nomes em português sem usar a internet, o Arruma liga-se ao "
             "Ollama a correr no teu computador. Depois de instalado, funciona sem internet.",
             wrap=True, max_width=68), False, False, 0)
-        steps, cmds = ollama_install_steps(RECOMMENDED_MODEL)
+        steps, cmds = ollama_install_steps(RECOMMENDED_MODEL, only_model=model_only)
         inner.pack_start(label(steps, wrap=True, max_width=68), False, False, 0)
         cmd_box = hbox(8)
         entry = label(cmds, "mono", selectable=True)
@@ -282,7 +305,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                           on_click=lambda: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(cmds, -1))
         cmd_box.pack_end(copy_btn, False, False, 0)
         inner.pack_start(cmd_box, False, False, 4)
-        if not IS_LINUX:
+        if not IS_LINUX and not model_only:
             page = button("Abrir a página de transferência do Ollama", "web-browser-symbolic",
                           on_click=lambda: open_url("https://ollama.com/download"))
             page.set_halign(Gtk.Align.START)
@@ -293,10 +316,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             "funcionar com regras, metadados (datas das fotografias, etiquetas de música) e palavras-chave.",
             "small", "dim", wrap=True, max_width=68), False, False, 0)
         box.add(inner)
-        dlg.show_all()
-        while dlg.run() == Gtk.ResponseType.APPLY:
-            self.refresh_ai()
-        dlg.destroy()
+        return dlg
 
     # ------------------------------------------------------------------ tarefas
     def cancel_task(self, *kinds: str) -> None:
@@ -311,8 +331,16 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
     def _new_task(self, kind: str) -> threading.Event:
         """Cancela o que estava a decorrer e devolve o sinal de cancelar da nova tarefa."""
+        was = self._task
         self.cancel_task()
         self._cancel, self._task = threading.Event(), kind
+        # A tarefa cancelada já não mexe na janela (ver _task_over): a vista dela deixa de mostrar o progresso.
+        if was == "plan" and kind != "plan":
+            self.plan_page.progress.stop()
+            self.plan_page.reset()
+        elif was == "duplicates" and kind != "duplicates":
+            self.duplicates_page.progress.stop()
+            self.duplicates_page.ready()
         return self._cancel
 
     def _task_over(self, cancel: threading.Event) -> bool:
@@ -333,22 +361,26 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
     def _start_busy(self, kind: str) -> threading.Event:
         """Começa a mudar ficheiros. Um plano ou uma procura de duplicados a meio é cancelado (ficaria
-        desatualizado) e a vista dele deixa de mostrar o progresso. Uma análise a meio também é cancelada:
-        quem começa a tarefa decide se a repete no fim (ver undo_session)."""
-        was = self._task
+        desatualizado; ver _new_task). Uma análise a meio também é cancelada: quem começa a tarefa decide se a
+        repete no fim (ver undo_session)."""
         cancel = self._new_task(kind)
         self._busy = kind
-        if was == "plan":
-            self.plan_page.progress.stop()
-            self.plan_page.reset()
-        elif was == "duplicates":
-            self.duplicates_page.progress.stop()
-            self.duplicates_page.ready()
+        app = self.get_application()
+        if app is not None:
+            # Pede à sessão que não termine (sair, desligar, suspender) a meio de mudar ficheiros. Sem gestor
+            # de sessão (ou no Windows) não faz nada e devolve 0.
+            self._inhibit = app.inhibit(self, Gtk.ApplicationInhibitFlags.LOGOUT |
+                                        Gtk.ApplicationInhibitFlags.SUSPEND, f"O Arruma está {BUSY[kind][0]}.")
         return cancel
 
     def _end_busy(self, cancel: threading.Event) -> bool:
         """Fim de uma tarefa que muda ficheiros. Verdadeiro se a janela vai fechar (pediste para fechar a meio)."""
         self._busy = None
+        if self._inhibit:
+            app = self.get_application()
+            if app is not None:
+                app.uninhibit(self._inhibit)
+            self._inhibit = 0
         self._task_over(cancel)
         if self._closing:
             self.close()
@@ -381,8 +413,9 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             return
         for p in raw_list if not refresh else []:  # ao repetir, as pastas já foram verificadas
             err = check_root_allowed(p) or check_root_protected(p, self.settings.excluded)
-            if err:
-                message(self, "Não é possível escolher esta pasta", err, Gtk.MessageType.WARNING)
+            if err:  # com várias pastas escolhidas, diz qual é
+                message(self, f"Não é possível escolher «{os.path.basename(os.path.normpath(p)) or p}»", err,
+                        Gtk.MessageType.WARNING)
                 return
         if self._refuse_if_busy():
             return

@@ -44,7 +44,7 @@ def undo_question(s) -> tuple[str, str, str]:
 def undo_report(res: Result) -> str:
     """Aviso de uma anulação com falhas: o que não voltou ao sítio e porquê."""
     n = len(res.errors)
-    lines = [f"{plural(res.ok, 'operação revertida', 'operações revertidas')}. "
+    lines = [f"{plural(res.ok, 'item voltou', 'itens voltaram')} ao sítio. "
              f"{plural(n, 'item não voltou', 'itens não voltaram')} ao sítio onde {'estava' if n == 1 else 'estavam'}:"]
     lines += [f"• {display_path(path)}: {err}" for path, err in res.errors[:REPORT_MAX]]
     if n > REPORT_MAX:

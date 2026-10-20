@@ -460,8 +460,12 @@ def start_detached(cmd: list[str]) -> None:
     subprocess.Popen(cmd, **kwargs)
 
 
-def ollama_install_steps(model: str) -> tuple[str, str]:
-    """Texto e comandos para instalar o Ollama neste sistema."""
+def ollama_install_steps(model: str, only_model: bool = False) -> tuple[str, str]:
+    """Texto e comandos para instalar o Ollama neste sistema. «only_model»: o Ollama já está a correr e só falta
+    descarregar o modelo."""
+    if only_model:
+        return ("O Ollama já está a correr neste computador: só falta descarregar o modelo (cerca de 2 GB), uma única "
+                f"vez e com internet. {'No PowerShell' if IS_WINDOWS else 'No Terminal'}:", f"ollama pull {model}")
     if IS_WINDOWS:
         return ("Descarrega e instala o Ollama para Windows a partir de https://ollama.com/download/windows. "
                 "Depois abre o PowerShell e descarrega o modelo (cerca de 2 GB):",

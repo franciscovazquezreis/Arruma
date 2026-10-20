@@ -48,6 +48,7 @@ def safe_move(src: str, dst: str) -> None:
 
 
 ProgressFn = Callable[[int, int, str], None]
+ITEM_OPS = ("move", "move_dir", "trash")  # operações sobre os itens do plano (as outras são de pastas)
 
 
 class Executor:
@@ -74,12 +75,23 @@ class Executor:
         protect = {os.path.normpath(p) for p in [*(protect or ()), *(roots or ()), root]}
         total = len(actions)
 
-        def log(op, src, dst=None, status="ok", error=None):
+        def log(op, src, dst=None, status="ok", error=None, pending=0):
             # Cada operação grava também as contagens: se o Arruma fechar a meio, o que já foi feito
-            # aparece no Histórico e pode ser anulado.
+            # aparece no Histórico e pode ser anulado. «pending»: o item registado antes de ser feito já conta.
             nonlocal seq
-            self.db.log_op(sid, seq, op, src, dst, status, error, (res.ok, len(res.errors)))
+            op_id = self.db.log_op(sid, seq, op, src, dst, status, error, (res.ok + pending, len(res.errors)))
             seq += 1
+            return op_id
+
+        def first_log(op, src, dst, act):
+            # Fica registado antes de mexer no item: se o Arruma morrer a meio (corte de luz, sessão terminada),
+            # a anulação sabe dele. Se não chegou a sair do sítio, anular encontra-o no local original.
+            op_id = log(op, src, dst, pending=1)
+            try:
+                return op_id, act()
+            except Exception:
+                self.db.drop_op(op_id)  # não chegou a ser feito: o erro fica registado a seguir, como os outros
+                raise
 
         for n, a in enumerate(actions):
             if cancel is not None and cancel.is_set():
@@ -102,15 +114,15 @@ class Executor:
                         log("mkdir", str(d))
                     if os.path.lexists(dst):
                         dst = unique_path(dst)
-                    safe_move(a.src, str(dst))
+                    first_log(a.op, a.src, str(dst), lambda: safe_move(a.src, str(dst)))
                     a.dst = str(dst)
                     res.ok += 1
                     res.bytes_moved += a.size
-                    log(a.op, a.src, str(dst))
                 elif a.op == "trash":
-                    where = send_to_trash(a.src)
+                    op_id, where = first_log("trash", a.src, None, lambda: send_to_trash(a.src))
+                    if where:  # só o macOS diz onde o item ficou no Lixo
+                        self.db.set_op_dst(op_id, where)
                     res.ok += 1
-                    log("trash", a.src, where)
                 elif a.op == "rmdir":
                     self._remove_empty_tree(a.src, log)
                     res.ok += 1
@@ -152,19 +164,24 @@ class Executor:
         marcada logo: se alguma falhar (ou se parar a meio), anular outra vez só tenta o que falta."""
         ops = [o for o in self.db.ops(session_id) if o["status"] == "ok"]
         res = Result(session_id)
-        total = len(ops)
+        # Contam-se os itens, como na pergunta antes de anular: as pastas criadas ou removidas pelo caminho não.
+        total = sum(o["op"] in ITEM_OPS for o in ops)
+        n = 0
         try:
-            for n, o in enumerate(reversed(ops)):
+            for o in reversed(ops):
                 if cancel is not None and cancel.is_set():
                     res.cancelled = True
                     break
-                if progress:
+                item = o["op"] in ITEM_OPS
+                if progress and item:
                     progress(n, total, o["src"])
                 try:
                     self._undo_op(o)
-                    res.ok += 1
+                    if item:
+                        res.ok += 1
                 except Exception as e:
                     res.errors.append((o["src"], getattr(e, "strerror", None) or str(e)))
+                n += item
         finally:
             # Mesmo que pare com um erro inesperado, o Histórico fica a saber o que falta anular.
             self.db.mark_undone(session_id)

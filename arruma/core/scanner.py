@@ -180,6 +180,11 @@ def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
     for r in reversed(roots):
         r_info = FolderInfo(path=r, name=os.path.basename(r) or r, depth=0, generic=False)
         folders[r] = r_info
+        # «Todo o computador» inclui os discos que podem estar em «Pastas a ignorar sempre».
+        if any(is_within(r, ex) for ex in excluded):
+            r_info.protected = "excluída nas definições"
+            protected.append((r, r_info.protected))
+            continue
         stack.append(r_info)
     last_report = 0
 

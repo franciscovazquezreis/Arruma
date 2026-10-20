@@ -10,12 +10,12 @@ from gi.repository import Gdk, GLib, Gtk, Pango
 from ..core import taxonomy as tx
 from ..core.executor import Result
 from ..core.fsutil import (HOME, common_root, display_path, human_count, human_size, is_within, path_parts,
-                           plural)
+                           plural, sanitize_name)
 from ..core.planner import (Action, Plan, move_folder_in_plan, rebase_document,
                             rename_action_in_plan, rename_folder_in_plan, retarget)
 from ..core.system import TRASH_NAME, TRASH_TO
 from .widgets import (Placeholder, ProgressPanel, add_classes, button, card, choose_folder, confirm,
-                      esc, format_eta, hbox, icon, kind_icon, label, open_path, prompt_text,
+                      esc, format_eta, hbox, icon, kind_icon, label, markup_column, open_path, prompt_text,
                       resolve_icon, show_in_folder, vbox)
 
 COL_ACTIVE, COL_INCONS, COL_ICON, COL_MARKUP, COL_ID, COL_KEY, COL_BADGE = range(7)
@@ -153,8 +153,10 @@ class PlanPage(Gtk.Stack):
         switcher = Gtk.StackSwitcher()
         switcher.set_stack(self.views)
         sw_row.pack_start(switcher, False, False, 0)
-        hint = label("💡 Podes arrastar itens para outra pasta na árvore. As pastas novas também mudam de nome "
-                     "(F2) e de local.", "small", "dim", ellipsize=True)
+        # Curta para caber ao lado de «Depois/Antes» no tamanho normal da janela; a frase toda aparece com o rato.
+        hint = label("💡 Arrasta itens entre pastas. Só as novas mudam de nome (F2).", "small", "dim",
+                     ellipsize=True, tooltip_text="Podes arrastar itens para outra pasta na árvore. As pastas novas "
+                     "também mudam de nome (F2) e de local.")
         hint.set_valign(Gtk.Align.CENTER)
         sw_row.pack_start(hint, True, True, 6)
         sw_row.pack_end(button("", "list-remove-symbolic", "flat", on_click=lambda: self._expand(False),
@@ -208,7 +210,7 @@ class PlanPage(Gtk.Stack):
         txt = Gtk.CellRendererText()
         txt.set_property("ellipsize", Pango.EllipsizeMode.MIDDLE)
         col.pack_start(txt, True)
-        col.add_attribute(txt, "markup", COL_MARKUP)
+        markup_column(col, txt, COL_MARKUP)
         col.set_expand(True)
         tv.append_column(col)
 
@@ -217,7 +219,7 @@ class PlanPage(Gtk.Stack):
         badge.set_property("xalign", 1.0)
         badge.set_padding(12, 0)
         bcol.pack_start(badge, False)
-        bcol.add_attribute(badge, "markup", COL_BADGE)
+        markup_column(bcol, badge, COL_BADGE)
         tv.append_column(bcol)
 
         tv.get_selection().connect("changed", self._on_selection, store)
@@ -320,7 +322,7 @@ class PlanPage(Gtk.Stack):
         if self.kept_btn.get_child():
             self.kept_btn.remove(self.kept_btn.get_child())
         self.kept_btn.add(box)
-        self.kept_btn.show_all()
+        box.show_all()  # o botão não: sem pastas mantidas fica escondido (set_visible acima)
         pop = vbox(8, margin_top=14, margin_bottom=14, margin_start=14, margin_end=14)
         pop.pack_start(label("Pastas que ficam como estão", "section-title"), False, False, 0)
         pop.pack_start(label("Têm nome próprio, são projetos ou pertencem a outros programas.", "small", "dim",
@@ -707,8 +709,20 @@ class PlanPage(Gtk.Stack):
         if new_name:
             self._apply_folder_rename(folder_path, new_name)
 
+    def _confirm_merge(self, new_dir: str) -> bool:
+        """Uma pasta nova que passa a ter o nome e o local de uma que já existe junta-se a ela e depois já não
+        se separa no plano (a que já existe não muda de nome nem de local). Pergunta primeiro."""
+        if not os.path.isdir(new_dir):
+            return True
+        return confirm(self.win, f"Juntar à pasta «{os.path.basename(new_dir)}»?",
+                       "Já existe uma pasta com este nome neste local. Os itens desta pasta nova passam para lá e "
+                       "depois já não os podes separar no plano, a não ser um a um.", "Juntar")
+
     def _apply_folder_rename(self, folder_path: str, new_name: str) -> None:
         if not self.plan or not self._can_edit_folder(folder_path):
+            return
+        if not self._confirm_merge(os.path.join(os.path.dirname(os.path.normpath(folder_path)),
+                                                sanitize_name(new_name))):
             return
         new_dir = rename_folder_in_plan(self.plan, folder_path, new_name)
         if new_dir != folder_path:
@@ -719,7 +733,8 @@ class PlanPage(Gtk.Stack):
         if not self.plan or not self._can_edit_folder(folder_path):
             return
         target_parent = choose_folder(self.win, "Mover pasta para dentro de…", os.path.dirname(folder_path))
-        if target_parent:
+        if target_parent and self._confirm_merge(os.path.join(target_parent,
+                                                              os.path.basename(os.path.normpath(folder_path)))):
             new_dir = move_folder_in_plan(self.plan, folder_path, target_parent)
             if new_dir:
                 self._repopulate(select_folder=new_dir)
@@ -844,6 +859,11 @@ class PlanPage(Gtk.Stack):
             if not self._can_edit_folder(src_dir):
                 context.finish(False, False, time)
                 return
+            if os.path.isdir(os.path.join(target_dir, src_parts[-1])):
+                # Juntar a uma pasta que já existe pergunta primeiro: depois de largar, não a meio do arrastar.
+                context.finish(False, False, time)
+                GLib.idle_add(self._merge_dropped_folder, src_dir, target_dir)
+                return
             new_dir = move_folder_in_plan(self.plan, src_dir, target_dir)
             if new_dir:
                 context.finish(True, False, time)
@@ -852,6 +872,14 @@ class PlanPage(Gtk.Stack):
                 return
 
         context.finish(False, False, time)
+
+    def _merge_dropped_folder(self, src_dir: str, target_dir: str) -> bool:
+        name = os.path.basename(src_dir)
+        if self.plan and self._confirm_merge(os.path.join(target_dir, name)):
+            new_dir = move_folder_in_plan(self.plan, src_dir, target_dir)
+            if new_dir:
+                self._finish_dnd(None, new_dir, f"Pasta «{name}» movida para «{display_path(target_dir)}».")
+        return False
 
     def _finish_dnd(self, select_id: int | None, select_folder: str | None, toast_msg: str) -> bool:
         self._repopulate(select_id=select_id, select_folder=select_folder)

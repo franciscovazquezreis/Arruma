@@ -106,6 +106,8 @@
     border-radius: 999px;
     padding: 6px 8px 6px 20px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    /* Espaço para a sombra toda: o Gtk.Revealer corta o que fica fora dele e via-se um retângulo cinzento. */
+    margin: 28px 28px 34px 28px;
 }
 .toast label { color: #ffffff; }
 .toast button {

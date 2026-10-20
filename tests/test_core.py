@@ -162,6 +162,9 @@ class PlanTests(unittest.TestCase):
         group = next(g for g in groups if any(f.name == "fatura_123.txt" for f in g.files))
         self.assertEqual(sorted(f.name for f in group.files), ["fatura_123 (1).txt", "fatura_123.txt"])
         self.assertEqual(os.path.basename(group.keep), "fatura_123.txt")
+        # O título do grupo nos Duplicados é o da cópia que fica, não o da primeira por ordem alfabética.
+        self.assertEqual(group.files[0].name, "fatura_123 (1).txt")
+        self.assertEqual(group.keep_file.name, "fatura_123.txt")
 
     def test_duplicates_compare_the_whole_content(self):
         from arruma.core.duplicates import CHUNK
@@ -194,6 +197,32 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(r["subarea"], "Faturas e Recibos")
         self.assertEqual(r["titulo"], "Fatura EDP março")
         self.assertEqual(r["data"], "2025-03-10")
+
+    def test_ai_check_starts_ollama_only_when_asked(self):
+        from arruma.core.ai import AIError, LocalAI
+        ai = LocalAI("http://127.0.0.1:11434")
+        stopped = AIError("Não foi possível contactar o Ollama. Está instalado e a correr?")
+        with mock.patch.object(LocalAI, "_request", side_effect=stopped), \
+                mock.patch.object(LocalAI, "_try_autostart", return_value=False) as autostart:
+            status = ai.check(autostart=False)  # com a IA desligada: só se vê o estado
+            autostart.assert_not_called()
+            self.assertEqual((status.ok, status.running, status.error), (False, False, str(stopped)))
+            ai.check()
+            autostart.assert_called_once()
+
+    def test_ai_status_tells_ollama_without_a_model_apart(self):
+        from arruma.core.ai import LocalAI
+
+        def ollama(models):
+            return lambda path, *a, **k: {"version": "0.12.3"} if path == "/api/version" else {"models": models}
+        ai = LocalAI("http://127.0.0.1:11434")
+        with mock.patch.object(LocalAI, "_request", side_effect=ollama([{"name": "nomic-embed-text:latest"}])):
+            status = ai.check()
+        self.assertEqual((status.ok, status.running, status.version), (False, True, "0.12.3"))
+        self.assertIn("ainda não tem nenhum modelo", status.error)
+        with mock.patch.object(LocalAI, "_request", side_effect=ollama([{"name": "qwen2.5:3b"}])):
+            status = ai.check()
+        self.assertEqual((status.ok, status.running, status.model), (True, True, "qwen2.5:3b"))
 
     def test_multi_folder_and_whole_computer(self):
         from arruma.core.fsutil import COMPUTER_TOKEN, check_root_allowed, normalize_roots
@@ -293,6 +322,39 @@ class PlanTests(unittest.TestCase):
         self.assertIsNone(check_root_protected(COMPUTER_TOKEN, excluded))
         protected = dict(scan(self.root, excluded=excluded).protected)
         self.assertEqual(protected.get(str(self.root / "Dropbox")), "pasta sincronizada (Dropbox)")
+
+    def test_whole_computer_skips_excluded_disks(self):
+        # «Todo o computador» inclui os discos montados: um que esteja em «Pastas a ignorar sempre» fica de fora.
+        from arruma.core.fsutil import COMPUTER_TOKEN
+        from arruma.core.planner import MODE_PERSONAL
+        home = self.tmp / "casa"
+        disk = self.tmp / "media" / "Backup"
+        write(home / "fatura_1.txt", "FATURA n.º 1 Total a pagar 10 EUR NIF 500")
+        write(disk / "relatorio.pdf", "x")
+        make_jpg(disk / "foto.jpg")
+        write(disk / "Sub" / "nota.txt", "x")
+        with mock.patch("arruma.core.fsutil.computer_roots", return_value=[str(home), str(disk)]):
+            res = scan(COMPUTER_TOKEN, excluded=[str(disk)])
+        self.assertTrue(res.whole_computer)
+        self.assertEqual([f.name for f in res.files], ["fatura_1.txt"])
+        self.assertIn((str(disk), "excluída nas definições"), res.protected)
+        for mode in (MODE_INSIDE, MODE_PERSONAL):
+            plan = Planner(res, self.settings, mode, db=self.db).build()
+            self.assertFalse([a.src for a in plan.actions if str(disk) in a.src], mode)
+
+    def test_merging_a_new_folder_into_an_existing_one(self):
+        # Uma pasta nova com o nome e o local de uma que já existe junta-se a ela; depois já não se separa.
+        # (A interface pergunta antes: ver PlanPageFolderTests.test_merge_asks_first.)
+        from arruma.core.planner import move_folder_in_plan, rename_folder_in_plan
+        write(self.root / "Documentos" / "Finanças" / "antiga.txt", "FATURA antiga NIF 501")
+        _, plan = self.build()
+        img = next(a for a in plan.actions if a.src_name == "IMG_20240812_101010.jpg")
+        fotos = os.path.dirname(img.dst)
+        fin = str(self.root / "Documentos" / "Finanças")
+        moved = move_folder_in_plan(plan, fotos, str(self.root / "Documentos"))
+        self.assertEqual(rename_folder_in_plan(plan, moved, "Finanças"), fin)
+        self.assertEqual(os.path.dirname(img.dst), fin)
+        self.assertEqual(rename_folder_in_plan(plan, fin, os.path.basename(fotos)), fin)  # já não se separa
 
     def test_personal_folders_are_never_projects(self):
         # O VS Code guarda as extensões em ~/.vscode e as Transferências têm muitas vezes ficheiros soltos

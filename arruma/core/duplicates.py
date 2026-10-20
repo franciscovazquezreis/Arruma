@@ -28,6 +28,11 @@ class DupGroup:
     def wasted(self) -> int:
         return self.size * (len(self.files) - 1)
 
+    @property
+    def keep_file(self) -> FileItem:
+        """A cópia que o Arruma sugere manter."""
+        return next(f for f in self.files if f.path == self.keep)
+
 
 def _partial_hash(path: str, size: int) -> str:
     """Resumo rápido: o ficheiro inteiro até 2×CHUNK; acima disso, só o início e o fim (os que

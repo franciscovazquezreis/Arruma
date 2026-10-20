@@ -91,15 +91,29 @@ class Database:
             return int(cur.lastrowid)
 
     def log_op(self, session_id: int, seq: int, op: str, src: str, dst: str | None,
-               status: str = "ok", error: str | None = None, counts: tuple[int, int] | None = None) -> None:
+               status: str = "ok", error: str | None = None, counts: tuple[int, int] | None = None) -> int:
         """«counts» (alterações feitas, erros) até aqui: ficam gravadas com a operação, para que uma arrumação
-        interrompida a meio apareça logo no Histórico com o que chegou a fazer."""
+        interrompida a meio apareça logo no Histórico com o que chegou a fazer. Devolve o número da operação."""
         with self.connect() as c:
-            c.execute("INSERT INTO ops(session_id, seq, op, src, dst, status, error, ts) "
-                      "VALUES (?,?,?,?,?,?,?,?)",
-                      (session_id, seq, op, src, dst, status, error, time.time()))
+            cur = c.execute("INSERT INTO ops(session_id, seq, op, src, dst, status, error, ts) "
+                            "VALUES (?,?,?,?,?,?,?,?)",
+                            (session_id, seq, op, src, dst, status, error, time.time()))
             if counts is not None:
                 c.execute("UPDATE sessions SET n_ok=?, n_err=? WHERE id=?", (*counts, session_id))
+            if status == "ok" and op != "mkdir":
+                # Outra janela do Arruma pode ter anulado esta sessão enquanto esta ainda a aplicava: o que
+                # chega depois fica por anular («Anular o resto»).
+                c.execute("UPDATE sessions SET undone=2 WHERE id=? AND undone=1", (session_id,))
+            return int(cur.lastrowid)
+
+    def drop_op(self, op_id: int) -> None:
+        """Apaga uma operação registada antes de ser feita que acabou por falhar (o erro é registado à parte)."""
+        with self.connect() as c:
+            c.execute("DELETE FROM ops WHERE id=?", (op_id,))
+
+    def set_op_dst(self, op_id: int, dst: str | None) -> None:
+        with self.connect() as c:
+            c.execute("UPDATE ops SET dst=? WHERE id=?", (dst, op_id))
 
     def finish_session(self, session_id: int, n_ok: int, n_err: int) -> None:
         with self.connect() as c:

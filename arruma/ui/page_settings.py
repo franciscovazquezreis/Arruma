@@ -134,6 +134,7 @@ class SettingsPage(Gtk.ScrolledWindow):
         if self._updating:
             return
         s = self.win.settings
+        was_on = s.use_ai
         s.use_ai = self.use_ai.get_active()
         s.model = self.model_combo.get_active_id() or ""
         s.ollama_url = self.url_entry.get_text().strip() or "http://127.0.0.1:11434"
@@ -143,7 +144,10 @@ class SettingsPage(Gtk.ScrolledWindow):
         s.remove_empty_dirs = self.remove_empty.get_active()
         s.include_hidden = self.include_hidden.get_active()
         s.save()
-        self.win.home_page.update_ai(self.win.ai_status, s.use_ai)
+        if s.use_ai and not was_on:
+            self.win.refresh_ai()  # acabaste de ligar a IA: verifica o Ollama (e arranca-o, se estiver parado)
+        else:
+            self.win.show_ai_state()
 
     def _rebuild_excluded(self) -> None:
         for c in self.excl_list.get_children():

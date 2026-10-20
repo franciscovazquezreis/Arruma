@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import subprocess
 import threading
 import time
@@ -93,6 +94,24 @@ def load_css() -> None:
 
 def esc(text: str) -> str:
     return GLib.markup_escape_text(text or "")
+
+
+def without_colors(markup: str) -> str:
+    """O markup sem as cores do texto («foreground»)."""
+    return re.sub(r" foreground='[^']*'", "", markup)
+
+
+def markup_column(column: Gtk.TreeViewColumn, cell: Gtk.CellRendererText, model_col: int) -> None:
+    """A célula mostra o markup da coluna «model_col» do modelo. Na linha selecionada, as etiquetas
+    coloridas («palavras-chave», «• nova», «manter»…) ficam com a cor do texto: no fundo de destaque quase
+    não se liam."""
+    def data(col, renderer, model, it, _data=None):
+        markup = model.get_value(it, model_col) or ""
+        tv = col.get_tree_view()
+        if tv is not None and tv.get_selection().iter_is_selected(it):
+            markup = without_colors(markup)
+        renderer.set_property("markup", markup)
+    column.set_cell_data_func(cell, data)
 
 
 def add_classes(widget: Gtk.Widget, *classes: str) -> Gtk.Widget:
@@ -460,6 +479,20 @@ class Toast(Gtk.Revealer):
         self.add(box)
         self._callback = None
         self._timeout = 0
+        self.connect("size-allocate", self._limit_input)
+
+    def _limit_input(self, _w, alloc) -> None:
+        """Só o aviso apanha cliques e itens largados, não a margem à volta (o espaço da sombra): com
+        set_overlay_pass_through no Gtk.Overlay, o que cai na margem chega ao que está por baixo."""
+        try:
+            import cairo
+            ctx = self.get_child().get_style_context()
+            m = ctx.get_margin(ctx.get_state())
+            rect = cairo.RectangleInt(m.left, m.top, max(alloc.width - m.left - m.right, 0),
+                                      max(alloc.height - m.top - m.bottom, 0))
+            self.input_shape_combine_region(cairo.Region(rect))
+        except (ImportError, TypeError):  # sem o pycairo: a margem toda apanha cliques, como antes
+            pass
 
     def show(self, text: str, action: str | None = None, callback: Callable | None = None,
              seconds: int = 7) -> None:

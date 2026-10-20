@@ -110,6 +110,13 @@ class SystemTests(unittest.TestCase):
         self.assertFalse(any("Programa.app" in f.path for f in result.files))
         self.assertIn(str(self.tmp / "Programa.app"), [p for p, _ in result.protected])
 
+    def test_ollama_steps_when_only_the_model_is_missing(self):
+        # O Ollama já está a correr: só o passo do modelo, sem o instalar outra vez (nem pedir sudo).
+        text, cmds = system.ollama_install_steps("qwen2.5:3b", only_model=True)
+        self.assertEqual(cmds, "ollama pull qwen2.5:3b")
+        self.assertIn("já está a correr", text)
+        self.assertIn("ollama pull qwen2.5:3b", system.ollama_install_steps("qwen2.5:3b")[1])
+
     def test_find_tool_does_not_crash(self):
         for name in ("pdftotext", "tesseract", "ollama", "programa-que-nao-existe"):
             found = system.find_tool(name)
@@ -195,6 +202,44 @@ class DrivesTests(unittest.TestCase):
         self.assertFalse((work / "Nova pasta").exists())
         self.assertFalse((photos / "Nova pasta").exists())
         self.assertTrue(work.is_dir() and photos.is_dir())
+
+
+class WindowsRecycleBinTests(unittest.TestCase):
+    """A chamada à Reciclagem do Windows, com o Windows fingido (corre em qualquer sistema)."""
+
+    def test_asks_before_deleting_what_does_not_fit(self):
+        import ctypes
+        import types
+        from arruma.core import trash
+        folder = Path(tempfile.mkdtemp(prefix="arruma-teste-")).resolve()
+        self.addCleanup(shutil.rmtree, folder, True)
+        flags = []
+
+        def operate(ref, answer_no=False):
+            op = ref._obj
+            flags.append(op.fFlags)
+            if answer_no:  # «Não» à pergunta de apagar de vez: o ficheiro fica onde estava
+                op.fAnyOperationsAborted = True
+            else:
+                os.remove(op.pFrom.rstrip("\0"))
+            return 0
+        for answer_no in (False, True):
+            target = folder / "video.mp4"
+            target.write_text("grande", encoding="utf-8")
+            windll = types.SimpleNamespace(
+                kernel32=types.SimpleNamespace(GetDriveTypeW=lambda drive: 3),  # disco fixo
+                shell32=types.SimpleNamespace(SHFileOperationW=lambda ref: operate(ref, answer_no)))
+            with mock.patch.object(ctypes, "windll", windll, create=True):
+                if answer_no:
+                    with self.assertRaises(OSError):
+                        trash._win_trash(str(target))
+                    self.assertTrue(target.exists())
+                else:
+                    self.assertIsNone(trash._win_trash(str(target)))
+                    self.assertFalse(target.exists())
+        FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_WANTNUKEWARNING = 0x10, 0x40, 0x4000
+        self.assertTrue(all(f & FOF_ALLOWUNDO and f & FOF_NOCONFIRMATION and f & FOF_WANTNUKEWARNING
+                            for f in flags) and len(flags) == 2, [hex(f) for f in flags])
 
 
 @unittest.skipUnless(os.environ.get("ARRUMA_TESTAR_LIXO") == "1", "só com ARRUMA_TESTAR_LIXO=1")

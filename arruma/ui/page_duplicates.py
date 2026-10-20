@@ -12,7 +12,7 @@ from ..core.duplicates import DupGroup
 from ..core.fsutil import display_path, human_count, human_size, plural
 from ..core.system import TRASH_IN, TRASH_TO, folder_display_name
 from .widgets import (Placeholder, ProgressPanel, button, confirm, esc, hbox, kind_icon, label,
-                      open_path, resolve_icon, show_in_folder, vbox)
+                      markup_column, open_path, resolve_icon, show_in_folder, vbox)
 
 COL_ACTIVE, COL_ICON, COL_MARKUP, COL_SIZE, COL_PATH, COL_IS_FILE = range(6)
 
@@ -65,7 +65,7 @@ class DuplicatesPage(Gtk.Stack):
         txt = Gtk.CellRendererText()
         txt.set_property("ellipsize", Pango.EllipsizeMode.MIDDLE)
         col.pack_start(txt, True)
-        col.add_attribute(txt, "markup", COL_MARKUP)
+        markup_column(col, txt, COL_MARKUP)
         col.set_expand(True)
         self.tv.append_column(col)
         scol = Gtk.TreeViewColumn()
@@ -116,9 +116,9 @@ class DuplicatesPage(Gtk.Stack):
             return
         self.store.clear()
         for g in groups:
-            first = os.path.basename(g.files[0].path)
-            parent = self.store.append(None, [False, kind_icon(g.files[0].kind),
-                                              f"<b>{esc(first)}</b>\n<span size='small' alpha='62%'>"
+            kept = g.keep_file  # o título é o da cópia que fica (a primeira por ordem alfabética era a «(1)»)
+            parent = self.store.append(None, [False, kind_icon(kept.kind),
+                                              f"<b>{esc(kept.name)}</b>\n<span size='small' alpha='62%'>"
                                               f"{len(g.files)} cópias iguais</span>",
                                               f"<span alpha='62%'>{human_size(g.size)} cada</span>", "", False])
             for f in g.files:

@@ -44,6 +44,7 @@ class AIStatus:
     models: list[str] = field(default_factory=list)
     model: str = ""
     error: str = ""
+    running: bool = False  # o Ollama respondeu (mesmo que ainda não tenha nenhum modelo)
 
 
 def _is_loopback(host: str) -> bool:
@@ -188,12 +189,14 @@ class LocalAI:
                 continue
         return False
 
-    def check(self) -> AIStatus:
+    def check(self, autostart: bool = True) -> AIStatus:
+        """Estado do Ollama. Se estiver parado, tenta arrancá-lo, exceto com «autostart» falso: com a IA
+        desligada nas Definições, o Arruma só vê o estado e não arranca o Ollama."""
         try:
             version = self._request("/api/version").get("version", "")
             tags = self._request("/api/tags").get("models", [])
         except AIError as e:
-            if self._try_autostart():
+            if autostart and self._try_autostart():
                 try:
                     version = self._request("/api/version").get("version", "")
                     tags = self._request("/api/tags").get("models", [])
@@ -205,11 +208,11 @@ class LocalAI:
         chat_models = [m for m in models if not any(x in m.lower() for x in _NOT_CHAT)]
         model = self.pick_model(chat_models)
         if not model:
-            return AIStatus(ok=False, version=version, models=chat_models,
+            return AIStatus(ok=False, version=version, models=chat_models, running=True,
                             error="O Ollama está a correr, mas ainda não tem nenhum modelo instalado. "
                                   f"Executa: ollama pull {RECOMMENDED_MODEL}")
         self.model = model
-        return AIStatus(ok=True, version=version, models=chat_models, model=model)
+        return AIStatus(ok=True, version=version, models=chat_models, model=model, running=True)
 
     def pick_model(self, models: list[str]) -> str:
         if self.model and self.model in models:

@@ -62,6 +62,7 @@ class HomePage(Gtk.ScrolledWindow):
 
         self.clear_btn = button("Limpar seleção", None, "flat", on_click=self._clear_selection)
         self.clear_btn.set_valign(Gtk.Align.CENTER)
+        self.clear_btn.set_no_show_all(True)  # só aparece com alguma pasta selecionada (_sync_selection_ui)
         sel_bar.pack_start(self.clear_btn, False, False, 0)
 
         self.start_btn = button("Analisar seleção", "emblem-ok-symbolic", "suggested-action", "big-button",
@@ -296,6 +297,14 @@ class HomePage(Gtk.ScrolledWindow):
                                   "documentos para os classificar e dar-lhes nomes claros.")
             self.ai_btn.set_label("Definições")
             self._set_btn(lambda: self.win.navigate("settings"))
+        elif status.running:  # o Ollama respondeu, mas não tem nenhum modelo
+            ctx.add_class("off")
+            self.ai_pill.set_text("sem modelo")
+            self.ai_text.set_text("O Ollama está a correr, mas ainda não tem nenhum modelo instalado. Podes usar o "
+                                  "Arruma na mesma (com regras e palavras-chave) ou ativar a IA: basta instalar o "
+                                  f"modelo {RECOMMENDED_MODEL} (ollama pull {RECOMMENDED_MODEL}).")
+            self.ai_btn.set_label("Como ativar")
+            self._set_btn(lambda: self.win.show_ai_help(model_only=True))  # só o passo do modelo
         else:
             ctx.add_class("off")
             self.ai_pill.set_text("não encontrada")

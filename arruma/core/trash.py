@@ -127,8 +127,12 @@ def _win_trash(path: str) -> str | None:
                     ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
 
     FO_DELETE, FOF_SILENT, FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_NOERRORUI = 3, 0x4, 0x10, 0x40, 0x400
+    # Se o item não couber na Reciclagem (ou se ela estiver para apagar logo), o Windows pergunta antes de o
+    # apagar de vez; a resposta «Não» chega como fAnyOperationsAborted e fica registada como erro.
+    FOF_WANTNUKEWARNING = 0x4000
     op = SHFILEOPSTRUCTW(None, FO_DELETE, os.path.abspath(path) + "\0", None,
-                         FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI, False, None, None)
+                         FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_WANTNUKEWARNING,
+                         False, None, None)
     code = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
     if code or op.fAnyOperationsAborted or os.path.lexists(path):
         raise OSError(f"Não foi possível enviar para a Reciclagem (código {code}).")

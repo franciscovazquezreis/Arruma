@@ -97,6 +97,93 @@ class HistoryTests(unittest.TestCase):
         self.assertFalse((self.root / "Documentos").exists())
         self.assertEqual(self.db.session(s["id"])["undone"], 1)
 
+    def test_item_moved_just_before_the_end_is_in_history(self):
+        # O Arruma morre logo a seguir a mover o 2.º ficheiro, antes de fazer mais nada: esse também se anula.
+        real = executor_mod.safe_move
+        calls = []
+
+        def move_then_die(src, dst):
+            calls.append(src)
+            real(src, dst)
+            if len(calls) == 2:
+                raise Interrupted()
+        files = self.files[:3]
+        actions = [move(i, f, self.root / "Docs" / f.name) for i, f in enumerate(files)]
+        with mock.patch.object(executor_mod, "safe_move", move_then_die), self.assertRaises(Interrupted):
+            self.ex.apply(actions, str(self.root), "teste")
+        db = Database(self.tmp / "historico.db")  # o Arruma aberto outra vez
+        s, = db.sessions()
+        self.assertEqual((s["n_ok"], s["finished"], s["n_left"]), (2, 0, 2))
+        res = Executor(db).undo(s["id"])
+        self.assertEqual(res.errors, [])
+        self.assertTrue(all(f.exists() for f in files))
+        self.assertFalse((self.root / "Docs").exists())
+        self.assertEqual(db.session(s["id"])["undone"], 1)
+
+    def test_item_recorded_but_not_moved_is_undone_without_error(self):
+        # O Arruma morre depois de registar o item e antes de o mover: anular encontra-o no sítio e não faz nada.
+        with mock.patch.object(executor_mod, "safe_move", side_effect=Interrupted()), self.assertRaises(Interrupted):
+            self.ex.apply(self.actions()[:1], str(self.root), "teste")
+        s, = self.db.sessions()
+        res = self.ex.undo(s["id"])
+        self.assertEqual(res.errors, [])
+        self.assertTrue(self.files[0].exists())
+        self.assertFalse((self.root / "Documentos").exists())
+        self.assertEqual(self.db.session(s["id"])["undone"], 1)
+
+    def test_failed_move_is_only_an_error(self):
+        real = executor_mod.safe_move
+
+        def refuse_second(src, dst):
+            if src == str(self.files[1]):
+                raise PermissionError(13, "Sem permissão")
+            real(src, dst)
+        with mock.patch.object(executor_mod, "safe_move", refuse_second):
+            res = self.ex.apply(self.actions(), str(self.root), "teste")
+        self.assertEqual(res.errors, [(str(self.files[1]), "Sem permissão")])
+        ops = [(o["op"], o["src"], o["status"]) for o in self.db.ops(res.session_id) if o["op"] == "move"]
+        self.assertEqual([o for o in ops if o[1] == str(self.files[1])], [("move", str(self.files[1]), "erro")])
+        self.assertEqual([o[2] for o in ops], ["ok", "erro", "ok", "ok"])
+        s = self.db.session(res.session_id)
+        self.assertEqual((s["n_ok"], s["n_err"], s["n_left"]), (3, 1, 3))
+
+    def test_trash_is_recorded_before_it_happens(self):
+        bin_ = self.tmp / "Lixo"
+        bin_.mkdir()
+        sent = []
+
+        def to_trash(path):
+            if os.path.basename(path) == "fatura_2.txt":
+                raise OSError("Esta unidade não tem Reciclagem; o ficheiro não foi apagado.")
+            os.rename(path, bin_ / os.path.basename(path))
+            sent.append(path)
+            if len(sent) == 2:
+                raise Interrupted()  # o Arruma morre logo a seguir a enviar o 2.º
+            return str(bin_ / os.path.basename(path)) if len(sent) == 1 else None  # como no macOS
+        actions = [Action(i, "trash", str(f), "", tx.DOCUMENT, 1, "", 1.0, "manual")
+                   for i, f in enumerate([self.files[0], self.files[2], self.files[1]])]
+        with mock.patch.object(executor_mod, "send_to_trash", to_trash), self.assertRaises(Interrupted):
+            self.ex.apply(actions, str(self.root), "teste", remove_empty=False)
+        s, = self.db.sessions()
+        ops = [(o["src"], o["dst"], o["status"]) for o in self.db.ops(s["id"])]
+        self.assertEqual(ops, [(str(self.files[0]), str(bin_ / "fatura_0.txt"), "ok"),
+                               (str(self.files[2]), None, "erro"),
+                               (str(self.files[1]), None, "ok")])
+        self.assertEqual((s["n_ok"], s["n_err"]), (2, 1))
+
+    def test_session_undone_in_another_window_while_applying(self):
+        # Outra janela do Arruma anula a sessão enquanto esta ainda a aplica: o que chega depois fica por anular.
+        sid = self.db.new_session(str(self.root), "teste")
+        first = self.db.log_op(sid, 0, "move", "/r/a", "/r/D/a")
+        self.db.mark_op_undone(first)
+        self.db.mark_undone(sid)
+        self.assertEqual(self.db.session(sid)["undone"], 1)
+        self.db.log_op(sid, 1, "mkdir", "/r/E", None)
+        self.assertEqual(self.db.session(sid)["undone"], 1)
+        self.db.log_op(sid, 2, "move", "/r/b", "/r/E/b")
+        s = self.db.session(sid)
+        self.assertEqual((s["undone"], s["n_left"]), (2, 1))
+
     def test_finished_and_running_sessions(self):
         during = []
         res = self.ex.apply(self.actions(), str(self.root), "teste",
@@ -150,10 +237,38 @@ class HistoryTests(unittest.TestCase):
         blocker.unlink()
         again = self.ex.undo(res.session_id)
         self.assertEqual(again.errors, [])
-        self.assertEqual(again.ok, 2)  # o ficheiro que faltava e a pasta criada, que agora ficou vazia
+        self.assertEqual(again.ok, 1)  # o ficheiro que faltava (a pasta criada, que agora ficou vazia, não conta)
         self.assertEqual(self.db.session(res.session_id)["undone"], 1)
         self.assertTrue(all(f.exists() for f in self.files))
         self.assertFalse((self.root / "Documentos").exists())
+
+    def test_undo_counts_items_like_the_question(self):
+        # A pergunta diz quantas alterações vai anular; o progresso e o aviso contam os mesmos itens, sem as
+        # pastas criadas ou removidas pelo caminho.
+        old = write(self.root / "Velha" / "recibo.txt", "recibo")
+        (self.root / "Nova pasta" / "a").mkdir(parents=True)
+        dest = self.root / "Documentos" / "Finanças"
+        actions = [move(i, f, dest / f.name) for i, f in enumerate([*self.files, old])]
+        actions.append(Action(5, "rmdir", str(self.root / "Nova pasta"), "", tx.OTHER, 0, "", 0.95, "regras"))
+        res = self.ex.apply(actions, str(self.root), "teste", cleanup_dirs=[str(self.root / "Velha")])
+        self.assertEqual(self.db.session(res.session_id)["n_ok"], 6)  # 5 itens e a pasta vazia
+        ops = [o["op"] for o in self.db.ops(res.session_id)]
+        self.assertEqual((ops.count("mkdir"), ops.count("rmdir")), (2, 3))
+        blocker = write(self.files[1], "outro ficheiro")
+        seen = []
+        undo = self.ex.undo(res.session_id, progress=lambda n, total, path: seen.append((n, total)))
+        self.assertEqual(seen, [(n, 5) for n in range(6)])
+        self.assertEqual((undo.ok, len(undo.errors)), (4, 1))
+        s = self.db.session(res.session_id)
+        self.assertEqual((s["undone"], s["n_left"]), (2, 1))  # «Anular o resto?»: falta 1 item
+        blocker.unlink()
+        seen.clear()
+        rest = self.ex.undo(res.session_id, progress=lambda n, total, path: seen.append((n, total)))
+        self.assertEqual(seen, [(0, 1), (1, 1)])
+        self.assertEqual((rest.ok, rest.errors), (1, []))
+        self.assertEqual(self.db.session(res.session_id)["undone"], 1)
+        self.assertFalse((self.root / "Documentos").exists())
+        self.assertTrue((self.root / "Nova pasta" / "a").is_dir() and old.exists())
 
     def test_undo_can_stop_and_continue(self):
         res = self.ex.apply(self.actions(), str(self.root), "teste")
@@ -168,7 +283,7 @@ class HistoryTests(unittest.TestCase):
         s = self.db.session(res.session_id)
         self.assertEqual((s["undone"], s["n_left"]), (2, 2))
         rest = self.ex.undo(res.session_id)
-        self.assertEqual((rest.ok, rest.errors, rest.cancelled), (2 + 2, [], False))  # 2 ficheiros e 2 pastas
+        self.assertEqual((rest.ok, rest.errors, rest.cancelled), (2, [], False))  # os 2 ficheiros (as pastas não contam)
         self.assertTrue(all(f.exists() for f in self.files))
         self.assertEqual(self.db.session(res.session_id)["undone"], 1)
 
@@ -223,7 +338,7 @@ class UndoTextTests(unittest.TestCase):
         res = Result(1, ok=3, errors=[("/r/a.pdf", "Já existe um item com o mesmo nome no local original."),
                                       ("/r/b.pdf", "O ficheiro já não está no Lixo.")])
         text = undo_report(res)
-        self.assertIn("3 operações revertidas. 2 itens não voltaram ao sítio onde estavam:", text)
+        self.assertIn("3 itens voltaram ao sítio. 2 itens não voltaram ao sítio onde estavam:", text)
         self.assertIn("• /r/a.pdf: Já existe um item com o mesmo nome no local original.", text)
         self.assertIn("• /r/b.pdf: O ficheiro já não está no Lixo.", text)
         self.assertIn("«Anular o resto»", text)
