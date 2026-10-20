@@ -304,6 +304,25 @@ class StructureTests(unittest.TestCase):
         self.assertEqual(set(units), {"Clientes", "Faturação"})
         self.assertTrue(units["Faturação"].dst.startswith(str(home / "Documentos")))
 
+    def test_downloads_keep_empty_folders_with_their_own_name(self):
+        # Nas pastas esvaziadas para as pastas pessoais, uma pasta vazia com nome próprio também fica:
+        # só as genéricas são propostas, e só com «Remover pastas genéricas que fiquem vazias» ligada.
+        home = self.tmp / "casa"
+        dirs = {k: home / v for k, v in {"DESKTOP": "Secretária", "DOWNLOAD": "Transferências",
+                                          "DOCUMENTS": "Documentos", "MUSIC": "Música", "PICTURES": "Imagens",
+                                          "VIDEOS": "Vídeos", "TEMPLATES": "Modelos",
+                                          "PUBLICSHARE": "Público"}.items()}
+        downloads = dirs["DOWNLOAD"]
+        write(downloads / "fatura.txt", "FATURA n.º 3 Total a pagar 9 EUR")
+        (downloads / "Férias Algarve").mkdir()
+        (downloads / "Nova pasta").mkdir()
+        for remove_empty, expected in ((True, {"Nova pasta"}), (False, set())):
+            settings = Settings(use_ai=False, remove_empty_dirs=remove_empty)
+            with mock.patch("arruma.core.planner.user_dirs", return_value=dirs):
+                plan = Planner(scan(downloads), settings, MODE_PERSONAL).build()
+            self.assertEqual({os.path.basename(a.src) for a in plan.actions if a.op == "rmdir"}, expected)
+            self.assertFalse(any(a.src == str(downloads / "Férias Algarve") for a in plan.actions))
+
 
 if __name__ == "__main__":
     unittest.main()

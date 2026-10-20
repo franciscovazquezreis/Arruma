@@ -32,7 +32,7 @@ class DuplicatesPage(Gtk.Stack):
                                  f"exatas. Tu escolhes o que vai {TRASH_TO}.",
                                  ("Procurar duplicados", win.find_duplicates))
         self.add_named(self.intro, "intro")
-        self.progress = ProgressPanel(on_cancel=win.cancel_task)
+        self.progress = ProgressPanel(on_cancel=lambda: win.cancel_task("duplicates"))
         self.add_named(self.progress, "progress")
         self.none = Placeholder("emblem-ok-symbolic", "Não há duplicados", "Não foram encontradas cópias exatas. 🎉")
         self.add_named(self.none, "none")

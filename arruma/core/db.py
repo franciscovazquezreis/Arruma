@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     title TEXT NOT NULL,
     n_ok INTEGER DEFAULT 0,
     n_err INTEGER DEFAULT 0,
-    undone INTEGER DEFAULT 0
+    undone INTEGER DEFAULT 0,
+    finished INTEGER DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS ops (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,6 +49,27 @@ class Database:
         self.path = path or (data_dir() / "arruma.db")
         with self.connect() as c:
             c.executescript(_SCHEMA)
+            self._migrate(c)
+
+    @staticmethod
+    def _migrate(c: sqlite3.Connection) -> None:
+        """Atualiza o histórico de versões anteriores, que não sabiam se uma arrumação tinha chegado ao fim.
+        Uma arrumação interrompida (o Arruma fechado a meio) ficava com 0 alterações e escondida do Histórico:
+        passa a aparecer, com as contagens tiradas das operações registadas, e pode ser anulada."""
+        def columns():
+            return {row["name"] for row in c.execute("PRAGMA table_info(sessions)")}
+        if "finished" in columns():
+            return
+        c.execute("BEGIN IMMEDIATE")  # outra janela do Arruma pode estar a abrir o mesmo histórico
+        if "finished" in columns():
+            return
+        c.execute("ALTER TABLE sessions ADD COLUMN finished INTEGER DEFAULT 1")
+        c.execute("UPDATE sessions SET finished = 0, "
+                  "n_ok = (SELECT COUNT(*) FROM ops WHERE session_id = sessions.id AND status = 'ok' "
+                  "AND op != 'mkdir'), "
+                  "n_err = (SELECT COUNT(*) FROM ops WHERE session_id = sessions.id AND status = 'erro') "
+                  "WHERE n_ok = 0 AND EXISTS (SELECT 1 FROM ops WHERE session_id = sessions.id AND status = 'ok' "
+                  "AND op IN ('move', 'move_dir', 'trash'))")
 
     @contextmanager
     def connect(self):
@@ -62,29 +84,57 @@ class Database:
 
     # ------------------------------------------------------------------ sessões
     def new_session(self, root: str, title: str) -> int:
+        """A sessão fica por terminar («finished» a 0) até finish_session()."""
         with self.connect() as c:
-            cur = c.execute("INSERT INTO sessions(created, root, title) VALUES (?,?,?)",
+            cur = c.execute("INSERT INTO sessions(created, root, title, finished) VALUES (?,?,?,0)",
                             (time.time(), root, title))
             return int(cur.lastrowid)
 
     def log_op(self, session_id: int, seq: int, op: str, src: str, dst: str | None,
-               status: str = "ok", error: str | None = None) -> None:
+               status: str = "ok", error: str | None = None, counts: tuple[int, int] | None = None) -> None:
+        """«counts» (alterações feitas, erros) até aqui: ficam gravadas com a operação, para que uma arrumação
+        interrompida a meio apareça logo no Histórico com o que chegou a fazer."""
         with self.connect() as c:
             c.execute("INSERT INTO ops(session_id, seq, op, src, dst, status, error, ts) "
                       "VALUES (?,?,?,?,?,?,?,?)",
                       (session_id, seq, op, src, dst, status, error, time.time()))
+            if counts is not None:
+                c.execute("UPDATE sessions SET n_ok=?, n_err=? WHERE id=?", (*counts, session_id))
 
     def finish_session(self, session_id: int, n_ok: int, n_err: int) -> None:
         with self.connect() as c:
-            c.execute("UPDATE sessions SET n_ok=?, n_err=? WHERE id=?", (n_ok, n_err, session_id))
+            c.execute("UPDATE sessions SET n_ok=?, n_err=?, finished=1 WHERE id=?", (n_ok, n_err, session_id))
+
+    def mark_op_undone(self, op_id: int) -> None:
+        """Operação já anulada: se se voltar a anular a sessão, só se tenta o que falta."""
+        with self.connect() as c:
+            c.execute("UPDATE ops SET status='anulada' WHERE id=?", (op_id,))
 
     def mark_undone(self, session_id: int) -> None:
+        """«undone»: 1 quando já não falta anular nada; 2 (anulada em parte) quando alguma operação falhou ou
+        se parou a meio e ficou alguma coisa por anular; 0 quando nada chegou a ser anulado."""
         with self.connect() as c:
-            c.execute("UPDATE sessions SET undone=1 WHERE id=?", (session_id,))
+            left = c.execute("SELECT COUNT(*) FROM ops WHERE session_id=? AND status='ok' AND op != 'mkdir'",
+                             (session_id,)).fetchone()[0]
+            some = c.execute("SELECT COUNT(*) FROM ops WHERE session_id=? AND status='anulada'",
+                             (session_id,)).fetchone()[0]
+            c.execute("UPDATE sessions SET undone=? WHERE id=?", (1 if not left else 2 if some else 0, session_id))
+
+    # «n_left»: o que ainda falta anular. As pastas criadas pelo Arruma não contam: saem quando ficam vazias.
+    _SESSION = ("SELECT s.*, (SELECT COUNT(*) FROM ops o WHERE o.session_id = s.id AND o.status = 'ok' "
+                "AND o.op != 'mkdir') AS n_left FROM sessions s")
 
     def sessions(self, limit: int = 100) -> list[sqlite3.Row]:
+        """As sessões que mudaram alguma coisa, da mais recente para a mais antiga. Uma que não chegou ao fim
+        aparece se tiver feito alguma operação, mesmo antes de a contar."""
         with self.connect() as c:
-            return list(c.execute("SELECT * FROM sessions WHERE n_ok > 0 ORDER BY id DESC LIMIT ?", (limit,)))
+            return list(c.execute(self._SESSION + " WHERE s.n_ok > 0 OR (NOT s.finished AND EXISTS (SELECT 1 "
+                                  "FROM ops o WHERE o.session_id = s.id AND o.status IN ('ok', 'anulada'))) "
+                                  "ORDER BY s.id DESC LIMIT ?", (limit,)))
+
+    def session(self, session_id: int) -> sqlite3.Row | None:
+        with self.connect() as c:
+            return c.execute(self._SESSION + " WHERE s.id = ?", (session_id,)).fetchone()
 
     def ops(self, session_id: int) -> list[sqlite3.Row]:
         with self.connect() as c:

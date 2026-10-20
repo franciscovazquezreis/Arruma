@@ -3,7 +3,9 @@
 
 A ida ao Lixo e o regresso só correm com ARRUMA_TESTAR_LIXO=1, porque mexem no Lixo real."""
 
+import ntpath
 import os
+import posixpath
 import shutil
 import stat
 import sys
@@ -15,9 +17,13 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from arruma.core import system  # noqa: E402
-from arruma.core.fsutil import (check_root_allowed, is_within, path_key, sanitize_name,  # noqa: E402
-                                unique_path)
-from arruma.core.scanner import scan  # noqa: E402
+from arruma.core.db import Database  # noqa: E402
+from arruma.core.executor import Executor  # noqa: E402
+from arruma.core.fsutil import (check_root_allowed, common_root, is_within, path_key, path_parts,  # noqa: E402
+                                sanitize_name, unique_path)
+from arruma.core.planner import MODE_INSIDE, Planner  # noqa: E402
+from arruma.core.scanner import ScanResult, scan  # noqa: E402
+from arruma.core.settings import Settings  # noqa: E402
 from arruma.core.trash import find_in_recycle_bin, parse_recycle_index  # noqa: E402
 
 
@@ -136,6 +142,59 @@ class SystemTests(unittest.TestCase):
         self.assertIsNotNone(found)
         self.assertEqual(found[1].name, "$RXYZ789.pdf")
         self.assertIsNone(find_in_recycle_bin(orig + "x", self.tmp / "$Recycle.Bin"))
+
+
+class DrivesTests(unittest.TestCase):
+    """Windows: pastas em discos diferentes (C: e D:, uma pen USB, «Todo o computador» com dois discos) não
+    têm pasta comum e os.path.commonpath dá «Paths don't have the same drive». O ntpath é o os.path do Windows."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-")).resolve()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_paths_without_a_common_folder(self):
+        with mock.patch.object(os, "path", ntpath):
+            with self.assertRaises(ValueError):
+                ntpath.commonpath(["C:\\Users\\ana", "D:\\"])
+            self.assertIsNone(common_root(["C:\\Users\\ana", "D:\\"]))
+            self.assertEqual(common_root(["C:\\Users\\ana\\Documentos", "C:\\Users\\ana\\Imagens"]), "C:\\Users\\ana")
+            # Sem pasta comum, a árvore do plano começa em cada disco e o caminho volta a montar-se.
+            self.assertEqual(path_parts("D:\\Fotos\\2024", ""), ["D:\\", "Fotos", "2024"])
+            for path in ("D:\\Fotos\\2024", "C:\\Users\\ana\\Documentos", "\\\\servidor\\partilha\\Fotos"):
+                self.assertEqual(os.path.join("", *path_parts(path, "")), path)
+            self.assertEqual(path_parts("C:\\Users\\ana\\Documentos\\Finanças", "C:\\Users\\ana"),
+                             ["Documentos", "Finanças"])
+            result = ScanResult(root="C:\\Trabalho", files=[], folders={}, protected=[], skipped_hidden=0,
+                                skipped_links=0, errors=[], total_size=0, by_kind={},
+                                roots=["C:\\Trabalho", "D:\\"])
+            self.assertEqual(result.title, "Trabalho e D:\\")
+        with mock.patch.object(os, "path", posixpath):
+            self.assertEqual(common_root(["/home/ana", "/media/ana/Pen"]), "/")
+            self.assertEqual(path_parts("/home/ana/Documentos/Finanças", "/home/ana"), ["Documentos", "Finanças"])
+            self.assertEqual(path_parts("/home/ana", "/home/ana"), [])
+
+    def test_analysis_plan_and_cleanup_across_drives(self):
+        work, photos = self.tmp / "C" / "Trabalho", self.tmp / "D" / "Fotos"
+        for folder, name in ((work, "fatura.txt"), (photos, "recibo.txt")):
+            (folder / "Nova pasta").mkdir(parents=True)
+            (folder / "Nova pasta" / name).write_text("FATURA n.º 1 Total a pagar 10 EUR NIF 500", encoding="utf-8")
+        with mock.patch("os.path.commonpath", side_effect=ValueError("Paths don't have the same drive")):
+            result = scan([work, photos])
+            plan = Planner(result, Settings(use_ai=False), MODE_INSIDE).build()
+        self.assertEqual(result.roots, [str(work), str(photos)])
+        self.assertEqual(result.root, str(work))
+        self.assertEqual(plan.title, "Trabalho e Fotos")
+        res = Executor(Database(self.tmp / "teste.db")).apply(
+            plan.enabled(), plan.root, "teste", cleanup_dirs=plan.cleanup_dirs, protect=set(plan.bases.values()),
+            roots=plan.roots)
+        self.assertEqual(res.errors, [])
+        self.assertTrue((photos / "Documentos" / "Finanças" / "recibo.txt").is_file())
+        # As pastas genéricas esvaziadas saem nos dois discos, e não só no da primeira pasta.
+        self.assertFalse((work / "Nova pasta").exists())
+        self.assertFalse((photos / "Nova pasta").exists())
+        self.assertTrue(work.is_dir() and photos.is_dir())
 
 
 @unittest.skipUnless(os.environ.get("ARRUMA_TESTAR_LIXO") == "1", "só com ARRUMA_TESTAR_LIXO=1")

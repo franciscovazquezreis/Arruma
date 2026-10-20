@@ -173,6 +173,24 @@ def is_within(path: str | Path, base: str | Path) -> bool:
     return p.startswith(b if b.endswith(os.sep) else b + os.sep)
 
 
+def common_root(paths: list[str]) -> str | None:
+    """Pasta comum a todos os caminhos, ou None se não houver (no Windows, pastas em discos diferentes)."""
+    try:
+        return os.path.commonpath(paths) or None
+    except ValueError:
+        return None
+
+
+def path_parts(path: str, anchor: str) -> list[str]:
+    """Partes de «path» a partir de «anchor». Sem âncora (discos diferentes), a primeira parte é o disco
+    («D:\\»), e os.path.join("", *partes) volta a dar o caminho."""
+    if anchor:
+        rel = os.path.relpath(path, anchor)
+        return [] if rel == "." else [p for p in rel.split(os.path.sep) if p]
+    drive, rest = os.path.splitdrive(path)
+    return [drive + os.path.sep] + [p for p in rest.split(os.path.sep) if p]
+
+
 SYSTEM_PATHS = system_paths()
 
 COMPUTER_TOKEN = "__COMPUTER__"

@@ -233,6 +233,91 @@ class PlanTests(unittest.TestCase):
         retarget(fat, plan, custom_folder)
         self.assertEqual(os.path.dirname(fat.dst), custom_folder)
 
+    def test_existing_folders_keep_name_and_place_in_plan(self):
+        # Mudar o nome de uma pasta que já existe só mandaria os itens do plano para uma pasta nova;
+        # a pasta real e o que já lá estava ficavam. Por isso não muda nada.
+        from arruma.core.planner import move_folder_in_plan, rename_folder_in_plan
+        write(self.root / "Documentos" / "Finanças" / "antiga.txt", "FATURA antiga NIF 501")
+        _, plan = self.build()
+        fat = next(a for a in plan.actions if a.src_name == "fatura_123.txt")
+        fin = str(self.root / "Documentos" / "Finanças")
+        self.assertEqual(os.path.dirname(fat.dst), fin)
+        self.assertEqual(rename_folder_in_plan(plan, fin, "Despesas"), fin)
+        self.assertIsNone(move_folder_in_plan(plan, fin, str(self.root / "Arquivo")))
+        self.assertEqual(os.path.dirname(fat.dst), fin)
+        self.assertEqual(fat.source, "palavras-chave")
+        # As pastas novas continuam a poder mudar de nome.
+        img = next(a for a in plan.actions if a.src_name == "IMG_20240812_101010.jpg")
+        fotos = os.path.dirname(img.dst)
+        self.assertFalse(os.path.isdir(fotos))
+        self.assertEqual(rename_folder_in_plan(plan, fotos, "Fotos"), os.path.join(os.path.dirname(fotos), "Fotos"))
+        self.assertEqual(os.path.basename(os.path.dirname(img.dst)), "Fotos")
+
+    def test_empty_folders_follow_the_setting(self):
+        # Desligada, nem as pastas que já estavam vazias são propostas.
+        self.settings.remove_empty_dirs = False
+        _, plan = self.build()
+        self.assertEqual([a.src for a in plan.actions if a.op == "rmdir"], [])
+        # Ligada, só pastas genéricas sem nada lá dentro (nem pastas com nome próprio, nem ocultos),
+        # e nunca uma pasta que vai receber ficheiros do plano.
+        self.settings.remove_empty_dirs = True
+        (self.root / "Nova pasta (3)" / "Férias").mkdir(parents=True)
+        write(self.root / "temp" / ".configuracao", "x")
+        (self.root / "Documentos" / "Outros").mkdir(parents=True)
+        write(self.root / "coisa solta.txt", "Umas linhas sem pistas nenhumas.")
+        _, plan = self.build()
+        rm = {os.path.relpath(a.src, self.root).replace(os.sep, "/") for a in plan.actions if a.op == "rmdir"}
+        self.assertEqual(rm, {"Nova pasta (2)"})
+        notas = next(a for a in plan.actions if a.src_name == "coisa solta.txt")
+        self.assertEqual(Path(notas.dst).parent, self.root / "Documentos" / "Outros")
+        self.assertTrue(all(a.reason == "Pasta vazia sem nome próprio." for a in plan.actions if a.op == "rmdir"))
+
+    def test_protected_folders_cannot_be_chosen_directly(self):
+        from arruma.core.fsutil import COMPUTER_TOKEN
+        from arruma.core.scanner import check_root_protected
+        write(self.tmp / "Dropbox" / "fatura.txt", "FATURA n.º 9")
+        write(self.tmp / "Calibre" / "metadata.db", "x")
+        write(self.tmp / "Arquivo" / "2020" / "velho.txt", "x")
+        excluded = [str(self.tmp / "Arquivo")]
+        for rel, why in (("Dropbox", "pasta sincronizada (Dropbox)"), ("Bagunça/meuprojeto", "projeto de programação"),
+                         ("Calibre", "biblioteca do Calibre")):
+            msg = check_root_protected(self.tmp / rel, excluded)
+            self.assertIsNotNone(msg, rel)
+            self.assertIn(why, msg)
+        self.assertIn("«Pastas a ignorar sempre»", check_root_protected(self.tmp / "Arquivo", excluded))
+        self.assertIn("dentro de «Arquivo»", check_root_protected(self.tmp / "Arquivo" / "2020", excluded))
+        # Uma pasta normal com pastas protegidas lá dentro escolhe-se na mesma: essas são só ignoradas.
+        write(self.root / "Dropbox" / "partilhado.txt", "x")
+        self.assertIsNone(check_root_protected(self.root, excluded))
+        self.assertIsNone(check_root_protected(self.tmp, excluded))
+        self.assertIsNone(check_root_protected(COMPUTER_TOKEN, excluded))
+        protected = dict(scan(self.root, excluded=excluded).protected)
+        self.assertEqual(protected.get(str(self.root / "Dropbox")), "pasta sincronizada (Dropbox)")
+
+    def test_personal_folders_are_never_projects(self):
+        # O VS Code guarda as extensões em ~/.vscode e as Transferências têm muitas vezes ficheiros soltos
+        # como «Makefile»: nem por isso deixam de se poder arrumar. «Público» continua protegida.
+        from arruma.core.scanner import check_root_protected
+        home = self.tmp / "casa"
+        write(home / ".vscode" / "extensions" / "extensions.json", "[]")
+        write(home / "Transferências" / "Makefile", "all:")
+        write(home / "Transferências" / "package.json", "{}")
+        write(home / "Público" / "partilha.txt", "x")
+        dirs = {k: home / v for k, v in {"DESKTOP": "Secretária", "DOWNLOAD": "Transferências",
+                                          "DOCUMENTS": "Documentos", "MUSIC": "Música", "PICTURES": "Imagens",
+                                          "VIDEOS": "Vídeos", "TEMPLATES": "Modelos",
+                                          "PUBLICSHARE": "Público"}.items()}
+        with mock.patch("arruma.core.scanner.HOME", home), \
+                mock.patch("arruma.core.scanner.user_dirs", return_value=dirs):
+            self.assertIsNone(check_root_protected(home))
+            self.assertIsNone(check_root_protected(home / "Transferências"))
+            self.assertIn("pasta pública partilhada", check_root_protected(home / "Público") or "")
+            write(self.tmp / "Coisas" / "Makefile", "all:")  # fora das pastas pessoais é um projeto
+            self.assertIn("projeto de programação", check_root_protected(self.tmp / "Coisas") or "")
+            pen = write(self.tmp / "PEN" / "Makefile", "all:").parent  # uma pen USB escolhida diretamente
+            with mock.patch("os.path.ismount", side_effect=lambda q: os.path.normpath(q) == str(pen)):
+                self.assertIsNone(check_root_protected(pen))
+
 
 
 def _tsv(words: list[tuple[str, float]]) -> str:

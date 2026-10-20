@@ -519,11 +519,11 @@ def message(parent: Gtk.Window, title: str, text: str, kind=Gtk.MessageType.INFO
 
 
 def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str,
-            destructive: bool = False) -> bool:
+            destructive: bool = False, cancel_label: str = "Cancelar") -> bool:
     dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.QUESTION,
                             buttons=Gtk.ButtonsType.NONE, text=title)
     dlg.format_secondary_text(text)
-    dlg.add_button("Cancelar", Gtk.ResponseType.CANCEL)
+    dlg.add_button(cancel_label, Gtk.ResponseType.CANCEL)
     ok = dlg.add_button(ok_label, Gtk.ResponseType.OK)
     add_classes(ok, "destructive-action" if destructive else "suggested-action")
     dlg.set_default_response(Gtk.ResponseType.OK)

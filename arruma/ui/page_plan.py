@@ -9,7 +9,8 @@ from gi.repository import Gdk, GLib, Gtk, Pango
 
 from ..core import taxonomy as tx
 from ..core.executor import Result
-from ..core.fsutil import HOME, display_path, human_count, human_size, is_within, plural
+from ..core.fsutil import (HOME, common_root, display_path, human_count, human_size, is_within, path_parts,
+                           plural)
 from ..core.planner import (Action, Plan, move_folder_in_plan, rebase_document,
                             rename_action_in_plan, rename_folder_in_plan, retarget)
 from ..core.system import TRASH_NAME, TRASH_TO
@@ -20,6 +21,10 @@ from .widgets import (Placeholder, ProgressPanel, add_classes, button, card, cho
 COL_ACTIVE, COL_INCONS, COL_ICON, COL_MARKUP, COL_ID, COL_KEY, COL_BADGE = range(7)
 TRASH_NODE = TRASH_TO[0].upper() + TRASH_TO[1:]  # «Para o Lixo» / «Para a Reciclagem»
 EMPTY_NODE = "Pastas vazias a remover"
+# Numa pasta que já existe, mudar o nome ou o local no plano só mandaria os itens para uma pasta nova:
+# a pasta real e o que lá está ficavam. Por isso só as pastas novas («• nova») se mudam.
+EXISTING_FOLDER_NOTE = ("Esta pasta já existe, por isso fica com este nome e neste local. No plano só podes "
+                        "mudar o nome ou o local das pastas novas (marcadas com «• nova»).")
 
 FILTERS = [
     ("all", "Todas as alterações"),
@@ -50,6 +55,32 @@ PHASES = {
 }
 
 
+def apply_summary(actions: list[Action]) -> list[str]:
+    """Linhas da confirmação de «Aplicar alterações». O que vai para o Lixo não são só ficheiros
+    temporários: também pode ir o que arrastaste para lá, incluindo pastas inteiras."""
+    moves = sum(1 for a in actions if a.op in ("move", "move_dir"))
+    trash = [a for a in actions if a.op == "trash"]
+    temp = sum(1 for a in trash if a.kind == tx.JUNK)
+    folders = [a for a in trash if a.kind != tx.JUNK and os.path.isdir(a.src)]
+    files = len(trash) - temp - len(folders)
+    empty = sum(1 for a in actions if a.op == "rmdir")
+    parts = []
+    if moves:
+        parts.append(f"{plural(moves, 'item vai ser movido', 'itens vão ser movidos')} para as novas pastas.")
+    if temp:
+        parts.append(f"{plural(temp, 'ficheiro temporário vai', 'ficheiros temporários vão')} {TRASH_TO}.")
+    if files:
+        parts.append(f"{plural(files, 'ficheiro que escolheste vai', 'ficheiros que escolheste vão')} {TRASH_TO}.")
+    if folders:
+        inside = plural(sum(a.count for a in folders), "ficheiro", "ficheiros")
+        parts.append(f"{plural(len(folders), 'pasta inteira vai', 'pastas inteiras vão')} {TRASH_TO}, com tudo o "
+                     f"que {'tem' if len(folders) == 1 else 'têm'} dentro ({inside}).")
+    if empty:
+        parts.append(f"{plural(empty, 'pasta vazia vai ser removida', 'pastas vazias vão ser removidas')}.")
+    parts.append("Nada é apagado definitivamente e podes anular tudo no Histórico.")
+    return parts
+
+
 class PlanPage(Gtk.Stack):
     def __init__(self, win):
         super().__init__()
@@ -62,7 +93,7 @@ class PlanPage(Gtk.Stack):
         self.add_named(Placeholder("view-list-symbolic", "Ainda não há plano",
                                    "Analisa uma pasta e carrega em «Criar plano de organização».",
                                    ("Ir para o Início", lambda: win.navigate("home"))), "empty")
-        self.progress = ProgressPanel(on_cancel=win.cancel_task,
+        self.progress = ProgressPanel(on_cancel=lambda: win.cancel_task("plan", "apply"),
                                       secondary=("Continuar sem IA", win.skip_ai))
         self.add_named(self.progress, "progress")
         self.add_named(self._build_content(), "content")
@@ -122,8 +153,8 @@ class PlanPage(Gtk.Stack):
         switcher = Gtk.StackSwitcher()
         switcher.set_stack(self.views)
         sw_row.pack_start(switcher, False, False, 0)
-        hint = label("💡 Podes arrastar ficheiros e pastas na árvore ou clicar numa pasta para mudar o nome (F2).",
-                     "small", "dim", ellipsize=True)
+        hint = label("💡 Podes arrastar itens para outra pasta na árvore. As pastas novas também mudam de nome "
+                     "(F2) e de local.", "small", "dim", ellipsize=True)
         hint.set_valign(Gtk.Align.CENTER)
         sw_row.pack_start(hint, True, True, 6)
         sw_row.pack_end(button("", "list-remove-symbolic", "flat", on_click=lambda: self._expand(False),
@@ -238,11 +269,10 @@ class PlanPage(Gtk.Stack):
             return str(HOME)
         if len(plan.roots) == 1 and all(is_within(d, plan.root) for d in dirs):
             return os.path.dirname(plan.root)
-        try:
-            common = os.path.commonpath(dirs) if dirs else str(HOME)
-            return common or "/"
-        except ValueError:
-            return "/"
+        if not dirs:
+            return str(HOME)
+        # Sem pasta comum (no Windows, pastas em discos diferentes) a árvore começa em cada disco.
+        return common_root(dirs) or ""
 
     def show_plan(self, plan: Plan) -> None:
         self.progress.stop()
@@ -383,8 +413,7 @@ class PlanPage(Gtk.Stack):
         return out
 
     def _parts(self, directory: str) -> list[str]:
-        rel = os.path.relpath(directory, self.anchor)
-        return [] if rel == "." else [p for p in rel.split(os.sep) if p]
+        return path_parts(directory, self.anchor)
 
     def _repopulate(self, select_id: int | None = None, select_folder: str | None = None) -> None:
         if not self.plan:
@@ -607,13 +636,7 @@ class PlanPage(Gtk.Stack):
         if aid == -1:
             key = key_str.split("\x1f")
             if key[0] not in (TRASH_NODE, EMPTY_NODE):
-                folder_path = os.path.join(self.anchor, *key)
-                mi_ren = Gtk.MenuItem(label="Mudar nome da pasta… (F2)")
-                mi_ren.connect("activate", lambda *_: self._prompt_rename_folder(folder_path, key[-1]))
-                menu.append(mi_ren)
-                mi_mov = Gtk.MenuItem(label="Mover pasta para outro local…")
-                mi_mov.connect("activate", lambda *_: self._choose_folder_dest(folder_path))
-                menu.append(mi_mov)
+                self._add_folder_items(menu, os.path.join(self.anchor, *key), key[-1])
         else:
             a = self.plan.actions[aid]
             if a.op in ("move", "move_dir"):
@@ -634,6 +657,31 @@ class PlanPage(Gtk.Stack):
             return True
         return False
 
+    def _add_folder_items(self, menu: Gtk.Menu, folder_path: str, name: str) -> None:
+        if not self._is_new_folder(folder_path):
+            mi = Gtk.MenuItem(label="Já existe: só as pastas novas mudam de nome ou de local")
+            mi.set_sensitive(False)
+            menu.append(mi)
+            return
+        mi_ren = Gtk.MenuItem(label="Mudar nome da pasta… (F2)")
+        mi_ren.connect("activate", lambda *_: self._prompt_rename_folder(folder_path, name))
+        menu.append(mi_ren)
+        mi_mov = Gtk.MenuItem(label="Mover pasta para outro local…")
+        mi_mov.connect("activate", lambda *_: self._choose_folder_dest(folder_path))
+        menu.append(mi_mov)
+
+    @staticmethod
+    def _is_new_folder(folder_path: str) -> bool:
+        return not os.path.isdir(folder_path)
+
+    def _can_edit_folder(self, folder_path: str) -> bool:
+        """Só as pastas novas mudam de nome ou de local; nas que já existem, explica porquê."""
+        if self._is_new_folder(folder_path):
+            return True
+        self.win.toast.show(f"«{os.path.basename(folder_path) or folder_path}» já existe: no plano só podes "
+                            "mudar o nome ou o local das pastas novas.")
+        return False
+
     def _prompt_rename_iter(self, model: Gtk.TreeModel, it: Gtk.TreeIter) -> None:
         aid = model.get_value(it, COL_ID)
         if aid >= 0:
@@ -643,7 +691,9 @@ class PlanPage(Gtk.Stack):
         else:
             key = model.get_value(it, COL_KEY).split("\x1f")
             if key and key[0] not in (TRASH_NODE, EMPTY_NODE):
-                self._prompt_rename_folder(os.path.join(self.anchor, *key), key[-1])
+                folder_path = os.path.join(self.anchor, *key)
+                if self._can_edit_folder(folder_path):
+                    self._prompt_rename_folder(folder_path, key[-1])
 
     def _prompt_rename_folder(self, folder_path: str, current_name: str) -> None:
         new_name = prompt_text(
@@ -658,7 +708,7 @@ class PlanPage(Gtk.Stack):
             self._apply_folder_rename(folder_path, new_name)
 
     def _apply_folder_rename(self, folder_path: str, new_name: str) -> None:
-        if not self.plan:
+        if not self.plan or not self._can_edit_folder(folder_path):
             return
         new_dir = rename_folder_in_plan(self.plan, folder_path, new_name)
         if new_dir != folder_path:
@@ -666,7 +716,7 @@ class PlanPage(Gtk.Stack):
             self.win.toast.show(f"Nome da pasta alterado para «{os.path.basename(new_dir)}».")
 
     def _choose_folder_dest(self, folder_path: str) -> None:
-        if not self.plan:
+        if not self.plan or not self._can_edit_folder(folder_path):
             return
         target_parent = choose_folder(self.win, "Mover pasta para dentro de…", os.path.dirname(folder_path))
         if target_parent:
@@ -791,6 +841,9 @@ class PlanPage(Gtk.Stack):
         elif raw.startswith("F:") and target_dir:
             src_parts = raw[2:].split("\x1f")
             src_dir = os.path.join(self.anchor, *src_parts)
+            if not self._can_edit_folder(src_dir):
+                context.finish(False, False, time)
+                return
             new_dir = move_folder_in_plan(self.plan, src_dir, target_dir)
             if new_dir:
                 context.finish(True, False, time)
@@ -818,7 +871,9 @@ class PlanPage(Gtk.Stack):
         else:
             key = model.get_value(it, COL_KEY).split("\x1f")
             n = model.iter_n_children(it)
-            self._show_folder_detail(key, model.get_value(it, COL_ICON) == resolve_icon("folder-new"), n)
+            # Pelo disco e não pelo ícone: sem «folder-new» no tema, os dois ícones seriam iguais.
+            new = key[0] not in (TRASH_NODE, EMPTY_NODE) and self._is_new_folder(os.path.join(self.anchor, *key))
+            self._show_folder_detail(key, new, n)
 
     def _set_detail(self, widget: Gtk.Widget) -> None:
         child = self.detail_scroll.get_child()
@@ -837,8 +892,14 @@ class PlanPage(Gtk.Stack):
         box.pack_start(icon("folder-new" if new else "folder", 64), False, False, 0)
         box.pack_start(label(key[-1], "section-title", wrap=True), False, False, 4)
         if key[0] in (TRASH_NODE, EMPTY_NODE):
-            txt = (f"Ficheiros temporários ou automáticos. Vão {TRASH_TO} do sistema, de onde os podes "
-                   "recuperar.") if key[0] == TRASH_NODE else "Pastas vazias sem nome próprio."
+            txt = "Pastas vazias sem nome próprio."
+            if key[0] == TRASH_NODE:
+                trash = [a for a in self.plan.actions if a.op == "trash"]
+                junk = any(a.kind == tx.JUNK for a in trash)
+                mine = any(a.kind != tx.JUNK for a in trash)
+                what = ("Ficheiros temporários ou automáticos e o que arrastaste para aqui" if junk and mine else
+                        "O que arrastaste para aqui" if mine else "Ficheiros temporários ou automáticos")
+                txt = f"{what}. Vai tudo {TRASH_TO} do sistema, de onde o podes recuperar."
             box.pack_start(label(txt, "dim", wrap=True), False, False, 0)
         else:
             path = os.path.join(self.anchor, *key)
@@ -848,7 +909,11 @@ class PlanPage(Gtk.Stack):
                 box.pack_start(label("Esta pasta ainda não existe e será criada.", "dim", wrap=True,
                                      margin_top=6), False, False, 0)
 
-            if (self.views.get_visible_child_name() or "after") == "after":
+            after = (self.views.get_visible_child_name() or "after") == "after"
+            if after and not new:
+                box.pack_start(label(EXISTING_FOLDER_NOTE, "small", "dim", wrap=True, margin_top=12),
+                               False, False, 0)
+            elif after:
                 box.pack_start(label("MUDAR NOME DA PASTA", "caps", margin_top=12), False, False, 0)
                 ren_row = hbox(6)
                 entry = Gtk.Entry()
@@ -867,8 +932,8 @@ class PlanPage(Gtk.Stack):
                 move_btn.set_margin_top(6)
                 box.pack_start(move_btn, False, False, 0)
 
-        box.pack_start(label("Dica: podes arrastar ficheiros ou subpastas para outra pasta na árvore à esquerda, "
-                             "ou desmarcar a caixa para excluir tudo o que está cá dentro.",
+        box.pack_start(label("Dica: podes arrastar os itens cá de dentro (e as pastas novas) para outra pasta na "
+                             "árvore à esquerda, ou desmarcar a caixa para excluir tudo o que está cá dentro.",
                              "small", "dim", wrap=True, margin_top=14), False, False, 0)
         self._set_detail(box)
 
@@ -882,7 +947,7 @@ class PlanPage(Gtk.Stack):
             box.pack_start(label("Seleciona uma pasta ou ficheiro para veres os detalhes, mudar o nome "
                                  "ou escolher outro destino.", "dim",
                                  xalign=0.5, wrap=True, justify=Gtk.Justification.CENTER), False, False, 8)
-            box.pack_start(label("Dica: também podes arrastar ficheiros e pastas diretamente na árvore.",
+            box.pack_start(label("Dica: também podes arrastar itens e pastas novas diretamente na árvore.",
                                  "small", "dim", xalign=0.5, wrap=True, justify=Gtk.Justification.CENTER),
                            False, False, 0)
             self._set_detail(box)
@@ -977,14 +1042,7 @@ class PlanPage(Gtk.Stack):
     # ================================================================== aplicar
     def _on_apply(self) -> None:
         en = self.plan.enabled()
-        moves = sum(1 for a in en if a.op in ("move", "move_dir"))
-        trash = sum(1 for a in en if a.op == "trash")
-        parts = []
-        if moves:
-            parts.append(f"{plural(moves, 'item vai ser movido', 'itens vão ser movidos')} para as novas pastas.")
-        if trash:
-            parts.append(f"{plural(trash, 'ficheiro temporário vai', 'ficheiros temporários vão')} {TRASH_TO}.")
-        parts.append("Nada é apagado definitivamente e podes anular tudo no Histórico.")
+        parts = apply_summary(en)
         if confirm(self.win, f"Aplicar {plural(len(en), 'alteração', 'alterações')}?", "\n".join(parts), "Aplicar"):
             self.win.apply_plan(en)
 

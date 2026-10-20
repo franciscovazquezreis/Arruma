@@ -20,23 +20,29 @@ from ..core.ai import RECOMMENDED_MODEL, AIError, AIStatus, LocalAI  # noqa: E40
 from ..core.db import Database  # noqa: E402
 from ..core.duplicates import find_duplicates  # noqa: E402
 from ..core.executor import Executor  # noqa: E402
-from ..core.fsutil import COMPUTER_TOKEN, check_root_allowed, plural  # noqa: E402
+from ..core.fsutil import COMPUTER_TOKEN, check_root_allowed, is_within, plural  # noqa: E402
 from ..core.planner import Action, PlanCancelled, Planner  # noqa: E402
-from ..core.scanner import ScanCancelled, ScanResult, scan  # noqa: E402
+from ..core.scanner import ScanCancelled, ScanResult, check_root_protected, scan  # noqa: E402
 from ..core.settings import Settings  # noqa: E402
 from ..core.system import (IS_LINUX, IS_MAC, TRASH_TO, license_file, ollama_install_steps,  # noqa: E402
                            third_party_notices)
 from .page_analysis import AnalysisPage  # noqa: E402
 from .page_duplicates import DuplicatesPage  # noqa: E402
-from .page_history import HistoryPage  # noqa: E402
+from .page_history import UNDONE, HistoryPage, undo_question, undo_report  # noqa: E402
 from .page_home import HomePage  # noqa: E402
 from .page_plan import PlanPage  # noqa: E402
 from .page_settings import SettingsPage  # noqa: E402
-from .widgets import (MISSING_ICONS, Throttle, Toast, add_classes, button, choose_folders, hbox, icon, label,
-                      load_css, logo, logo_pixbuf, message, open_path, open_url, run_bg, vbox)
+from .widgets import (MISSING_ICONS, Throttle, Toast, add_classes, button, choose_folders, confirm, hbox, icon,
+                      label, load_css, logo, logo_pixbuf, message, open_path, open_url, run_bg, vbox)
 
 ICON_PNG = Path(__file__).with_name("arruma.png")
 RESPONSE_NOTICES = 1
+# Tarefas que mudam ficheiros e não se interrompem a meio: o que estão a fazer e o que fica se parares.
+BUSY = {
+    "apply": ("a arrumar", "O que já foi arrumado fica no Histórico, onde o podes anular."),
+    "undo": ("a anular", "O que faltar fica no Histórico, onde podes anular o resto."),
+    "trash": (f"a enviar cópias {TRASH_TO}", "O que já foi enviado fica no Histórico, onde o podes anular."),
+}
 
 NAV_ITEMS = [
     ("home", "user-home-symbolic", "Início"),
@@ -60,6 +66,10 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         self.scan_result: ScanResult | None = None
         self.ai_status: AIStatus | None = None
         self._cancel: threading.Event | None = None
+        self._task: str | None = None  # o que o «_cancel» cancela: scan, plan, duplicates ou uma de BUSY
+        self._busy: str | None = None  # a mudar ficheiros (chave de BUSY)
+        self._closing = False  # pediste para fechar a meio: fecha quando a tarefa parar
+        self._scan_target: str | list[str] = []
         self._skip_ai: threading.Event | None = None
 
         # Barra superior (HeaderBar)
@@ -111,6 +121,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         self.add(overlay)
 
         self._setup_shortcuts()
+        self.connect("delete-event", self._on_delete)
         self.show_all()
         self.navigate("home")
         self.refresh_ai()
@@ -286,23 +297,91 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         dlg.destroy()
 
     # ------------------------------------------------------------------ tarefas
-    def cancel_task(self) -> None:
-        if self._cancel:
+    def cancel_task(self, *kinds: str) -> None:
+        """Cancela a tarefa em curso. Com «kinds», só se for de um destes tipos: o «Cancelar» de uma vista
+        nunca para o que está a decorrer noutra (por exemplo, uma arrumação)."""
+        if self._cancel and (not kinds or self._task in kinds):
             self._cancel.set()
 
     def skip_ai(self) -> None:
         if self._skip_ai:
             self._skip_ai.set()
 
-    def start_scan(self, paths: str | list[str]) -> None:
+    def _new_task(self, kind: str) -> threading.Event:
+        """Cancela o que estava a decorrer e devolve o sinal de cancelar da nova tarefa."""
+        self.cancel_task()
+        self._cancel, self._task = threading.Event(), kind
+        return self._cancel
+
+    def _task_over(self, cancel: threading.Event) -> bool:
+        """No fim de uma tarefa. Falso se outra tomou entretanto o lugar dela: a resposta já não interessa e
+        não pode mexer na janela nem no sinal de cancelar da nova."""
+        if self._cancel is not cancel:
+            return False
+        self._cancel = self._task = None
+        return True
+
+    def _refuse_if_busy(self) -> bool:
+        """A mudar ficheiros não se começa outra tarefa: o sinal de cancelar é o mesmo e interrompia a que está
+        a meio. Avisa, sem bloquear a janela."""
+        if not self._busy:
+            return False
+        self.toast.show(f"O Arruma ainda está {BUSY[self._busy][0]}. Espera que termine.")
+        return True
+
+    def _start_busy(self, kind: str) -> threading.Event:
+        """Começa a mudar ficheiros. Um plano ou uma procura de duplicados a meio é cancelado (ficaria
+        desatualizado) e a vista dele deixa de mostrar o progresso."""
+        was = self._task
+        cancel = self._new_task(kind)
+        self._busy = kind
+        if was == "plan":
+            self.plan_page.progress.stop()
+            self.plan_page.reset()
+        elif was == "duplicates":
+            self.duplicates_page.progress.stop()
+            self.duplicates_page.ready()
+        return cancel
+
+    def _end_busy(self, cancel: threading.Event) -> bool:
+        """Fim de uma tarefa que muda ficheiros. Verdadeiro se a janela vai fechar (pediste para fechar a meio)."""
+        self._busy = None
+        self._task_over(cancel)
+        if self._closing:
+            self.close()
+            return True
+        return False
+
+    def _on_delete(self, *_args) -> bool:
+        """Fechar a meio de uma arrumação (ou de uma anulação) pergunta primeiro. Para fechar, o Arruma para
+        depois do item em curso e só então fecha: nenhum ficheiro fica a meio de ser movido."""
+        if not self._busy:
+            return False
+        if not self._closing:
+            what, after = BUSY[self._busy]
+            if confirm(self, f"O Arruma ainda está {what}",
+                       f"Se fechares agora, para depois do item em curso e fecha. {after}",
+                       "Parar e fechar", destructive=True, cancel_label="Não fechar"):
+                if not self._busy:  # terminou enquanto perguntava
+                    return False
+                self._closing = True
+                self.cancel_task()
+                self.toast.show("A parar depois do item em curso…")
+        return True
+
+    def start_scan(self, paths: str | list[str], refresh: bool = False) -> None:
+        """«refresh»: depois de arrumar ou de anular, volta a analisar as mesmas pastas em segundo plano, sem
+        mudar de vista nem mexer no plano (o ecrã «Está arrumado!» continua à vista)."""
         raw_list = [str(paths)] if isinstance(paths, (str, Path)) else [str(p) for p in paths if p]
         if not raw_list:
             return
-        for p in raw_list:
-            err = check_root_allowed(p)
+        for p in raw_list if not refresh else []:  # ao repetir, as pastas já foram verificadas
+            err = check_root_allowed(p) or check_root_protected(p, self.settings.excluded)
             if err:
                 message(self, "Não é possível escolher esta pasta", err, Gtk.MessageType.WARNING)
                 return
+        if self._refuse_if_busy():
+            return
         if COMPUTER_TOKEN in raw_list or "/" in raw_list:
             title = "Todo o computador"
             scan_arg: str | list[str] = COMPUTER_TOKEN
@@ -314,16 +393,17 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             title = f"{len(raw_list)} pastas ({', '.join(names[:3])}{'…' if len(names) > 3 else ''})"
             scan_arg = raw_list
 
-        self.cancel_task()
-        cancel = threading.Event()
-        self._cancel = cancel
+        cancel = self._new_task("scan")
+        self._scan_target = scan_arg
         self.header.set_subtitle(title)
         self.analysis_page.show_progress(title)
-        self.plan_page.reset()
+        if not refresh:
+            self.plan_page.reset()
         self.duplicates_page.reset()
         self.nav_badges["plan"].set_text("")
         self.nav_badges["duplicates"].set_text("")
-        self.navigate("analysis")
+        if not refresh:
+            self.navigate("analysis")
 
         prog = Throttle(self.analysis_page.update_progress)
         st = self.settings.copy()
@@ -333,7 +413,8 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                         progress=prog, cancel=cancel)
 
         def done(res: ScanResult):
-            self._cancel = None
+            if not self._task_over(cancel):
+                return
             self.scan_result = res
             self.header.set_subtitle(res.title)
             self.nav_badges["analysis"].set_text(str(len(res.files)))
@@ -342,9 +423,17 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             self.home_page.refresh_folders()
 
         def fail(e: Exception):
-            self._cancel = None
+            if not self._task_over(cancel):
+                return
             self.analysis_page.progress.stop()
-            if isinstance(e, ScanCancelled):
+            if refresh:
+                # A análise anterior já não corresponde ao que está no disco: não volta a aparecer.
+                self.scan_result = None
+                self.nav_badges["analysis"].set_text("")
+                self.analysis_page.set_visible_child_name("empty")
+                if not isinstance(e, ScanCancelled):
+                    message(self, "Erro ao analisar a pasta", str(e), Gtk.MessageType.ERROR)
+            elif isinstance(e, ScanCancelled):
                 self.navigate("home")
             else:
                 message(self, "Erro ao analisar a pasta", str(e), Gtk.MessageType.ERROR)
@@ -352,12 +441,19 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
         run_bg(work, done, fail)
 
+    def _refresh_analysis(self) -> None:
+        """Depois de mudar ficheiros, volta a analisar as mesmas pastas em segundo plano (como depois de anular):
+        a Análise e os Duplicados mostram onde as coisas estão agora e um plano novo parte do que está no disco."""
+        sr = self.scan_result
+        if sr:
+            self.start_scan(COMPUTER_TOKEN if sr.whole_computer else list(sr.roots), refresh=True)
+
     def build_plan(self, mode: str) -> None:
-        if not self.scan_result:
+        if not self.scan_result or self._refuse_if_busy():
             return
-        self.cancel_task()
-        cancel, skip = threading.Event(), threading.Event()
-        self._cancel, self._skip_ai = cancel, skip
+        cancel = self._new_task("plan")
+        skip = threading.Event()
+        self._skip_ai = skip
         self.plan_page.show_progress()
         self.navigate("plan")
 
@@ -369,12 +465,14 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             return Planner(scan_res, st, mode, db=self.db, progress=prog, cancel=cancel, skip_ai=skip).build()
 
         def done(plan):
-            self._cancel = None
+            if not self._task_over(cancel):
+                return
             self.nav_badges["plan"].set_text(str(len(plan.actions)) if plan.actions else "")
             self.plan_page.show_plan(plan)
 
         def fail(e: Exception):
-            self._cancel = None
+            if not self._task_over(cancel):
+                return
             self.plan_page.progress.stop()
             if isinstance(e, PlanCancelled):
                 self.navigate("analysis")
@@ -386,10 +484,9 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
     def apply_plan(self, actions: list[Action]) -> None:
         plan = self.plan_page.plan
-        if not plan:
+        if not plan or self._refuse_if_busy():
             return
-        cancel = threading.Event()
-        self._cancel = cancel
+        cancel = self._start_busy("apply")
         self.plan_page.show_applying(len(actions))
         prog = Throttle(self.plan_page.update_applying)
         title = f"Arrumação de «{plan.title}»"
@@ -398,25 +495,39 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
         def work():
             return self.executor.apply(actions, plan.root, title, cleanup_dirs=plan.cleanup_dirs,
-                                       protect=protect, remove_empty=rm_empty, progress=prog, cancel=cancel)
+                                       protect=protect, remove_empty=rm_empty, progress=prog, cancel=cancel,
+                                       roots=plan.roots)
 
         def done(res):
-            self._cancel = None
+            if self._end_busy(cancel):
+                return
             self.nav_badges["plan"].set_text("")
             self.plan_page.show_done(res, plan)
             self.history_page.refresh()
             self.home_page.refresh_folders()
             self.toast.show(f"{plural(res.ok, 'alteração aplicada', 'alterações aplicadas')}.",
                             "Anular", lambda: self.undo_session(res.session_id))
+            self._refresh_analysis()
 
-        run_bg(work, done, lambda e: message(self, "Erro ao arrumar", str(e), Gtk.MessageType.ERROR))
+        def fail(e: Exception):
+            # Não se sabe até onde chegou: o plano deixa de valer e a análise volta a fazer-se.
+            if self._end_busy(cancel):
+                return
+            self.plan_page.progress.stop()
+            self.plan_page.reset()
+            self.nav_badges["plan"].set_text("")
+            self.history_page.refresh()
+            self._refresh_analysis()
+            self.navigate("analysis")
+            message(self, "Erro ao arrumar", f"{e}\n\nO que chegou a ser feito aparece no Histórico, onde o podes "
+                    "anular.", Gtk.MessageType.ERROR)
+
+        run_bg(work, done, fail)
 
     def find_duplicates(self) -> None:
-        if not self.scan_result:
+        if not self.scan_result or self._refuse_if_busy():
             return
-        self.cancel_task()
-        cancel = threading.Event()
-        self._cancel = cancel
+        cancel = self._new_task("duplicates")
         self.duplicates_page.show_progress()
         self.navigate("duplicates")
         prog = Throttle(self.duplicates_page.update_progress)
@@ -426,12 +537,14 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             return find_duplicates(files, progress=prog, cancel=cancel)
 
         def done(groups):
-            self._cancel = None
+            if not self._task_over(cancel):
+                return
             self.nav_badges["duplicates"].set_text(str(len(groups)) if groups else "")
             self.duplicates_page.show_groups(groups)
 
         def fail(e: Exception):
-            self._cancel = None
+            if not self._task_over(cancel):
+                return
             self.duplicates_page.progress.stop()
             if isinstance(e, InterruptedError):
                 self.duplicates_page.ready()
@@ -441,17 +554,20 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         run_bg(work, done, fail)
 
     def trash_duplicates(self, paths: list[str]) -> None:
-        if not self.scan_result:
+        if not self.scan_result or self._refuse_if_busy():
             return
         root = self.scan_result.root
         actions = [Action(i, "trash", p, "", tx.OTHER, 0, "Cópia duplicada", 1.0, "manual")
                    for i, p in enumerate(paths)]
         title = f"Remoção de duplicados em «{self.scan_result.title}»"
+        cancel = self._start_busy("trash")
 
         def work():
-            return self.executor.apply(actions, root, title, remove_empty=False)
+            return self.executor.apply(actions, root, title, remove_empty=False, cancel=cancel)
 
         def done(res):
+            if self._end_busy(cancel):
+                return
             removed = set(paths) - {p for p, _ in res.errors}
             self.scan_result.files = [f for f in self.scan_result.files if f.path not in removed]
             self.history_page.refresh()
@@ -459,27 +575,71 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             self.toast.show(f"{plural(res.ok, 'cópia enviada', 'cópias enviadas')} {TRASH_TO}.",
                             "Anular", lambda: self.undo_session(res.session_id))
 
-        run_bg(work, done)
+        def fail(e: Exception):
+            if self._end_busy(cancel):
+                return
+            self.history_page.refresh()
+            message(self, f"Erro ao enviar as cópias {TRASH_TO}", str(e), Gtk.MessageType.ERROR)
+
+        run_bg(work, done, fail)
 
     def undo_session(self, session_id: int) -> None:
-        def work():
-            return self.executor.undo(session_id)
+        if self._refuse_if_busy():
+            return
+        s = self.db.session(session_id)
+        if s is None:
+            return
+        if s["undone"] == UNDONE:
+            self.toast.show(f"{s['title']}: já foi anulada.")
+            return
+        title, text, ok_label = undo_question(s)
+        if not confirm(self, title, text, ok_label):
+            return
+        rescan = self._task == "scan"  # uma análise a meio é interrompida e volta a fazer-se no fim
+        cancel = self._start_busy("undo")
+        self.history_page.show_progress(s["title"])
+        self.navigate("history")
+        prog = Throttle(self.history_page.update_progress)
 
-        def done(res):
-            self.history_page.refresh()
+        def work():
+            res = self.executor.undo(session_id, progress=prog, cancel=cancel)
+            return res, [p for o in self.db.ops(session_id) for p in (o["src"], o["dst"]) if p]
+
+        def done(out):
+            res, paths = out
+            self.history_page.stop_progress()
+            if self._end_busy(cancel):
+                return
             self.home_page.refresh_folders()
+            self._refresh_after_undo(paths, rescan)
             if res.errors:
-                message(self, "Anulação concluída com avisos",
-                        f"{plural(res.ok, 'operação revertida', 'operações revertidas')}. "
-                        f"{plural(len(res.errors), 'item já tinha sido movido', 'itens já tinham sido movidos')} "
-                        "manualmente.", Gtk.MessageType.WARNING)
+                message(self, "Anulação incompleta", undo_report(res), Gtk.MessageType.WARNING)
+            elif res.cancelled:
+                self.toast.show("Anulação parada a meio. Para continuar, carrega em «Anular o resto».")
             else:
                 self.toast.show("Alterações anuladas. Tudo voltou ao local original.")
-            if self.scan_result:
-                target = COMPUTER_TOKEN if self.scan_result.whole_computer else list(self.scan_result.roots)
-                self.start_scan(target)
 
-        run_bg(work, done)
+        def fail(e: Exception):
+            self.history_page.stop_progress()
+            if self._end_busy(cancel):
+                return
+            self._refresh_after_undo(None, rescan)
+            message(self, "Erro ao anular", f"{e}\n\nO que ficou por anular continua no Histórico.",
+                    Gtk.MessageType.ERROR)
+
+        run_bg(work, done, fail)
+
+    def _refresh_after_undo(self, paths: list[str] | None, rescan: bool) -> None:
+        """Volta a analisar as pastas da análise atual só se a anulação mexeu nelas (sem «paths», por precaução,
+        sempre); uma anulação de outras pastas deixa a análise e o plano como estão. Uma análise interrompida
+        para anular faz-se de novo."""
+        sr = self.scan_result
+        if rescan:
+            self.plan_page.reset()
+            self.start_scan(self._scan_target, refresh=True)
+        elif sr and (paths is None or sr.whole_computer or any(is_within(p, r) for p in paths for r in sr.roots)):
+            self.plan_page.reset()  # o plano (ou o «Está arrumado!») partia do que foi desfeito
+            self._refresh_analysis()
 
 
 def icone_do_tema_abre() -> bool:

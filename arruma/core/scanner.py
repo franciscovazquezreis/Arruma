@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import Callable
 
 from . import taxonomy as tx
-from .fsutil import HOME, display_path, is_generic_dir_name, is_within, normalize_roots, split_ext
-from .system import PROTECTED_NAMES, is_hidden_entry, is_link_entry, is_package_dir
+from .fsutil import (COMPUTER_TOKEN, HOME, common_root, display_path, is_generic_dir_name, is_within,
+                     normalize_roots, path_key, split_ext, user_dirs)
+from .system import (PROTECTED_NAMES, is_filesystem_root, is_hidden_entry, is_link_entry, is_package_dir,
+                     is_whole_computer_path)
 
 # Pastas de projetos de programação: nunca são desmontadas.
 PROJECT_MARKERS = {
@@ -124,8 +126,8 @@ class ScanResult:
             return "Todo o computador"
         if len(self.roots) == 1:
             return os.path.basename(self.roots[0]) or self.roots[0]
-        if len(self.roots) == 2:
-            return f"{os.path.basename(self.roots[0])} e {os.path.basename(self.roots[1])}"
+        if len(self.roots) == 2:  # a raiz de um disco («D:\») não tem nome: fica o caminho
+            return " e ".join(os.path.basename(r) or r for r in self.roots)
         return f"{len(self.roots)} pastas selecionadas"
 
     @property
@@ -257,7 +259,9 @@ def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
         c[1] += f.size
         total += f.size
 
-    primary_root = roots[0] if len(roots) == 1 else os.path.commonpath(roots)
+    # Pasta comum às pastas analisadas (aparece no histórico). No Windows, pastas em discos diferentes
+    # (C: e D:) não têm pasta comum: fica a primeira.
+    primary_root = roots[0] if len(roots) == 1 else (common_root(roots) or roots[0])
     if progress is not None:
         progress(len(files), primary_root)
 
@@ -269,3 +273,39 @@ def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
 
 def is_home(path: str) -> bool:
     return os.path.realpath(path) == os.path.realpath(HOME)
+
+
+# Pastas pessoais (as do Início) e discos: ficheiros soltos como «Makefile» ou «package.json», comuns nas
+# Transferências, não fazem deles projetos de programação, e o nome nunca os protege.
+_PERSONAL_DIRS = ("DESKTOP", "DOWNLOAD", "DOCUMENTS", "MUSIC", "PICTURES", "VIDEOS")
+
+
+def check_root_protected(path: str | Path, excluded: list[str] | None = None) -> str | None:
+    """Mensagem de recusa se a pasta escolhida estiver protegida (pasta sincronizada, projeto de
+    programação, biblioteca de outro programa, «Pastas a ignorar sempre»…): a mesma proteção que teria
+    dentro de outra pasta escolhida. As pastas protegidas lá dentro continuam só a ser ignoradas."""
+    if str(path) in (COMPUTER_TOKEN, "/"):
+        return None
+    p = os.path.normpath(str(Path(path).expanduser().resolve()))
+    if is_whole_computer_path(p):
+        return None
+    for ex in excluded or []:
+        ex = os.path.normpath(str(Path(ex).expanduser()))
+        if path_key(p) == path_key(ex):
+            return ("Esta pasta está em «Pastas a ignorar sempre», nas Definições. Para a arrumares, "
+                    "tira-a primeiro dessa lista.")
+        if is_within(p, ex):
+            return (f"Esta pasta fica dentro de «{os.path.basename(ex) or ex}», que está em «Pastas a ignorar "
+                    "sempre», nas Definições. Para a arrumares, tira-a primeiro dessa lista.")
+    try:
+        with os.scandir(p) as it:
+            names = [e.name for e in it]
+    except OSError:
+        return None  # check_root_allowed já diz se a pasta não existe ou não se pode ler
+    dirs = user_dirs()
+    personal = is_home(p) or is_filesystem_root(p) or os.path.ismount(p) or any(
+        k in dirs and path_key(p) == path_key(os.path.realpath(dirs[k])) for k in _PERSONAL_DIRS)
+    reason = _protection_reason(p, os.path.basename(p), names, is_root=personal)
+    if reason:
+        return f"Esta pasta está protegida: {reason}. Por segurança, o Arruma não lhe toca."
+    return None

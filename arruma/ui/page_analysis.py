@@ -32,7 +32,7 @@ class AnalysisPage(Gtk.Stack):
         self.add_named(Placeholder("folder-symbolic", "Ainda não analisaste nenhuma pasta",
                                    "Escolhe uma ou mais pastas no Início para veres o que lá está.",
                                    ("Ir para o Início", lambda: win.navigate("home"))), "empty")
-        self.progress = ProgressPanel(on_cancel=win.cancel_task)
+        self.progress = ProgressPanel(on_cancel=lambda: win.cancel_task("scan"))
         self.add_named(self.progress, "progress")
 
         self.scroller = Gtk.ScrolledWindow()

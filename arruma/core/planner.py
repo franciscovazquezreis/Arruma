@@ -19,7 +19,8 @@ from .ai import PROMPT_VERSION, AIError, LocalAI
 from .classifier import KIND_BASE, Placement, classify_simple, document_placement
 from .db import Database
 from .extract import date_from_name, extract_text, image_info, plausible
-from .fsutil import is_within, path_key, plural, sanitize_name, split_ext, unique_path, user_dirs
+from .fsutil import (is_generic_dir_name, is_within, path_key, plural, sanitize_name, split_ext, unique_path,
+                     user_dirs)
 from .system import is_external_mount
 from .scanner import FileItem, FolderInfo, ScanResult, is_home
 from .settings import Settings
@@ -92,8 +93,8 @@ class Plan:
             return "Todo o computador"
         if len(self.roots) == 1:
             return os.path.basename(self.roots[0]) or self.roots[0]
-        if len(self.roots) == 2:
-            return f"{os.path.basename(self.roots[0])} e {os.path.basename(self.roots[1])}"
+        if len(self.roots) == 2:  # a raiz de um disco («D:\») não tem nome: fica o caminho
+            return " e ".join(os.path.basename(r) or r for r in self.roots)
         return f"{len(self.roots)} pastas"
 
     def enabled(self) -> list[Action]:
@@ -245,7 +246,9 @@ class Planner:
                     queue.append((child, "inbox"))
                     continue
                 if ci.total_files == 0:
-                    if ci.generic or inbox_like and self._tree_is_empty(ci):
+                    # Só pastas genéricas («Nova pasta») sem ficheiros nenhuns (nem ocultos ou protegidos).
+                    # As vazias com nome próprio ficam, como nas outras pastas.
+                    if ci.generic and self._is_empty_generic_tree(ci):
                         empty_generic.append(child)
                     continue
                 if ci.generic:
@@ -257,9 +260,10 @@ class Planner:
                     respected.append((child, "Pasta com nome próprio: fica como está."))
         return individual, units, respected, flatten, empty_generic
 
-    def _tree_is_empty(self, ci: FolderInfo) -> bool:
-        for dirpath, _dirs, files in os.walk(ci.path):
-            if files:
+    def _is_empty_generic_tree(self, ci: FolderInfo) -> bool:
+        """Sem ficheiros nenhuns e só com subpastas também genéricas (remover a pasta remove-as)."""
+        for _dirpath, dirs, files in os.walk(ci.path):
+            if files or not all(is_generic_dir_name(d) for d in dirs):
                 return False
         return True
 
@@ -485,9 +489,16 @@ class Planner:
             taken.add(path_key(final))
             add("move_dir", u.path, str(final), dominant, u.total_size, p, count=u.total_files)
 
-        for d in empty_generic:
-            add("rmdir", d, "", tx.OTHER, 0,
-                Placement("", (), reason="Pasta vazia sem nome próprio.", confidence=0.95))
+        # Pastas vazias: só com a definição ligada, e nunca as que vão receber ficheiros deste plano
+        # (ex.: «Documentos/Outros» vazia quando há documentos sem área).
+        if st.remove_empty_dirs:
+            dst_dirs = {path_key(os.path.dirname(a.dst)) for a in actions if a.dst}
+            for d in empty_generic:
+                dk = path_key(d)
+                if any(k == dk or k.startswith(dk + os.sep) for k in dst_dirs):
+                    continue
+                add("rmdir", d, "", tx.OTHER, 0,
+                    Placement("", (), reason="Pasta vazia sem nome próprio.", confidence=0.95))
 
         order = {"move_dir": 0, "move": 1, "trash": 2, "rmdir": 3}
         actions.sort(key=lambda a: (order[a.op], a.dst.lower(), a.src.lower()))
@@ -669,7 +680,12 @@ def _rewrite_prefix(plan: Plan, old_dir: str, new_dir: str, reason: str) -> None
 
 
 def rename_folder_in_plan(plan: Plan, old_dir: str, new_name: str) -> str:
-    """Altera o nome de uma pasta sugerida no plano e atualiza todos os itens lá dentro."""
+    """Altera o nome de uma pasta sugerida no plano e atualiza todos os itens lá dentro.
+
+    Só pastas novas: numa pasta que já existe, só os itens do plano iriam para outra pasta e a pasta
+    real ficava com o nome antigo e com o que já lá estava. Aí não muda nada (devolve «old_dir»)."""
+    if os.path.isdir(old_dir):
+        return old_dir
     clean = sanitize_name(new_name)
     parent = os.path.dirname(os.path.normpath(old_dir))
     new_dir = os.path.join(parent, clean)
@@ -678,7 +694,11 @@ def rename_folder_in_plan(plan: Plan, old_dir: str, new_name: str) -> str:
 
 
 def move_folder_in_plan(plan: Plan, src_dir: str, target_parent_dir: str) -> str | None:
-    """Move uma pasta sugerida inteira para dentro de outra pasta no plano."""
+    """Move uma pasta sugerida inteira para dentro de outra pasta no plano.
+
+    Só pastas novas, pela mesma razão que rename_folder_in_plan: uma pasta que já existe não sai do sítio."""
+    if os.path.isdir(src_dir):
+        return None
     src_dir = os.path.normpath(src_dir)
     target_parent_dir = os.path.normpath(target_parent_dir)
     if src_dir == target_parent_dir or is_within(target_parent_dir, src_dir):

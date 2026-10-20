@@ -83,7 +83,8 @@ class SettingsPage(Gtk.ScrolledWindow):
                      "Ficheiros como Thumbs.db, .DS_Store ou transferências incompletas antigas.",
                      self.clean_junk),
             pref_row("Remover pastas genéricas que fiquem vazias",
-                     "Pastas como «Nova pasta» depois de os seus ficheiros serem arrumados.",
+                     "Pastas como «Nova pasta» que já estavam vazias ou que ficam vazias depois de os seus "
+                     "ficheiros serem arrumados. As pastas com nome próprio nunca são removidas.",
                      self.remove_empty),
             pref_row("Incluir ficheiros e pastas ocultos (começados por ponto)",
                      "Desligado por defeito para não mexer em configurações.",
