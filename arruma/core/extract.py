@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-import functools
 import html
 import re
 import tempfile
+import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -51,18 +51,29 @@ def _strings(path: str, limit: int) -> str:
     return _clean(" ".join(parts), limit)
 
 
-# Idiomas que o OCR usa, se estiverem instalados no Tesseract, pela ordem em que são tentados (o
-# inglês entra sempre como apoio). O Tesseract lê mal vários idiomas juntos: o primeiro manda e os
-# acentos dos outros perdem-se («für» sai «fur»). Por isso lê-se em português e, se essa leitura
-# não for segura, em cada um dos outros idiomas, e fica a de maior confiança. Não se usam todos os
-# idiomas instalados porque o Homebrew, no macOS, instala mais de cem.
+# Idiomas que o OCR usa, se estiverem instalados no Tesseract (o inglês entra sempre como apoio).
+# Não se usam todos os instalados porque o Homebrew, no macOS, instala mais de cem.
 OCR_LANGUAGES = ("por", "spa", "fra", "deu", "ita", "eng")
-_OCR_SURE = 94.0  # confiança média (0 a 100) a partir da qual a primeira leitura chega
+
+# Palavras pequenas e frequentes de cada idioma, para reconhecer o idioma de um texto. Ficam de fora
+# as que o português também usa («de», «que», «a», «para», «está», «das»…).
+_FUNCTION_WORDS = {
+    "por": {"o", "os", "as", "do", "da", "dos", "das", "em", "na", "nas", "nos", "um", "uma", "com",
+            "não", "ao", "aos", "pelo", "pela", "à", "é", "são", "ou"},
+    "spa": {"el", "los", "las", "del", "y", "es", "muy", "pero", "sus"},
+    "fra": {"le", "les", "des", "du", "et", "est", "une", "pour", "qui", "dans", "au", "aux", "sur",
+            "pas", "ne", "ce", "avec", "vous", "nous"},
+    "deu": {"der", "die", "und", "ist", "nicht", "für", "fur", "mit", "den", "dem", "ein", "eine", "zu",
+            "von", "auf", "im", "sich", "sie", "wir", "bei"},
+    "ita": {"il", "di", "della", "delle", "dello", "dei", "degli", "gli", "che", "per", "sono", "nel",
+            "nella", "alla", "alle"},
+}
+_WORD = re.compile(r"[^\W\d_]+")
 
 
-@functools.lru_cache(maxsize=4)
 def _tesseract_languages(tesseract: str) -> tuple[str, ...]:
-    """Idiomas instalados no Tesseract (vazio se não for possível sabê-lo)."""
+    """Idiomas instalados no Tesseract (vazio se não for possível sabê-lo). Lê-se de cada vez, para
+    contar com os que forem instalados com o Arruma aberto."""
     listing = run_quiet([tesseract, "--list-langs"], 20).splitlines()
     return tuple(line.strip() for line in listing[1:] if line.strip())
 
@@ -92,7 +103,23 @@ def _tsv_reading(tsv: str) -> tuple[str, float]:
     return " ".join(words), (sum(confidences) / len(confidences) if confidences else 0.0)
 
 
+def _foreign_language(text: str, candidates: list[str]) -> str | None:
+    """O idioma de candidates em que o texto parece estar escrito, se for claramente outro que não
+    o português (tem mais palavras pequenas desse idioma do que portuguesas, e pelo menos 3)."""
+    words = _WORD.findall(text.lower())
+    count = {lang: sum(word in _FUNCTION_WORDS[lang] for word in words) for lang in ["por", *candidates]}
+    best = max(candidates, key=lambda lang: count[lang], default=None)
+    if best is None or count[best] < 3 or count[best] <= count["por"]:
+        return None
+    return best
+
+
 def _ocr_image(tesseract: str, image: str, limit: int) -> str:
+    """Lê a imagem em português e, só se o texto lido mostrar que é de outro idioma instalado, lê-a
+    também nesse idioma. O Tesseract lê mal vários idiomas juntos (o primeiro manda e os acentos dos
+    outros perdem-se: «für» sai «fur»), e a confiança de cada idioma não chega para escolher: numa
+    fotocópia ou num recibo cheio de números ficam todas próximas e um idioma estrangeiro pode
+    ganhar por décimas, estragando o «ç» e o «ã» de um documento português."""
     langs = ocr_languages()
     if not langs:  # não se sabe que idiomas há (Tesseract antigo): como antes
         for lang in ("por+eng", "eng"):
@@ -100,17 +127,21 @@ def _ocr_image(tesseract: str, image: str, limit: int) -> str:
             if text.strip():
                 return _clean(text, limit)
         return ""
-    primary = [lang for lang in langs if lang != "eng"] or ["eng"]
     support = "+eng" if "eng" in langs else ""
-    best, best_confidence = "", -1.0
-    for i, lang in enumerate(primary):
-        code = lang if lang == "eng" else lang + support
-        text, confidence = _tsv_reading(run_quiet([tesseract, image, "-", "-l", code, "tsv"], 90))
-        if text and confidence > best_confidence:
-            best, best_confidence = text, confidence
-        if i == 0 and confidence >= _OCR_SURE:
-            break
-    return _clean(best, limit)
+    first = "por" if "por" in langs else next((lang for lang in langs if lang != "eng"), "eng")
+    code = first if first == "eng" else first + support
+    start = time.monotonic()
+    text, confidence = _tsv_reading(run_quiet([tesseract, image, "-", "-l", code, "tsv"], 90))
+    others = [lang for lang in langs if lang not in ("por", "eng", first)]
+    if not text or not others or time.monotonic() - start > 30:
+        return _clean(text, limit)
+    other = _foreign_language(text, others)
+    if other:
+        other_text, other_confidence = _tsv_reading(
+            run_quiet([tesseract, image, "-", "-l", other + support, "tsv"], 90))
+        if other_text and other_confidence > confidence:
+            text = other_text
+    return _clean(text, limit)
 
 
 def _ocr_pdf(path: str, limit: int) -> str:

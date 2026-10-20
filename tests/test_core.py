@@ -244,13 +244,14 @@ def _tsv(words: list[tuple[str, float]]) -> str:
 
 
 class OcrLanguageTests(unittest.TestCase):
-    """O OCR lê em português e, se a leitura não for segura, nos outros idiomas instalados."""
+    """O OCR lê em português e só lê noutro idioma quando o texto mostra que é desse idioma."""
+
+    PT = "Contrato de arrendamento entre o senhorio e a arrendatária, com renda paga ao dia 8 pela conta do banco"
+    ES = "Contrato de arrendamiento entre el señor y la señora, con los pagos del mes y las cuentas del banco"
 
     def setUp(self):
         from arruma.core import extract
         self.extract = extract
-        extract._tesseract_languages.cache_clear()
-        self.addCleanup(extract._tesseract_languages.cache_clear)
         self.calls: list[list[str]] = []
 
     def run_ocr(self, installed: list[str], readings: dict[str, str]) -> str:
@@ -263,28 +264,52 @@ class OcrLanguageTests(unittest.TestCase):
                 mock.patch.object(self.extract, "run_quiet", side_effect=fake_run):
             return self.extract._ocr_image("tesseract", "p.png", 2000)
 
+    def reads(self) -> list[str]:
+        return [c[c.index("-l") + 1] for c in self.calls if "-l" in c]
+
     def test_tsv_text_and_confidence(self):
         text, confidence = self.extract._tsv_reading(_tsv([("Contrato", 96.0), ("de", 90.0)]))
         self.assertEqual(text, "Contrato de")
         self.assertAlmostEqual(confidence, 93.0)
         self.assertEqual(self.extract._tsv_reading(""), ("", 0.0))
 
-    def test_portuguese_reading_that_is_sure_is_the_only_one(self):
-        text = self.run_ocr(["eng", "osd", "por", "spa", "deu"], {"por+eng": _tsv([("Fatura", 96.0), ("n.º", 95.0)])})
-        self.assertEqual(text, "Fatura n.º")
-        reads = [c[c.index("-l") + 1] for c in self.calls if "-l" in c]
-        self.assertEqual(reads, ["por+eng"])
+    def test_portuguese_text_is_read_once_even_with_low_confidence(self):
+        # Numa fotocópia, outro idioma pode ter mais confiança por décimas: não conta.
+        words = [(w, 85.0) for w in self.PT.split()]
+        text = self.run_ocr(["deu", "eng", "fra", "ita", "osd", "por", "spa"],
+                            {"por+eng": _tsv(words), "fra+eng": _tsv([(w, 86.0) for w in self.PT.split()])})
+        self.assertEqual(text, self.PT)
+        self.assertEqual(self.reads(), ["por+eng"])
 
-    def test_other_languages_are_tried_and_the_surest_wins(self):
-        text = self.run_ocr(["deu", "eng", "fra", "osd", "por", "spa"], {
-            "por+eng": _tsv([("Logrono", 89.0)]),
-            "spa+eng": _tsv([("Logroño", 96.5)]),
-            "fra+eng": _tsv([("Logrono", 91.0)]),
-            "deu+eng": _tsv([("Logrono", 90.0)]),
+    def test_spanish_text_is_read_again_in_spanish(self):
+        read_as_portuguese = self.ES.replace("señor", "senor").replace("señora", "senora")
+        text = self.run_ocr(["eng", "osd", "por", "spa", "fra"], {
+            "por+eng": _tsv([(w, 89.0) for w in read_as_portuguese.split()]),
+            "spa+eng": _tsv([(w, 96.0) for w in self.ES.split()]),
         })
-        self.assertEqual(text, "Logroño")
-        reads = [c[c.index("-l") + 1] for c in self.calls if "-l" in c]
-        self.assertEqual(reads, ["por+eng", "spa+eng", "fra+eng", "deu+eng"])  # o italiano não está instalado
+        self.assertEqual(text, self.ES)
+        self.assertEqual(self.reads(), ["por+eng", "spa+eng"])
+
+    def test_foreign_reading_is_kept_only_if_surer(self):
+        text = self.run_ocr(["eng", "por", "spa"], {
+            "por+eng": _tsv([(w, 90.0) for w in self.ES.split()]),
+            "spa+eng": _tsv([(w, 80.0) for w in self.ES.replace("señor", "sefior").split()]),
+        })
+        self.assertEqual(text, self.ES)  # a leitura em português
+        self.assertEqual(self.reads(), ["por+eng", "spa+eng"])
+
+    def test_language_not_installed_is_not_tried(self):
+        self.run_ocr(["eng", "por", "fra"], {"por+eng": _tsv([(w, 89.0) for w in self.ES.split()])})
+        self.assertEqual(self.reads(), ["por+eng"])
+
+    def test_language_detection(self):
+        guess = self.extract._foreign_language
+        self.assertIsNone(guess(self.PT, ["spa", "fra", "deu", "ita"]))
+        self.assertEqual(guess(self.ES, ["spa", "fra", "deu", "ita"]), "spa")
+        self.assertEqual(guess("Die Miete ist bis zum dritten Werktag auf das Konto des Vermieters mit der Kaution", ["spa", "deu"]), "deu")
+        self.assertEqual(guess("Le loyer est fixé à 720 euros, payable avant le cinq de chaque mois par virement sur le compte", ["fra", "ita"]), "fra")
+        self.assertEqual(guess("Il canone mensile è stabilito in 690 euro, da pagare entro il giorno cinque di ogni mese per bonifico della banca", ["ita", "spa"]), "ita")
+        self.assertIsNone(guess("1234 56,78 € 2025-03-01", ["spa"]))
 
     def test_only_english_installed(self):
         text = self.run_ocr(["eng", "osd"], {"eng": _tsv([("Invoice", 92.0)])})
@@ -304,16 +329,17 @@ class OcrLanguageTests(unittest.TestCase):
             font = ImageFont.truetype("DejaVuSerif.ttf", 30)
         except (ImportError, OSError):
             self.skipTest("sem o Pillow ou a letra DejaVu")
+        lines = ["En Logroño, a 12 de mayo de 2025, el señor", "Íñigo Muñoz Peña y la señora Begoña Núñez",
+                 "acuerdan el alquiler del piso de la calle Mayor."]
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "es.png"
-            img = Image.new("L", (1240, 300), 255)
-            for i, line in enumerate(["En Logroño, a 12 de mayo de 2025, el señor", "Íñigo Muñoz Peña y la señora Begoña Núñez"]):
+            img = Image.new("L", (1240, 380), 255)
+            for i, line in enumerate(lines):
                 ImageDraw.Draw(img).text((60, 60 + i * 90), line, font=font, fill=0)
             img.save(image)
             text = extract._ocr_image(shutil.which("tesseract"), str(image), 2000)
         for word in ("Logroño", "señor", "Muñoz", "Begoña"):
             self.assertIn(word, text)
-
 
 if __name__ == "__main__":
     unittest.main()

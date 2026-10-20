@@ -89,7 +89,8 @@ class SettingsPage(Gtk.ScrolledWindow):
                      "Desligado por defeito para não mexer em configurações.",
                      self.include_hidden),
             pref_row("Leitura de digitalizações (OCR)",
-                     "Permite ler PDF digitalizados sem texto selecionável, nos idiomas instalados no Tesseract.",
+                     "Permite ler PDF digitalizados sem texto selecionável, em português e, se instalares esses "
+                     "idiomas no Tesseract, em espanhol, francês, alemão ou italiano.",
                      ocr_pill),
         ]), False, False, 0)
 

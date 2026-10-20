@@ -479,7 +479,7 @@ def ollama_install_steps(model: str) -> tuple[str, str]:
 
 def ocr_install_hint() -> str:
     if IS_WINDOWS:
-        return "opcional: instala o Tesseract OCR para Windows com o idioma português e os dos teus documentos"
+        return "opcional: instala o Tesseract OCR para Windows com o idioma português"
     if IS_MAC:
         return "opcional: brew install tesseract tesseract-lang poppler"
-    return "opcional: sudo apt install tesseract-ocr-por (e, para outros idiomas, tesseract-ocr-spa, -fra, -deu ou -ita)"
+    return "opcional: sudo apt install tesseract-ocr-por"
