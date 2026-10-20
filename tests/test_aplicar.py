@@ -160,7 +160,7 @@ class HistoryTests(unittest.TestCase):
         cancel = threading.Event()
 
         def progress(n, total, path):
-            if n == 2:
+            if n == 1:  # pede para parar durante o 2.º item: esse ainda acaba, o 3.º já não começa
                 cancel.set()
         first = self.ex.undo(res.session_id, progress=progress, cancel=cancel)
         self.assertTrue(first.cancelled)
@@ -181,6 +181,19 @@ class HistoryTests(unittest.TestCase):
         undo = self.ex.undo(res.session_id)
         self.assertEqual(undo.errors, [(str(self.files[2]), "O ficheiro já não está onde foi colocado.")])
         self.assertEqual(self.db.session(res.session_id)["n_left"], 1)
+
+    def test_undo_stopped_by_an_unexpected_error_keeps_track(self):
+        res = self.ex.apply(self.actions(), str(self.root), "teste")
+
+        def progress(n, total, path):
+            if n == 2:
+                raise Interrupted()
+        with self.assertRaises(Interrupted):
+            self.ex.undo(res.session_id, progress=progress)
+        s = self.db.session(res.session_id)
+        self.assertEqual((s["undone"], s["n_left"]), (2, 2))  # «anulada em parte»: dá para anular o resto
+        self.assertEqual(self.ex.undo(res.session_id).errors, [])
+        self.assertTrue(all(f.exists() for f in self.files))
 
     def test_nothing_undone_keeps_the_session_as_it_was(self):
         res = self.ex.apply(self.actions()[:1], str(self.root), "teste")
@@ -292,13 +305,17 @@ class WindowTests(unittest.TestCase):
 
     def test_nothing_interrupts_the_apply(self):
         plan = self.build_plan()
+        session = self.win.executor.apply([], str(self.root), "outra")  # uma sessão qualquer para anular
         self.slow_moves()
         self.win.apply_plan(plan.enabled())
         cancel = self.win._cancel
-        session = self.win.executor.apply([], str(self.root), "outra")  # uma sessão qualquer para anular
+        chooser = mock.patch.object(self.app, "choose_folders", side_effect=AssertionError("não devia abrir"))
+        chooser.start()
+        self.addCleanup(chooser.stop)
         for attempt in (lambda: self.win.start_scan(str(self.root)), self.win.find_duplicates,
                         lambda: self.win.build_plan("inside"), lambda: self.win.undo_session(session.session_id),
-                        lambda: self.win.trash_duplicates([str(self.root / "fatura_4.txt")])):
+                        lambda: self.win.trash_duplicates([str(self.root / "fatura_4.txt")]),
+                        self.win._choose_folder_header, lambda: self.win.apply_plan(plan.enabled())):
             attempt()
             self.assertFalse(cancel.is_set())
             self.assertEqual(self.win.toast.text.get_text(), "O Arruma ainda está a arrumar. Espera que termine.")
@@ -313,12 +330,16 @@ class WindowTests(unittest.TestCase):
 
     def test_closing_while_applying(self):
         plan = self.build_plan()
+        self.assertFalse(self.win._on_delete())  # sem nada a decorrer, fecha logo, sem perguntar
+        self.assertEqual(self.questions, [])
         self.slow_moves(0.2)
         self.win.apply_plan(plan.enabled())
         cancel = self.win._cancel
         self.assertTrue(pump(lambda: len(self.moved()) < 6, 5))
         self.answers = [False]  # «Não fechar»
-        self.assertTrue(self.win._on_delete())
+        self.win.close()  # o botão de fechar da janela (ou Ctrl+Q)
+        self.assertTrue(pump(lambda: self.questions, 5))
+        pump(lambda: False, 0.1)
         self.assertEqual(self.questions[-1][0], "O Arruma ainda está a arrumar")
         self.assertEqual(self.questions[-1][2:], ("Parar e fechar", "Não fechar"))
         self.assertFalse(cancel.is_set())
@@ -380,7 +401,8 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(self.win.plan_page.get_visible_child_name(), "empty")
         self.assertEqual(Database(self.tmp / "historico.db").session(sid)["undone"], 2)
         labels = [w.get_text() for w in self.walk(self.win.history_page.list, Gtk.Label)]
-        buttons = [b.get_label() for b in self.walk(self.win.history_page.list, Gtk.Button)]
+        buttons = [w.get_text() for b in self.walk(self.win.history_page.list, Gtk.Button)
+                   for w in self.walk(b, Gtk.Label)]
         self.assertIn("Anulada em parte", labels)
         self.assertIn("Anular o resto", buttons)
         blocker.unlink()
@@ -420,6 +442,69 @@ class WindowTests(unittest.TestCase):
         self.assertTrue(pump(lambda: self.win._task is None))
         self.win.find_duplicates()  # a janela não ficou presa
         self.assertEqual(self.win._task, "duplicates")
+
+    def test_apply_error_half_way_keeps_what_was_done_undoable(self):
+        plan = self.build_plan()
+        old = self.win.scan_result
+        with mock.patch.object(self.win.db, "finish_session", side_effect=sqlite3.OperationalError("disk full")):
+            self.win.apply_plan(plan.enabled())
+            self.assertTrue(pump(lambda: self.messages))
+        self.assertEqual(self.messages[-1][0], "Erro ao arrumar")
+        self.assertIn("O que chegou a ser feito aparece no Histórico", self.messages[-1][1])
+        self.assertEqual(self.moved(), [])  # os ficheiros foram todos movidos antes do erro
+        s = Database(self.tmp / "historico.db").sessions()[0]
+        self.assertEqual((s["n_ok"], s["finished"]), (len(plan.actions), 0))
+        self.win.navigate("history")
+        self.assertTrue(pump(lambda: self.win.history_page.get_visible_child_name() == "content", 2))
+        subtitles = [w.get_text() for w in self.walk(self.win.history_page.list, Gtk.Label)]
+        self.assertTrue(any("interrompida" in t for t in subtitles))
+        self.assertTrue(pump(lambda: self.win.scan_result is not old and self.win._task is None))
+        self.assertTrue(all(os.path.exists(f.path) for f in self.win.scan_result.files))
+        self.win.undo_session(s["id"])
+        self.assertTrue(pump(lambda: self.win.toast.text.get_text().startswith("Alterações anuladas")))
+        self.assertEqual(sorted(self.moved()), sorted(os.path.basename(a.src) for a in plan.actions))
+
+    def test_stopping_the_apply_says_so(self):
+        plan = self.build_plan()
+        self.slow_moves(0.15)
+        self.win.apply_plan(plan.enabled())
+        self.assertTrue(pump(lambda: len(self.moved()) < 6, 5))
+        cancel_btn, = [b for b in self.walk(self.win.plan_page.progress, Gtk.Button) if b.get_label() == "Cancelar"]
+        cancel_btn.clicked()
+        self.assertTrue(pump(lambda: self.win.plan_page.get_visible_child_name() == "done"))
+        labels = [w.get_text() for w in self.walk(self.win.plan_page.done_box, Gtk.Label)]
+        self.assertIn("Arrumação parada a meio", labels)
+        self.assertNotIn("Está arrumado!", labels)
+        self.assertTrue(any("O resto ficou como estava" in t for t in labels))
+        self.assertGreater(len(self.moved()), 0)
+        s = Database(self.tmp / "historico.db").sessions()[0]
+        self.assertGreater(s["n_ok"], 0)
+        self.assertEqual(s["finished"], 1)
+
+    def test_undo_interrupts_and_repeats_an_analysis(self):
+        from arruma.core.scanner import ScanCancelled
+        other = self.tmp / "Outra"
+        src = write(other / "fatura.txt")
+        res = self.win.executor.apply([move(0, src, other / "Documentos" / "fatura.txt")], str(other), "Outra")
+        real_scan = self.app.scan
+        calls = []
+
+        def scan(target, *args, **kwargs):
+            calls.append(target)
+            if len(calls) == 1:  # a primeira fica a meio até ser cancelada
+                while not kwargs["cancel"].is_set():
+                    time.sleep(0.01)
+                raise ScanCancelled()
+            return real_scan(target, *args, **kwargs)
+        with mock.patch.object(self.app, "scan", scan):
+            self.win.start_scan(str(self.root))
+            self.assertEqual(self.win._task, "scan")
+            self.win.undo_session(res.session_id)
+            self.assertTrue(pump(lambda: len(calls) == 2 and self.win._task is None))
+        self.assertEqual(calls, [str(self.root), str(self.root)])
+        self.assertEqual(self.win.analysis_page.get_visible_child_name(), "content")
+        self.assertEqual(self.win.stack.get_visible_child_name(), "history")
+        self.assertTrue(src.exists())
 
     def walk(self, widget, kind):
         found = [widget] if isinstance(widget, kind) else []

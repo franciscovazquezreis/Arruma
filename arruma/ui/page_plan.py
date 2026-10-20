@@ -1052,11 +1052,17 @@ class PlanPage(Gtk.Stack):
             self.done_box.remove(c)
         box = vbox(12, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         box.set_size_request(520, -1)
-        box.pack_start(icon("emblem-ok-symbolic", 84, "success-icon"), False, False, 0)
-        box.pack_start(label("Está arrumado!", "hero-title", xalign=0.5), False, False, 0)
-        box.pack_start(label(f"{plural(res.ok, 'alteração aplicada', 'alterações aplicadas')} "
-                             f"({human_size(res.bytes_moved)} organizados).", "subtitle", xalign=0.5),
-                       False, False, 0)
+        done = (f"{plural(res.ok, 'alteração aplicada', 'alterações aplicadas')} "
+                f"({human_size(res.bytes_moved)} organizados)")
+        if res.cancelled:  # carregaste em «Cancelar» a meio
+            box.pack_start(icon("dialog-information-symbolic", 84, "insight-icon"), False, False, 0)
+            box.pack_start(label("Arrumação parada a meio", "hero-title", xalign=0.5), False, False, 0)
+            box.pack_start(label(f"{done} antes de parares. O resto ficou como estava.", "subtitle", xalign=0.5,
+                                 wrap=True, justify=Gtk.Justification.CENTER), False, False, 0)
+        else:
+            box.pack_start(icon("emblem-ok-symbolic", 84, "success-icon"), False, False, 0)
+            box.pack_start(label("Está arrumado!", "hero-title", xalign=0.5), False, False, 0)
+            box.pack_start(label(f"{done}.", "subtitle", xalign=0.5), False, False, 0)
         if res.errors:
             exp = Gtk.Expander(label=plural(len(res.errors), "item não pôde ser alterado", "itens não puderam ser alterados"))
             lst = vbox(4, margin_top=6)
@@ -1073,9 +1079,12 @@ class PlanPage(Gtk.Stack):
         row.pack_start(button("Arrumar outra pasta", None, "suggested-action",
                               on_click=lambda: self.win.navigate("home")), False, False, 0)
         box.pack_start(row, False, False, 0)
-        box.pack_start(label("Dica: volta a analisar daqui a umas semanas; o Arruma respeita o que já está "
-                             "arrumado e só trata do que é novo.", "small", "dim", xalign=0.5, wrap=True,
-                             justify=Gtk.Justification.CENTER, margin_top=10), False, False, 0)
+        tip = ("Dica: para arrumar o que falta, cria um plano novo na Análise, que já mostra onde está cada "
+               "ficheiro agora." if res.cancelled else
+               "Dica: volta a analisar daqui a umas semanas; o Arruma respeita o que já está arrumado e só trata "
+               "do que é novo.")
+        box.pack_start(label(tip, "small", "dim", xalign=0.5, wrap=True, justify=Gtk.Justification.CENTER,
+                             margin_top=10), False, False, 0)
         self.done_box.pack_start(box, True, True, 0)
         self.done_box.show_all()
         self.set_visible_child_name("done")

@@ -185,6 +185,8 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *_: (self.close(), True)[1])
 
     def _choose_folder_header(self) -> None:
+        if self._refuse_if_busy():  # nem vale a pena escolher: a análise não pode começar agora
+            return
         start = self.scan_result.root if self.scan_result else None
         paths = choose_folders(self, "Escolhe uma ou mais pastas a arrumar", start)
         if paths:
@@ -331,7 +333,8 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
     def _start_busy(self, kind: str) -> threading.Event:
         """Começa a mudar ficheiros. Um plano ou uma procura de duplicados a meio é cancelado (ficaria
-        desatualizado) e a vista dele deixa de mostrar o progresso."""
+        desatualizado) e a vista dele deixa de mostrar o progresso. Uma análise a meio também é cancelada:
+        quem começa a tarefa decide se a repete no fim (ver undo_session)."""
         was = self._task
         cancel = self._new_task(kind)
         self._busy = kind
@@ -359,14 +362,15 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             return False
         if not self._closing:
             what, after = BUSY[self._busy]
-            if confirm(self, f"O Arruma ainda está {what}",
-                       f"Se fechares agora, para depois do item em curso e fecha. {after}",
-                       "Parar e fechar", destructive=True, cancel_label="Não fechar"):
-                if not self._busy:  # terminou enquanto perguntava
-                    return False
-                self._closing = True
-                self.cancel_task()
-                self.toast.show("A parar depois do item em curso…")
+            if not confirm(self, f"O Arruma ainda está {what}",
+                           f"Se fechares agora, o Arruma para depois do item em curso e só então fecha. {after}",
+                           "Parar e fechar", destructive=True, cancel_label="Não fechar"):
+                return True
+            if not self._busy:  # terminou enquanto perguntava
+                return False
+            self._closing = True
+            self.cancel_task()
+        self.toast.show("A parar depois do item em curso… O Arruma fecha a seguir.")
         return True
 
     def start_scan(self, paths: str | list[str], refresh: bool = False) -> None:

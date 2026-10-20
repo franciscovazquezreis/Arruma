@@ -153,41 +153,48 @@ class Executor:
         ops = [o for o in self.db.ops(session_id) if o["status"] == "ok"]
         res = Result(session_id)
         total = len(ops)
-        for n, o in enumerate(reversed(ops)):
-            if cancel is not None and cancel.is_set():
-                res.cancelled = True
-                break
-            if progress:
-                progress(n, total, o["src"])
-            try:
-                op, src, dst = o["op"], o["src"], o["dst"]
-                done = True
-                if op in ("move", "move_dir"):
-                    here, back = os.path.lexists(dst), os.path.lexists(src)
-                    if not here and not back:
-                        raise FileNotFoundError("O ficheiro já não está onde foi colocado.")
-                    if here and back:
-                        raise FileExistsError(errno.EEXIST, "Já existe um item com o mesmo nome no local original.")
-                    if here:  # se só está no local original, já lá voltou (à mão)
-                        os.makedirs(os.path.dirname(src), exist_ok=True)
-                        safe_move(dst, src)
-                elif op == "mkdir":
-                    try:
-                        os.rmdir(src)
-                    except FileNotFoundError:
-                        pass
-                    except OSError:
-                        done = False  # entretanto tem outros ficheiros: fica, e tenta-se de novo ao anular o resto
-                elif op == "rmdir":
-                    os.makedirs(src, exist_ok=True)
-                elif op == "trash":
-                    restore_from_trash(src, dst)
-                if done:
-                    self.db.mark_op_undone(o["id"])
-                res.ok += 1
-            except Exception as e:
-                res.errors.append((o["src"], getattr(e, "strerror", None) or str(e)))
-        self.db.mark_undone(session_id)
+        try:
+            for n, o in enumerate(reversed(ops)):
+                if cancel is not None and cancel.is_set():
+                    res.cancelled = True
+                    break
+                if progress:
+                    progress(n, total, o["src"])
+                try:
+                    self._undo_op(o)
+                    res.ok += 1
+                except Exception as e:
+                    res.errors.append((o["src"], getattr(e, "strerror", None) or str(e)))
+        finally:
+            # Mesmo que pare com um erro inesperado, o Histórico fica a saber o que falta anular.
+            self.db.mark_undone(session_id)
         if progress:
             progress(total, total, "")
         return res
+
+    def _undo_op(self, o) -> None:
+        op, src, dst = o["op"], o["src"], o["dst"]
+        done = True
+        if op in ("move", "move_dir"):
+            here, back = os.path.lexists(dst), os.path.lexists(src)
+            if not here and not back:
+                raise FileNotFoundError("O ficheiro já não está onde foi colocado.")
+            if here and back:
+                raise FileExistsError(errno.EEXIST, "Já existe um item com o mesmo nome no local original.")
+            if here:
+                os.makedirs(os.path.dirname(src), exist_ok=True)
+                safe_move(dst, src)
+            # Só no local original: já lá voltou (à mão) e não há nada a fazer.
+        elif op == "mkdir":
+            try:
+                os.rmdir(src)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                done = False  # entretanto tem outros ficheiros: fica, e tenta-se de novo ao anular o resto
+        elif op == "rmdir":
+            os.makedirs(src, exist_ok=True)
+        elif op == "trash":
+            restore_from_trash(src, dst)
+        if done:
+            self.db.mark_op_undone(o["id"])
