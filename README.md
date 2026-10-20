@@ -64,7 +64,7 @@ Funciona em Linux, Windows e macOS. Em qualquer deles são dois passos, e só pr
 
 Depois disso funciona sem internet. O botão «Como ativar», na página inicial do Arruma, mostra os mesmos passos para o sistema onde está a correr.
 
-Para ler PDF digitalizados (OCR), instala o Tesseract com o idioma português: `sudo apt install tesseract-ocr-por` no Linux, `brew install tesseract tesseract-lang poppler` no macOS, ou o instalador do Tesseract para Windows.
+Para ler PDF digitalizados (OCR), instala o Tesseract com o idioma português e os idiomas dos teus documentos: no Linux, `sudo apt install tesseract-ocr-por` e, se precisares, `tesseract-ocr-spa`, `tesseract-ocr-fra`, `tesseract-ocr-deu` ou `tesseract-ocr-ita`; no macOS, `brew install tesseract tesseract-lang poppler`, que traz todos os idiomas; no Windows, o instalador do Tesseract, escolhendo os idiomas durante a instalação. O Arruma usa os que estiverem instalados de entre português, espanhol, francês, alemão, italiano e inglês: lê primeiro em português e, se a leitura não for segura, experimenta os outros e fica com a melhor. As definições do Arruma mostram os idiomas que encontrou. O OCR não lê documentos noutros alfabetos (grego, cirílico, árabe, chinês…): esses são arrumados sobretudo pelo nome e pelos metadados.
 
 ## Como arruma
 

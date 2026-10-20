@@ -6,7 +6,7 @@ from __future__ import annotations
 from gi.repository import Gtk
 
 from ..core.ai import RECOMMENDED_MODEL, AIStatus
-from ..core.extract import has_ocr
+from ..core.extract import has_ocr, ocr_languages
 from ..core.fsutil import HOME, display_path
 from ..core.system import TRASH_TO, ocr_install_hint
 from .widgets import add_classes, button, choose_folder, hbox, label, pref_group, pref_row, vbox
@@ -64,8 +64,11 @@ class SettingsPage(Gtk.ScrolledWindow):
         for sw in (self.photos_month, self.rename_unclear, self.clean_junk, self.remove_empty, self.include_hidden):
             sw.connect("notify::active", self._save)
 
-        ocr_pill = label("instalado" if has_ocr() else f"não instalado ({ocr_install_hint()})",
-                         "pill", "ok" if has_ocr() else "off")
+        names = {"por": "português", "spa": "espanhol", "fra": "francês", "deu": "alemão", "ita": "italiano",
+                 "eng": "inglês"}
+        languages = ", ".join(names[lang] for lang in ocr_languages())
+        ocr_pill = label((f"instalado: {languages}" if languages else "instalado") if has_ocr()
+                         else f"não instalado ({ocr_install_hint()})", "pill", "ok" if has_ocr() else "off")
 
         outer.pack_start(pref_group([
             pref_row("Agrupar fotografias por ano e mês",
@@ -86,7 +89,7 @@ class SettingsPage(Gtk.ScrolledWindow):
                      "Desligado por defeito para não mexer em configurações.",
                      self.include_hidden),
             pref_row("Leitura de digitalizações (OCR)",
-                     "Permite ler PDF digitalizados sem texto selecionável.",
+                     "Permite ler PDF digitalizados sem texto selecionável, nos idiomas instalados no Tesseract.",
                      ocr_pill),
         ]), False, False, 0)
 

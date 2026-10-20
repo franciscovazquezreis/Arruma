@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import functools
 import html
 import re
 import tempfile
@@ -50,6 +51,68 @@ def _strings(path: str, limit: int) -> str:
     return _clean(" ".join(parts), limit)
 
 
+# Idiomas que o OCR usa, se estiverem instalados no Tesseract, pela ordem em que são tentados (o
+# inglês entra sempre como apoio). O Tesseract lê mal vários idiomas juntos: o primeiro manda e os
+# acentos dos outros perdem-se («für» sai «fur»). Por isso lê-se em português e, se essa leitura
+# não for segura, em cada um dos outros idiomas, e fica a de maior confiança. Não se usam todos os
+# idiomas instalados porque o Homebrew, no macOS, instala mais de cem.
+OCR_LANGUAGES = ("por", "spa", "fra", "deu", "ita", "eng")
+_OCR_SURE = 94.0  # confiança média (0 a 100) a partir da qual a primeira leitura chega
+
+
+@functools.lru_cache(maxsize=4)
+def _tesseract_languages(tesseract: str) -> tuple[str, ...]:
+    """Idiomas instalados no Tesseract (vazio se não for possível sabê-lo)."""
+    listing = run_quiet([tesseract, "--list-langs"], 20).splitlines()
+    return tuple(line.strip() for line in listing[1:] if line.strip())
+
+
+def ocr_languages() -> tuple[str, ...]:
+    """Os idiomas de OCR_LANGUAGES instalados no Tesseract."""
+    tesseract = find_tool("tesseract")
+    installed = _tesseract_languages(tesseract) if tesseract else ()
+    return tuple(lang for lang in OCR_LANGUAGES if lang in installed)
+
+
+def _tsv_reading(tsv: str) -> tuple[str, float]:
+    """Texto e confiança média das palavras numa saída TSV do Tesseract."""
+    words: list[str] = []
+    confidences: list[float] = []
+    for row in tsv.splitlines()[1:]:
+        cols = row.split("\t")
+        if len(cols) < 12 or cols[0] != "5" or not cols[11].strip():
+            continue
+        try:
+            confidence = float(cols[10])
+        except ValueError:
+            continue
+        if confidence >= 0:
+            words.append(cols[11].strip())
+            confidences.append(confidence)
+    return " ".join(words), (sum(confidences) / len(confidences) if confidences else 0.0)
+
+
+def _ocr_image(tesseract: str, image: str, limit: int) -> str:
+    langs = ocr_languages()
+    if not langs:  # não se sabe que idiomas há (Tesseract antigo): como antes
+        for lang in ("por+eng", "eng"):
+            text = run_quiet([tesseract, image, "-", "-l", lang], 90)
+            if text.strip():
+                return _clean(text, limit)
+        return ""
+    primary = [lang for lang in langs if lang != "eng"] or ["eng"]
+    support = "+eng" if "eng" in langs else ""
+    best, best_confidence = "", -1.0
+    for i, lang in enumerate(primary):
+        code = lang if lang == "eng" else lang + support
+        text, confidence = _tsv_reading(run_quiet([tesseract, image, "-", "-l", code, "tsv"], 90))
+        if text and confidence > best_confidence:
+            best, best_confidence = text, confidence
+        if i == 0 and confidence >= _OCR_SURE:
+            break
+    return _clean(best, limit)
+
+
 def _ocr_pdf(path: str, limit: int) -> str:
     tesseract, pdftoppm = find_tool("tesseract"), find_tool("pdftoppm")
     if not (tesseract and pdftoppm):
@@ -60,11 +123,7 @@ def _ocr_pdf(path: str, limit: int) -> str:
         pngs = sorted(Path(tmp).glob("p*.png"))
         if not pngs:
             return ""
-        for lang in ("por+eng", "eng"):
-            text = run_quiet([tesseract, str(pngs[0]), "-", "-l", lang], 90)
-            if text.strip():
-                return _clean(text, limit)
-    return ""
+        return _ocr_image(tesseract, str(pngs[0]), limit)
 
 
 def has_ocr() -> bool:

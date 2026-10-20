@@ -570,11 +570,11 @@ class ArrumaApp(Gtk.Application):
             self.win.history_page.refresh()
             while Gtk.events_pending():
                 Gtk.main_iteration_do(False)
-            from ..core.extract import extract_text, has_ocr
+            from ..core.extract import extract_text, has_ocr, ocr_languages
             from ..core.system import find_tool
             for tool in ("pdftotext", "pdftoppm", "tesseract", "ollama"):
                 lines.append(f"{tool}: {find_tool(tool) or 'não encontrado'}")
-            lines.append(f"OCR: {'sim' if has_ocr() else 'não'}")
+            lines.append(f"OCR: {'sim (' + (', '.join(ocr_languages()) or '?') + ')' if has_ocr() else 'não'}")
             # Ler PDF é essencial para classificar documentos: pdftotext ou, em alternativa, pypdf.
             pdf = tmp / "teste.pdf"
             pdf.write_bytes(_minimal_pdf("Fatura de teste do Arruma"))

@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -233,6 +234,86 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(os.path.dirname(fat.dst), custom_folder)
 
 
+
+def _tsv(words: list[tuple[str, float]]) -> str:
+    """Saída TSV do Tesseract com estas palavras (texto e confiança)."""
+    rows = ["level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext",
+            "1\t1\t0\t0\t0\t0\t0\t0\t100\t100\t-1\t"]
+    rows += [f"5\t1\t1\t1\t1\t{i}\t0\t0\t10\t10\t{conf}\t{word}" for i, (word, conf) in enumerate(words, 1)]
+    return "\n".join(rows) + "\n"
+
+
+class OcrLanguageTests(unittest.TestCase):
+    """O OCR lê em português e, se a leitura não for segura, nos outros idiomas instalados."""
+
+    def setUp(self):
+        from arruma.core import extract
+        self.extract = extract
+        extract._tesseract_languages.cache_clear()
+        self.addCleanup(extract._tesseract_languages.cache_clear)
+        self.calls: list[list[str]] = []
+
+    def run_ocr(self, installed: list[str], readings: dict[str, str]) -> str:
+        def fake_run(cmd, timeout):
+            self.calls.append(cmd)
+            if cmd[1:] == ["--list-langs"]:
+                return "List of available languages in \"/x\" (%d):\n" % len(installed) + "\n".join(installed) + "\n"
+            return readings.get(cmd[cmd.index("-l") + 1], "")
+        with mock.patch.object(self.extract, "find_tool", return_value="tesseract"), \
+                mock.patch.object(self.extract, "run_quiet", side_effect=fake_run):
+            return self.extract._ocr_image("tesseract", "p.png", 2000)
+
+    def test_tsv_text_and_confidence(self):
+        text, confidence = self.extract._tsv_reading(_tsv([("Contrato", 96.0), ("de", 90.0)]))
+        self.assertEqual(text, "Contrato de")
+        self.assertAlmostEqual(confidence, 93.0)
+        self.assertEqual(self.extract._tsv_reading(""), ("", 0.0))
+
+    def test_portuguese_reading_that_is_sure_is_the_only_one(self):
+        text = self.run_ocr(["eng", "osd", "por", "spa", "deu"], {"por+eng": _tsv([("Fatura", 96.0), ("n.º", 95.0)])})
+        self.assertEqual(text, "Fatura n.º")
+        reads = [c[c.index("-l") + 1] for c in self.calls if "-l" in c]
+        self.assertEqual(reads, ["por+eng"])
+
+    def test_other_languages_are_tried_and_the_surest_wins(self):
+        text = self.run_ocr(["deu", "eng", "fra", "osd", "por", "spa"], {
+            "por+eng": _tsv([("Logrono", 89.0)]),
+            "spa+eng": _tsv([("Logroño", 96.5)]),
+            "fra+eng": _tsv([("Logrono", 91.0)]),
+            "deu+eng": _tsv([("Logrono", 90.0)]),
+        })
+        self.assertEqual(text, "Logroño")
+        reads = [c[c.index("-l") + 1] for c in self.calls if "-l" in c]
+        self.assertEqual(reads, ["por+eng", "spa+eng", "fra+eng", "deu+eng"])  # o italiano não está instalado
+
+    def test_only_english_installed(self):
+        text = self.run_ocr(["eng", "osd"], {"eng": _tsv([("Invoice", 92.0)])})
+        self.assertEqual(text, "Invoice")
+
+    def test_unknown_languages_fall_back_to_portuguese_and_english(self):
+        text = self.run_ocr([], {"por+eng": "Fatura de teste"})
+        self.assertEqual(text, "Fatura de teste")
+
+    @unittest.skipUnless(shutil.which("tesseract"), "sem o Tesseract")
+    def test_real_tesseract_reads_spanish_accents(self):
+        from arruma.core import extract
+        if not {"por", "spa"} <= set(extract._tesseract_languages(shutil.which("tesseract"))):
+            self.skipTest("sem os idiomas português e espanhol no Tesseract")
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            font = ImageFont.truetype("DejaVuSerif.ttf", 30)
+        except (ImportError, OSError):
+            self.skipTest("sem o Pillow ou a letra DejaVu")
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "es.png"
+            img = Image.new("L", (1240, 300), 255)
+            for i, line in enumerate(["En Logroño, a 12 de mayo de 2025, el señor", "Íñigo Muñoz Peña y la señora Begoña Núñez"]):
+                ImageDraw.Draw(img).text((60, 60 + i * 90), line, font=font, fill=0)
+            img.save(image)
+            text = extract._ocr_image(shutil.which("tesseract"), str(image), 2000)
+        for word in ("Logroño", "señor", "Muñoz", "Begoña"):
+            self.assertIn(word, text)
+
+
 if __name__ == "__main__":
     unittest.main()
-

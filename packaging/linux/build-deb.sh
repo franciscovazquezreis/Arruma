@@ -69,6 +69,7 @@ Architecture: all
 Installed-Size: $SIZE
 Depends: python3 (>= 3.10), python3-gi, python3-gi-cairo, gir1.2-gtk-3.0, poppler-utils
 Recommends: python3-pil, python3-mutagen, librsvg2-common, tesseract-ocr, tesseract-ocr-por
+Suggests: tesseract-ocr-spa, tesseract-ocr-fra, tesseract-ocr-deu, tesseract-ocr-ita
 Maintainer: Francisco Reis <franciscovazquezreis@users.noreply.github.com>
 Homepage: https://github.com/franciscovazquezreis/Arruma
 Description: Organizador de ficheiros local e sem internet
