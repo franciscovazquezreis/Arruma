@@ -49,7 +49,8 @@ class NameTests(unittest.TestCase):
         for n in ["scan_003", "Documento (1)", "8f3a2c9d1e", "IMG_1234", "DOC00123", "untitled",
                   "fatura_123", "20240812_101010"]:
             self.assertTrue(is_unclear_name(n), n)
-        for n in ["Contrato arrendamento Lisboa", "CV Francisco 2025", "Relatório anual"]:
+        for n in ["Contrato arrendamento Lisboa", "CV Francisco 2025", "Relatório anual", "IRS 2023", "IMI 2022",
+                  "CV 2024"]:
             self.assertFalse(is_unclear_name(n), n)
 
     def test_generic_dirs(self):

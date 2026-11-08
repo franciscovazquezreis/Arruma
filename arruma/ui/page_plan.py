@@ -480,7 +480,9 @@ class PlanPage(Gtk.Stack):
             return it
 
         visible = self._visible_actions()
-        for a in visible:
+        # «Para o Lixo» e «Pastas vazias a remover» ficam no topo, à vista, antes das pastas de destino.
+        ordered = sorted(visible, key=lambda a: a.op not in ("trash", "rmdir")) if which == "after" else visible
+        for a in ordered:
             if which == "after":
                 if a.op == "trash":
                     parts = [TRASH_NODE]

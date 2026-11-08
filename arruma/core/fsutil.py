@@ -105,7 +105,9 @@ def is_unclear_name(stem: str) -> bool:
         return True
     if re.fullmatch(r"[0-9a-f]{8,}", s.replace("-", "")):
         return True
-    if re.fullmatch(r"[a-z]{0,5}[\s_\-]?\d{4,}([\s_\-]\d+)*", s):
+    m = re.fullmatch(r"([a-z]{0,5})[\s_\-]?(\d{4,})([\s_\-]\d+)*", s)
+    # «IMG_0001», «doc20250312» não dizem nada; «IRS 2023», «IMI 2022» ou «CV 2024» são nomes escolhidos.
+    if m and not (len(m.group(1)) >= 2 and re.fullmatch(r"(19|20)\d{2}", m.group(2)) and not m.group(3)):
         return True
     letters = sum(c.isalpha() for c in s)
     return len(s) >= 10 and letters / len(s) < 0.35
