@@ -1150,12 +1150,20 @@ class PlanPage(Gtk.Stack):
             box.pack_start(label("Arrumação parada a meio", "hero-title", xalign=0.5), False, False, 0)
             box.pack_start(label(f"{done} antes de parares. O resto ficou como estava.", "subtitle", xalign=0.5,
                                  wrap=True, justify=Gtk.Justification.CENTER), False, False, 0)
+        elif res.errors:  # o que falhou fica à vista, com o motivo
+            n = len(res.errors)
+            box.pack_start(icon("dialog-warning-symbolic", 84, "insight-icon", "warn"), False, False, 0)
+            box.pack_start(label("Arrumado em parte", "hero-title", xalign=0.5), False, False, 0)
+            box.pack_start(label(f"{done}. {plural(n, 'item ficou', 'itens ficaram')} onde "
+                                 f"{'estava' if n == 1 else 'estavam'}; vê porquê em baixo.", "subtitle", xalign=0.5,
+                                 wrap=True, justify=Gtk.Justification.CENTER), False, False, 0)
         else:
             box.pack_start(icon("emblem-ok-symbolic", 84, "success-icon"), False, False, 0)
             box.pack_start(label("Está arrumado!", "hero-title", xalign=0.5), False, False, 0)
             box.pack_start(label(f"{done}.", "subtitle", xalign=0.5), False, False, 0)
         if res.errors:
             exp = Gtk.Expander(label=plural(len(res.errors), "item não pôde ser alterado", "itens não puderam ser alterados"))
+            exp.set_expanded(True)
             lst = vbox(4, margin_top=6)
             for path, err in res.errors[:100]:
                 lst.pack_start(label(f"{display_path(path)}: {err}", "small", "dim", wrap=True, max_width=70),
