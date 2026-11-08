@@ -646,10 +646,53 @@ class WindowTests(unittest.TestCase):
         self.assertTrue(d.exists() and a.exists() and c.exists())
         self.assertEqual(len(self.messages), 1)
         title, text = self.messages[0]
-        self.assertEqual(title, "1 cópia ficou onde estava")
-        self.assertIn("mudou desde a procura", text)
         from arruma.core.system import TRASH_TO
+        self.assertEqual(title, f"1 cópia não foi {TRASH_TO}")
+        self.assertIn("mudou desde a procura", text)
         self.assertEqual(self.win.toast.text.get_text(), f"1 cópia enviada {TRASH_TO}.")
+
+    def duplicate_pairs(self, n):
+        pairs = []
+        for i in range(n):
+            a = write(self.root / "Fotografias" / f"foto_{i}.jpg", f"foto {i} " * 100)
+            b = write(self.root / "Repetidas" / f"foto_{i}.jpg", f"foto {i} " * 100)
+            pairs.append((str(a), str(b)))
+        self.win.start_scan(str(self.root))
+        self.assertTrue(pump(lambda: self.win._task is None and self.win.scan_result is not None))
+        self.win.find_duplicates()
+        self.assertTrue(pump(lambda: self.win.duplicates_page.get_visible_child_name() == "content"))
+        sigs = {p: s for g in self.win.duplicates_page.groups for p, s in g.sigs.items()}
+        return pairs, sigs
+
+    def test_trashing_duplicates_asks_before_dropping_an_edited_plan(self):
+        pairs, sigs = self.duplicate_pairs(1)
+        plan = self.build_plan()
+        plan.actions[0].enabled = False
+        self.answers = [False]
+        a, b = pairs[0]
+        self.win.trash_duplicates([b], {b: [a]}, sigs)
+        self.assertEqual(self.questions[-1][0], "Descartar as tuas escolhas no plano?")
+        self.assertIn("Enviar cópias", self.questions[-1][1])
+        self.assertTrue(os.path.exists(b))
+        self.assertIs(self.win.plan_page.plan, plan)
+
+    def test_cancelled_trash_keeps_the_rest_in_the_analysis(self):
+        pairs, sigs = self.duplicate_pairs(3)
+        bin_ = self.tmp / "Lixo"
+        bin_.mkdir()
+
+        def to_trash(p):  # «Cancelar» logo depois da primeira cópia
+            os.rename(p, bin_ / os.path.basename(p))
+            self.win._cancel.set()
+        trash = [b for _a, b in pairs]
+        with mock.patch.object(executor_mod, "send_to_trash", to_trash):
+            self.win.trash_duplicates(trash, {b: [a] for a, b in pairs}, sigs)
+            self.assertTrue(pump(lambda: self.win._busy is None))
+        left = {f.path for f in self.win.scan_result.files}
+        self.assertNotIn(trash[0], left)
+        self.assertTrue({trash[1], trash[2]} <= left)  # ficaram no disco e continuam na análise
+        self.assertTrue(pump(lambda: self.win.duplicates_page.get_visible_child_name() == "content"))
+        self.assertEqual(len(self.win.duplicates_page.groups), 2)
 
     def test_nothing_interrupts_the_apply(self):
         plan = self.build_plan()

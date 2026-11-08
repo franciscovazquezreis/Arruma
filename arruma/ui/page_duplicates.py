@@ -16,6 +16,8 @@ from .widgets import (Placeholder, ProgressPanel, add_classes, button, confirm, 
 
 COL_ACTIVE, COL_ICON, COL_MARKUP, COL_SIZE, COL_PATH, COL_IS_FILE, COL_GROUP = range(7)
 
+MAX_SETS = 40  # conjuntos de pastas com escolha no painel
+
 # Escolhas de cada conjunto de pastas (além de «keep:<pasta>», ficam as cópias dessa pasta)
 CHOOSE, KEEP_ALL, BY_HAND = "", "all", "hand"
 
@@ -231,7 +233,10 @@ class DuplicatesPage(Gtk.Stack):
         self.folders_box.set_no_show_all(not multi)
         if not multi:
             return
-        for s in multi:
+        # Com muitos conjuntos (uma cópia inteira da música, um álbum por pasta), a lista ficava enorme e lenta: só os
+        # que libertam mais espaço; nos outros, as cópias marcam-se na lista, uma a uma.
+        rest = multi[MAX_SETS:]
+        for s in multi[:MAX_SETS]:
             n = len(s.groups)
             row = Gtk.ListBoxRow()
             row.set_activatable(False)
@@ -264,6 +269,14 @@ class DuplicatesPage(Gtk.Stack):
             s.handler = combo.connect("changed", self._on_set_choice, s)
             box.pack_end(combo, False, False, 0)
             row.add(box)
+            self.folders_list.add(row)
+        if rest:
+            row = Gtk.ListBoxRow()
+            row.set_activatable(False)
+            row.set_selectable(False)
+            row.add(label(f"E mais {plural(len(rest), 'conjunto', 'conjuntos')} de pastas, com menos espaço a "
+                          f"libertar ({human_size(sum(s.wasted for s in rest))}): nesses, marca as cópias na lista, "
+                          "uma a uma.", "small", "dim", wrap=True))
             self.folders_list.add(row)
         self.folders_list.show_all()
 
@@ -342,21 +355,13 @@ class DuplicatesPage(Gtk.Stack):
 
     def _on_toggled(self, _r, path: str) -> None:
         it = self.store.get_iter(path)
-        new = not self.store.get_value(it, COL_ACTIVE)
-        if new:
-            # Nunca deixar um grupo sem nenhuma cópia
-            parent = self.store.iter_parent(it)
-            child = self.store.iter_children(parent)
-            remaining = 0
-            while child is not None:
-                if child != it and not self.store.get_value(child, COL_ACTIVE):
-                    remaining += 1
-                child = self.store.iter_next(child)
-            if remaining == 0:
-                self.win.toast.show("Tem de ficar pelo menos uma cópia de cada ficheiro.")
-                return
         i = self.store.get_value(it, COL_GROUP)
         marked = self._marks(i) ^ {self.store.get_value(it, COL_PATH)}
+        # Nunca deixar um grupo sem nenhuma cópia. (Conta-se pelas marcas do grupo: dois Gtk.TreeIter da mesma
+        # linha nunca são iguais entre si, e comparar as linhas assim deixava marcar todas.)
+        if len(marked) >= len(self.groups[i].files):
+            self.win.toast.show("Tem de ficar pelo menos uma cópia de cada ficheiro.")
+            return
         self._set_marks(i, marked)
         self._sync_set(self.sets[self.groups[i].folders])
         self._update_label()

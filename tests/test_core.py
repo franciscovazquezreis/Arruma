@@ -434,6 +434,29 @@ class PlanChoiceTests(unittest.TestCase):
         retarget(doc, plan, str(self.a))
         self.assertFalse(doc.enabled)
         self.assertEqual(doc.dst, dst)  # nada de «relatorio_medico (2).txt» ao lado de si próprio
+        retarget(doc, plan, str(self.a / "Arquivo"))  # mudou de ideias: afinal vai para outra pasta
+        self.assertTrue(doc.enabled)
+        self.assertEqual(doc.dst, str(self.a / "Arquivo" / "relatorio_medico.txt"))
+
+    def test_companions_follow_when_the_main_file_changes(self):
+        from arruma.core.planner import rebase_document, rename_action_in_plan, retarget
+        r = self.tmp / "Transferências"
+        write(r / "Filme.mkv", b"\x00" * 4096)
+        write(r / "Filme.pt.srt", "1\n00:00:01,000 --> 00:00:02,000\nOlá\n")
+        write(r / "Receita bolo.html", "<html><body>Receita de bolo de laranja</body></html>")
+        write(r / "Receita bolo_files" / "a.png", b"\x89PNG fake")
+        plan = Planner(scan(str(r)), self.settings, "personal").build()
+        by = {a.src_name: a for a in plan.actions}
+        filme, srt, page, folder = by["Filme.mkv"], by["Filme.pt.srt"], by["Receita bolo.html"], by["Receita bolo_files"]
+        self.assertEqual((srt.follows, folder.follows), (filme.id, page.id))
+        retarget(filme, plan, str(self.tmp / "Cinema"))
+        self.assertEqual(srt.dst, str(self.tmp / "Cinema" / "Filme.pt.srt"))
+        rename_action_in_plan(filme, plan, "O Filme (2021)")
+        self.assertEqual(os.path.basename(srt.dst), "O Filme (2021).pt.srt")
+        retarget(filme, plan, str(r))  # fica onde está: as legendas também
+        self.assertFalse(srt.enabled)
+        rebase_document(page, plan, "Pessoal")
+        self.assertEqual(os.path.dirname(folder.dst), os.path.dirname(page.dst))
 
     def test_the_plan_says_which_folders_are_dissolved(self):
         write(self.a / "Diversos" / "contrato.txt", "Contrato de arrendamento entre senhorio e inquilino")
@@ -471,6 +494,15 @@ class PlanChoiceTests(unittest.TestCase):
                 self.assertEqual(os.path.dirname(dst[c]), os.path.dirname(dst[main]), c)
                 self.assertEqual(os.path.basename(dst[c]), c)
         srt = next(a for a in plan.actions if a.src.endswith("O.Filme.2021.1080p.srt"))
+        # Com o mesmo nome há outros ficheiros: as legendas vão com o vídeo e a lista de faixas com o áudio.
+        r2 = self.tmp / "Concertos"
+        for name in ("Concerto [abc123].jpg", "Concerto [abc123].mp4", "Concerto [abc123].en.vtt",
+                     "Pink Floyd - Animals.log", "Pink Floyd - Animals.wav", "Pink Floyd - Animals.cue"):
+            write(r2 / name, b"\x00" * 4096)
+        plan2 = Planner(scan(str(r2)), self.settings, MODE_INSIDE).build()
+        dst2 = {os.path.basename(a.src): os.path.dirname(a.dst) for a in plan2.actions if a.op == "move"}
+        self.assertEqual(dst2["Concerto [abc123].en.vtt"], dst2["Concerto [abc123].mp4"])
+        self.assertEqual(dst2["Pink Floyd - Animals.cue"], dst2["Pink Floyd - Animals.wav"])
         self.assertGreaterEqual(srt.confidence, 0.55)  # não fica em «A rever (pouca certeza)»
 
     def test_shortcuts_stay_where_they_are(self):
@@ -575,11 +607,17 @@ class DuplicateChoiceTests(unittest.TestCase):
         by_title = {g.title: g for g in self.groups()}
         g0 = by_title["IMG_0000.jpg"]
         self.assertEqual(g0.suggested(), {str(self.root / "Fotografias" / "IMG_0000 (1).jpg")})
-        # Ficam as de «Fotografias»: fica uma só, a que não tem «(1)».
+        # Ficam as de «Fotografias»: a «(1)», que já vinha marcada, vai na mesma.
         self.assertEqual(g0.keeping(str(self.root / "Fotografias")),
                          {str(self.root / "Fotografias" / "IMG_0000 (1).jpg"), str(self.root / "Repetidas" / "IMG_0000.jpg")})
         # «- Cópia» noutra pasta não chega para a marcar: a pasta pode ser a boa.
         self.assertEqual(by_title["IMG_0001.jpg"].suggested(), set())
+
+    def test_keeping_a_folder_keeps_every_named_copy_in_it(self):
+        # Uma cópia com um nome escolhido na pasta que fica também fica, mesmo que o nome seja mais comprido.
+        write(self.root / "Fotografias" / "Avó 90 anos.jpg", self.photos[0].read_bytes())
+        g = next(g for g in self.groups() if any(f.name == "Avó 90 anos.jpg" for f in g.files))
+        self.assertEqual(g.keeping(str(self.root / "Fotografias")), {str(self.root / "Repetidas" / "IMG_0000.jpg")})
 
     def test_copy_marks(self):
         from arruma.core.duplicates import has_copy_mark

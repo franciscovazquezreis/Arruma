@@ -85,15 +85,17 @@ TORRENT_EXT = {"torrent"}
 SHORTCUT_EXT = {"lnk", "url", "desktop", "webloc", "website", "appref-ms"}
 
 # Ficheiros que acompanham outro com o mesmo nome e vão com ele para a mesma pasta: o que são e os tipos do
-# ficheiro que acompanham (legendas de um filme, edições de uma fotografia, faixas de um disco…).
+# ficheiro que acompanham, por ordem de preferência (legendas de um filme, edições de uma fotografia, faixas de
+# um disco…). Um .cue acompanha o .wav do disco antes do .log que o programa de cópia deixou ao lado.
 COMPANION_EXT = {
-    **dict.fromkeys(("srt", "sub", "ass", "ssa", "vtt", "idx", "smi"), ("legendas", {VIDEO})),
-    "xmp": ("edições da fotografia", {IMAGE, VIDEO}),
-    "aae": ("edições da fotografia", {IMAGE, VIDEO}),
-    "thm": ("miniatura do vídeo", {VIDEO}),
-    "cue": ("lista de faixas", {AUDIO, OTHER, INSTALLER}),
-    "lrc": ("letra da música", {AUDIO}),
+    **dict.fromkeys(("srt", "sub", "ass", "ssa", "vtt", "idx", "smi"), ("legendas", (VIDEO,))),
+    "xmp": ("edições da fotografia", (IMAGE, VIDEO)),
+    "aae": ("edições da fotografia", (IMAGE, VIDEO)),
+    "thm": ("miniatura do vídeo", (VIDEO,)),
+    "cue": ("lista de faixas", (AUDIO, INSTALLER, OTHER)),
+    "lrc": ("letra da música", (AUDIO,)),
 }
+COMPANION_WEAK = {"log", "txt", "nfo", "md5", "sfv", "accurip"}  # relatórios, nunca o ficheiro principal
 SPLIT_ARCHIVE = re.compile(r"[zr]\d{2}")  # «backup.z01», «filme.r00»: partes de «backup.zip», «filme.rar»
 
 

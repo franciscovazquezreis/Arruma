@@ -118,6 +118,7 @@ def enderecos(indices: list[Path]) -> dict[str, list[tuple[str, str]]]:
     """Para cada sistema, a lista (componente, endereço) do código-fonte, sem repetições."""
     por_sistema: dict[str, list[tuple[str, str]]] = {}
     CARGO.clear()
+    URLS.clear()
     for indice in indices:
         dados = json.loads(indice.read_text(encoding="utf-8"))
         sistema = dados["sistema"]
@@ -133,6 +134,7 @@ def enderecos(indices: list[Path]) -> dict[str, list[tuple[str, str]]]:
                         f"pypi:{fonte['nome']}=={fonte['versao']} (sem sdist)"
                 else:
                     url = fonte["url"]
+                URLS.setdefault((sistema, rotulo), []).append(url)
                 if url not in vistos:
                     vistos.add(url)
                     lista.append((rotulo, url))
@@ -141,6 +143,9 @@ def enderecos(indices: list[Path]) -> dict[str, list[tuple[str, str]]]:
 
 # Componentes com bibliotecas Rust, por sistema (preenchido por enderecos()).
 CARGO: dict[str, set[str]] = {}
+# Os endereços de cada componente, incluindo os que já vinham de outro: «cryptography 50.0.2_2» (Homebrew)
+# e «cryptography 50.0.2» (pip) partilham o mesmo arquivo, que só se descarrega uma vez.
+URLS: dict[tuple[str, str], list[str]] = {}
 
 
 def _extrair(arquivo: Path, destino: Path) -> None:
@@ -412,6 +417,7 @@ def descarregar(por_sistema: dict[str, list[tuple[str, str]]], saida: Path, vers
         pasta.mkdir(parents=True, exist_ok=True)
         somas = []
         obtidos: dict[str, list[Path]] = {}
+        por_url: dict[str, Path] = {}
         for rotulo, url in lista:
             obtido = _obter(url, pasta)
             if isinstance(obtido, str):
@@ -422,14 +428,22 @@ def descarregar(por_sistema: dict[str, list[tuple[str, str]]], saida: Path, vers
             # Linhas «#» com a origem; as outras no formato de sha256sum -c.
             somas += [f"# {rotulo}; {alternativa}", f"{soma}  {nome}"]
             obtidos.setdefault(rotulo, []).append(pasta / nome)
+            por_url[url] = pasta / nome
             print(f"ok    {rotulo}: {nome}")
+        feitos: dict[tuple[str, ...], str] = {}
         for rotulo in sorted(CARGO.get(sistema, ())):
+            arquivos = obtidos.get(rotulo) or [por_url[u] for u in URLS.get((sistema, rotulo), []) if u in por_url]
+            chave = tuple(sorted(str(a) for a in arquivos))
+            if chave and chave in feitos:  # o mesmo código-fonte de outro componente: as mesmas crates
+                print(f"ok    {rotulo}: as mesmas bibliotecas Rust de {feitos[chave]}")
+                continue
             try:
-                tar_crates = crates(rotulo, obtidos.get(rotulo, []), pasta)
+                tar_crates = crates(rotulo, arquivos, pasta)
             except (RuntimeError, subprocess.CalledProcessError, OSError) as e:
                 print(f"FALTA {rotulo}: bibliotecas Rust ({e})")
                 falhas += 1
                 continue
+            feitos[chave] = rotulo
             soma = hashlib.sha256(tar_crates.read_bytes()).hexdigest()
             somas += [f"# {rotulo}: bibliotecas Rust (cargo vendor --locked)", f"{soma}  {tar_crates.name}"]
         (pasta / "SHA256SUMS.txt").write_text("\n".join(somas) + "\n", encoding="utf-8")

@@ -57,6 +57,7 @@ class Action:
     renamed: bool = False
     enabled: bool = True
     default_enabled: bool = True  # como o plano o propôs (cópias de segurança e afins vêm por confirmar)
+    follows: int = -1  # o item que este acompanha (legendas, a pasta «…_files» de uma página): vai para onde ele for
     area: str | None = None
     base_key: str = ""
     count: int = 1
@@ -506,6 +507,8 @@ class Planner:
 
         unit_paths = {u.path for u in units}
         final_of: dict[int, Path] = {}  # onde fica cada ficheiro que muda de sítio
+        action_of: dict[int, Action] = {}
+        followers: list[tuple[Action, Action]] = []  # (acompanhante, principal)
         for i, f in enumerate(files):
             p = placements[i]
             if p.trash:
@@ -529,6 +532,7 @@ class Planner:
             add("move", f.path, str(final), f.kind, f.size, p)
             actions[-1].renamed = final.name != f.name  # um «(2)» também é um nome novo
             final_of[i] = final
+            action_of[i] = actions[-1]
 
         for i, j in companion_of.items():
             if j not in final_of:
@@ -547,9 +551,10 @@ class Planner:
             pm = placements[j]
             add("move", f.path, str(final), f.kind, f.size,
                 Placement(pm.base, (), reason=f"Acompanha «{main.name}» ({what}), por isso vai para a mesma pasta. Se "
-                          f"mudares o destino de «{main.name}», muda também o deste.", confidence=pm.confidence,
+                          f"mudares o destino ou o nome de «{main.name}», este vai com ele.", confidence=pm.confidence,
                           source=pm.source, area=pm.area))
             actions[-1].renamed = final.name != f.name
+            followers.append((actions[-1], action_of[j]))
 
         for (u, dominant, ufiles), p in zip(unit_info, unit_places):
             r_bases = bases_by_root[self._root_for(u.path)]
@@ -560,7 +565,8 @@ class Planner:
                     continue
                 dst = final_of[page].parent / u.name
                 p = Placement(placements[page].base, (), reason=f"Tem as imagens e o resto da página «{files[page].name}» "
-                              "e vai para a mesma pasta, para a página continuar a abrir.",
+                              "e vai para a mesma pasta, para a página continuar a abrir. Se mudares o destino da "
+                              "página, esta pasta vai com ela.",
                               confidence=placements[page].confidence, source=placements[page].source,
                               area=placements[page].area)
             if str(dst) == u.path or is_within(dst, u.path):
@@ -569,6 +575,8 @@ class Planner:
             taken.add(path_key(final))
             add("move_dir", u.path, str(final), dominant, u.total_size, p, count=u.total_files)
             actions[-1].renamed = final.name != u.name
+            if page is not None:
+                followers.append((actions[-1], action_of[page]))
 
         # Pastas vazias: só com a definição ligada, e nunca as que vão receber ficheiros deste plano
         # (ex.: «Documentos/Outros» vazia quando há documentos sem área).
@@ -614,6 +622,8 @@ class Planner:
         actions.sort(key=lambda a: (order[a.op], a.dst.lower(), a.src.lower()))
         for n, a in enumerate(actions):
             a.id = n
+        for follower, main_action in followers:
+            follower.follows = main_action.id
 
         model = ai.model if ai is not None else ""
         return Plan(root=scan.root, roots=list(scan.roots), whole_computer=scan.whole_computer,
@@ -731,13 +741,15 @@ def _is_mac_alias(path: str) -> bool:
 def _companions(files: list[FileItem], placements: dict[int, Placement]) -> dict[int, int]:
     """Ficheiros que acompanham outro da mesma pasta com o mesmo nome (legendas, edições de fotografias, listas
     de faixas, partes de um arquivo): índice do acompanhante → índice do ficheiro que acompanha."""
-    by_name: dict[str, dict[str, int]] = defaultdict(dict)
+    by_name: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     for i, f in enumerate(files):
         if placements[i].trash or f.ext in tx.COMPANION_EXT or tx.SPLIT_ARCHIVE.fullmatch(f.ext):
             continue
         names = by_name[f.parent]
-        names.setdefault(f.name.lower(), i)
-        names.setdefault(split_ext(f.name)[0].lower(), i)
+        names[f.name.lower()].append(i)
+        stem = split_ext(f.name)[0].lower()
+        if stem != f.name.lower():
+            names[stem].append(i)
     out: dict[int, int] = {}
     for i, f in enumerate(files):
         if placements[i].trash:
@@ -745,19 +757,21 @@ def _companions(files: list[FileItem], placements: dict[int, Placement]) -> dict
         if f.ext in tx.COMPANION_EXT:
             kinds = tx.COMPANION_EXT[f.ext][1]
         elif tx.SPLIT_ARCHIVE.fullmatch(f.ext):
-            kinds = {tx.ARCHIVE}
+            kinds = (tx.ARCHIVE,)
         else:
             continue
         stem = os.path.splitext(f.name)[0]
         while stem:  # «IMG_1.CR2.xmp» → «IMG_1.CR2», «IMG_1»; «filme.pt.srt» → «filme.pt», «filme»
-            j = by_name[f.parent].get(stem.lower())
-            if j is not None and files[j].kind in kinds:
-                out[i] = j
+            # Com o mesmo nome pode haver vários («Concerto.jpg» e «Concerto.mp4»): o do tipo certo, pela ordem de
+            # preferência, e nunca um relatório (.log) se houver outro.
+            cands = [j for j in by_name[f.parent].get(stem.lower(), []) if files[j].kind in kinds]
+            if cands:
+                out[i] = min(cands, key=lambda j: (kinds.index(files[j].kind), files[j].ext in tx.COMPANION_WEAK,
+                                                   files[j].name.lower()))
                 break
             shorter = os.path.splitext(stem)[0]
             stem = "" if shorter == stem else shorter
     return out
-
 
 def _saved_pages(files: list[FileItem], scan: ScanResult) -> dict[int, str]:
     """Páginas guardadas com «Guardar página como… completa»: índice do .html → a pasta «…_files» ao lado."""
@@ -786,6 +800,28 @@ def rebase_document(action: Action, plan: Plan, area: str) -> None:
     action.source = "manual"
     action.confidence = 1.0
     action.reason = f"Escolheste a área {area}."
+    carry_followers(plan, action)
+
+
+def carry_followers(plan: Plan, main: Action) -> None:
+    """Os itens que acompanham «main» (legendas, edições, a pasta «…_files» de uma página) vão para a pasta dele
+    e ficam marcados como ele; um acompanhante cujo nome começa pelo de «main» muda de nome com ele."""
+    if main.op not in ("move", "move_dir") or not main.dst:
+        return
+    stem = os.path.splitext(main.src_name)[0]
+    new_stem = os.path.splitext(os.path.basename(main.dst))[0]
+    for f in plan.actions:
+        if f.follows != main.id or f is main or f.op not in ("move", "move_dir"):
+            continue
+        name = f.src_name
+        if f.op == "move" and new_stem != stem and name.lower().startswith(stem.lower()):
+            name = new_stem + name[len(stem):]
+        cand = Path(os.path.dirname(main.dst)) / name
+        if path_key(cand) != path_key(f.dst):
+            taken = {path_key(a.dst) for a in plan.actions if a is not f and a.dst}
+            f.dst = str(unique_path(cand, taken))
+        f.renamed = os.path.basename(f.dst) != f.src_name
+        f.enabled = main.enabled
 
 
 def stays_in(action: Action, folder: str) -> bool:
@@ -798,7 +834,11 @@ def retarget(action: Action, plan: Plan, folder: str) -> None:
     já está desmarca-o: fica onde está (antes, ganhava um «(2)» no nome, ao lado de si próprio)."""
     if stays_in(action, folder):
         action.enabled = False
+        if action.op == "trash":
+            action.default_enabled = False  # «Selecionar tudo» já não o manda para o Lixo
+        carry_followers(plan, action)
         return
+    action.enabled = True  # escolher outro destino é pedir para o mover (mesmo que antes tenha ficado onde está)
     name = os.path.basename(action.dst or action.src)
     if action.op == "trash":
         action.op = "move"
@@ -808,6 +848,7 @@ def retarget(action: Action, plan: Plan, folder: str) -> None:
     action.source = "manual"
     action.confidence = 1.0
     action.reason = f"Movido por ti para «{os.path.basename(folder) or folder}»."
+    carry_followers(plan, action)
 
 
 def rename_action_in_plan(action: Action, plan: Plan, new_name: str) -> None:
@@ -830,6 +871,7 @@ def rename_action_in_plan(action: Action, plan: Plan, new_name: str) -> None:
     action.source = "manual"
     action.confidence = 1.0
     action.reason = f"Nome alterado por ti para «{os.path.basename(action.dst)}»."
+    carry_followers(plan, action)
 
 
 def _rewrite_prefix(plan: Plan, old_dir: str, new_dir: str, reason: str) -> None:

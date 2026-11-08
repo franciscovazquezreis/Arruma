@@ -352,6 +352,28 @@ class SourceDownloadTests(unittest.TestCase):
         self.assertIn(f"# exemplo 1.0; {url}", somas)
         self.assertEqual([p.name for p in (tmp / "saida").iterdir()], [f"{pasta}.tar"])  # só fica o .tar
 
+    def test_crates_of_a_source_shared_by_two_components(self):
+        # «cryptography 50.0.2_2» (Homebrew) e «cryptography 50.0.2» (pip) têm o mesmo arquivo, que só se
+        # descarrega uma vez: as bibliotecas Rust juntam-se uma vez e nenhum dos dois fica em falta.
+        import fontes
+        from unittest import mock
+        tmp = Path(tempfile.mkdtemp(prefix="arruma-fontes-")).resolve()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        url = escrever(tmp / "origem" / "cryptography-50.0.2.tar.gz", "código").as_uri()
+        chamadas = []
+
+        def crates(rotulo, arquivos, destino):
+            chamadas.append((rotulo, [a.name for a in arquivos]))
+            saida = destino / "cryptography-50.0.2-crates.tar.gz"
+            saida.write_bytes(b"crates")
+            return saida
+        rotulos = ("cryptography 50.0.2", "cryptography 50.0.2_2")
+        with mock.patch.object(fontes, "crates", crates), mock.patch.dict(fontes.CARGO, {"macos": set(rotulos)}), \
+                mock.patch.dict(fontes.URLS, {("macos", r): [url] for r in rotulos}), \
+                mock.patch.object(fontes.time, "sleep"):
+            falhas = fontes.descarregar({"macos": [("cryptography 50.0.2_2", url)]}, tmp / "saida", "0.2.4")
+        self.assertEqual(falhas, 0)
+        self.assertEqual(chamadas, [("cryptography 50.0.2", ["cryptography-50.0.2.tar.gz"])])
 
 
 def vendor_de_teste(raiz: Path) -> Path:

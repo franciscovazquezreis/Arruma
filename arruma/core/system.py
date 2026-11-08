@@ -207,7 +207,7 @@ def synced_service(path: str | Path) -> str | None:
             r = os.path.normcase(os.path.realpath(root))
             if p == r or p.startswith(r.rstrip(os.sep) + os.sep):
                 return "OneDrive"
-    for part in Path(p).parts:
+    for part in Path(os.path.realpath(str(path))).parts:  # sem normcase: no Windows ficava tudo em minúsculas
         low = part.lower()
         service = _SYNC_DIRS.get(low) or ("MEGA" if part == "MEGA" else None)  # «Mega» pode ser outra coisa
         if service is None and low.startswith(("onedrive - ", "dropbox (")):

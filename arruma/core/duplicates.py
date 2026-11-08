@@ -52,14 +52,12 @@ class DupGroup:
         """O nome que representa o grupo: o que não tem «(1)» nem «cópia»."""
         return min(self.files, key=_name_rank).name
 
-    def best_in(self, folder: str) -> FileItem:
-        """A cópia de «folder» que fica quando o utilizador escolhe essa pasta."""
-        return min((f for f in self.files if f.parent == folder), key=_name_rank)
-
     def keeping(self, folder: str) -> set[str]:
-        """O que vai para o Lixo quando ficam as cópias de «folder»: tudo menos uma cópia dessa pasta."""
-        keep = self.best_in(folder).path
-        return {f.path for f in self.files if f.path != keep}
+        """O que vai para o Lixo quando ficam as cópias de «folder»: as das outras pastas. Dentro de «folder» só
+        vai o que já vinha marcado (com «(1)» ou «cópia» no nome, ao lado de uma cópia sem essa marca): um nome
+        escolhido, como «Avó 90 anos.jpg», fica mesmo que haja outra cópia com outro nome na mesma pasta."""
+        here = {f.path for f in self.files if f.parent == folder}
+        return {f.path for f in self.files if f.path not in here} | (self.suggested() & here)
 
     def suggested(self) -> set[str]:
         """O que vem marcado à partida para ir para o Lixo: só as cópias com «(1)», «cópia» ou «copy» no nome

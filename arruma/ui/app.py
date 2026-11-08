@@ -489,8 +489,8 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         self._refresh_analysis()
         self.toast.show("A análise foi refeita com a lista nova de pastas a ignorar.")
 
-    def drop_edited_plan(self) -> bool:
-        """Antes de trocar o plano por outro: se tem escolhas tuas (marcas, destinos, nomes), pergunta primeiro.
+    def drop_edited_plan(self, why: str = "Um plano novo começa do zero, com as propostas do Arruma") -> bool:
+        """Antes de deitar fora o plano: se tem escolhas tuas (marcas, destinos, nomes), pergunta primeiro.
         Verdadeiro se pode seguir."""
         plan = self.plan_page.plan
         if plan is None or self.plan_page.get_visible_child_name() != "content":
@@ -500,7 +500,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             return True
         return confirm(self, "Descartar as tuas escolhas no plano?",
                        f"Mudaste {plural(changed, 'item', 'itens')} no plano atual (marcas, destinos ou nomes). "
-                       "Um plano novo começa do zero, com as propostas do Arruma, e essas escolhas perdem-se.",
+                       f"{why}, e essas escolhas perdem-se.",
                        "Descartar e continuar", destructive=True)
 
     def _refresh_analysis(self) -> None:
@@ -621,6 +621,9 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         sai se ainda for igual a uma delas (ver check_copy)."""
         if not self.scan_result or self._refuse_if_busy():
             return
+        # Depois de as cópias saírem, o plano deixa de valer (ainda as movia): as escolhas feitas nele perdem-se.
+        if not self.drop_edited_plan(f"Enviar cópias {TRASH_TO} faz o plano deixar de valer"):
+            return
         root = self.scan_result.root
         actions = [Action(i, "trash", p, "", tx.OTHER, 0, "Cópia duplicada", 1.0, "manual")
                    for i, p in enumerate(paths)]
@@ -636,7 +639,8 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         def done(res):
             if self._end_busy(cancel):
                 return
-            removed = set(paths) - {p for p, _ in res.errors}
+            # O que saiu mesmo do disco: com «Cancelar» a meio, o resto nem chegou a ser tentado.
+            removed = {p for p in paths if not os.path.lexists(p)}
             self.scan_result.files = [f for f in self.scan_result.files if f.path not in removed]
             if removed and self.plan_page.plan is not None:  # o plano ainda movia as cópias que foram para o Lixo
                 self.plan_page.reset()
@@ -651,8 +655,9 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                 more = len(res.errors) - 6
                 if more > 0:
                     shown += f"\n… e mais {plural(more, 'cópia', 'cópias')}."
-                message(self, plural(len(res.errors), "cópia ficou onde estava", "cópias ficaram onde estavam"),
-                        shown, Gtk.MessageType.WARNING)
+                n = len(res.errors)  # cada linha diz o que aconteceu (ficou onde estava, apagada de vez…)
+                message(self, f"{plural(n, 'cópia não foi', 'cópias não foram')} {TRASH_TO}", shown,
+                        Gtk.MessageType.WARNING)
 
         def fail(e: Exception):
             if self._end_busy(cancel):

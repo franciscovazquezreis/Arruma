@@ -55,6 +55,11 @@ PHASES = {
 }
 
 
+def _is_backup(name: str) -> bool:
+    low = name.lower()
+    return low.endswith("~") or os.path.splitext(low)[1] in (".bak", ".old", ".swp", ".tmp", ".temp")
+
+
 def _names(paths: list[str], limit: int = 4) -> str:
     names = [f"«{os.path.basename(p) or p}»" for p in paths[:limit]]
     if len(paths) > limit:
@@ -68,11 +73,14 @@ def apply_summary(actions: list[Action], plan: Plan | None = None, remove_empty:
     são só ficheiros temporários: também pode ir o que arrastaste para lá, incluindo pastas inteiras."""
     moves = [a for a in actions if a.op in ("move", "move_dir")]
     trash = [a for a in actions if a.op == "trash"]
-    # Ficheiros temporários que o plano deixou por confirmar: podem ser cópias de segurança (.bak, .old).
-    backups = sum(1 for a in trash if a.kind == tx.JUNK and not a.default_enabled)
-    temp = sum(1 for a in trash if a.kind == tx.JUNK) - backups
+    # O que o plano deixou por confirmar e marcaste: cópias de segurança (.bak, .old…) e ficheiros temporários
+    # recentes (uma transferência que ainda pode estar a decorrer, o bloqueio de um documento aberto).
+    pending = [a for a in trash if a.kind == tx.JUNK and not a.default_enabled]
+    backups = sum(1 for a in pending if _is_backup(a.src_name))
+    recent = len(pending) - backups
+    temp = sum(1 for a in trash if a.kind == tx.JUNK) - len(pending)
     folders = [a for a in trash if a.kind != tx.JUNK and os.path.isdir(a.src)]
-    files = len(trash) - temp - backups - len(folders)
+    files = len(trash) - temp - len(pending) - len(folders)
     empty = sum(1 for a in actions if a.op == "rmdir")
     parts = []
     if moves:
@@ -97,6 +105,11 @@ def apply_summary(actions: list[Action], plan: Plan | None = None, remove_empty:
     if backups:
         what = plural(backups, "ficheiro que pode ser uma cópia de segurança (.bak, .old…) vai",
                       "ficheiros que podem ser cópias de segurança (.bak, .old…) vão")
+        parts.append(f"{what} {TRASH_TO}.")
+    if recent:
+        what = plural(recent, "ficheiro temporário recente (transferência incompleta ou bloqueio de um documento "
+                      "aberto) vai", "ficheiros temporários recentes (transferências incompletas ou bloqueios de "
+                      "documentos abertos) vão")
         parts.append(f"{what} {TRASH_TO}.")
     if files:
         parts.append(f"{plural(files, 'ficheiro que escolheste vai', 'ficheiros que escolheste vão')} {TRASH_TO}.")
@@ -1154,8 +1167,8 @@ class PlanPage(Gtk.Stack):
             n = len(res.errors)
             box.pack_start(icon("dialog-warning-symbolic", 84, "insight-icon", "warn"), False, False, 0)
             box.pack_start(label("Arrumado em parte", "hero-title", xalign=0.5), False, False, 0)
-            box.pack_start(label(f"{done}. {plural(n, 'item ficou', 'itens ficaram')} onde "
-                                 f"{'estava' if n == 1 else 'estavam'}; vê porquê em baixo.", "subtitle", xalign=0.5,
+            box.pack_start(label(f"{done}. {plural(n, 'item não pôde', 'itens não puderam')} ser "
+                                 f"{'alterado' if n == 1 else 'alterados'}; vê porquê em baixo.", "subtitle", xalign=0.5,
                                  wrap=True, justify=Gtk.Justification.CENTER), False, False, 0)
         else:
             box.pack_start(icon("emblem-ok-symbolic", 84, "success-icon"), False, False, 0)
