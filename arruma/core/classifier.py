@@ -211,6 +211,9 @@ def document_placement(item: FileItem, settings: Settings, area: str, sub: str, 
     stem, ext = split_ext(item.name)
     if settings.rename_unclear and title and is_unclear_name(stem):
         prefix = f"{date} " if date else ""
-        new_name = sanitize_name(prefix + title) + ext.lower()
+        # «scan_001», «scan_002»…: as páginas de um documento têm o mesmo título, e o número mantém a ordem.
+        number = re.search(r"(?<![\d(])\d{1,4}$", stem)
+        suffix = f" - {number.group()}" if number else ""
+        new_name = sanitize_name(prefix + title + suffix) + ext.lower()
     return Placement("documents", rel, new_name=new_name, reason=reason, confidence=conf,
                      source=source, area=area, optional_levels=1 if sub else 0)

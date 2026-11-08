@@ -341,6 +341,16 @@ class Planner:
         individual, units, respected, flatten, empty_generic = self._traverse(bases_by_root)
 
         files = [f for f in scan.files if f.parent in individual]
+        # Atalhos e lançadores ficam onde estão: servem para abrir programas e sítios a partir dali.
+        shortcuts = [f for f in files if f.ext in tx.SHORTCUT_EXT]
+        if shortcuts:
+            files = [f for f in files if f.ext not in tx.SHORTCUT_EXT]
+            n = len(shortcuts)
+            self.notes.append(f"{plural(n, 'atalho fica', 'atalhos ficam')} onde {'está' if n == 1 else 'estão'} "
+                              f"(por exemplo, «{shortcuts[0].name}»): servem para abrir programas e sítios a "
+                              "partir dali.")
+        # Por ordem do nome: quando dois ficam com o mesmo nome, o «(2)» vai para o segundo, sempre o mesmo.
+        files.sort(key=lambda f: (f.parent.casefold(), f.name.casefold(), f.path))
         placements: dict[int, Placement] = {}
         docs: list[int] = []
 
@@ -449,11 +459,15 @@ class Planner:
                 ai_count += 1
             self._unit_ai = {n: results.get(1_000_000 + n) for n in range(len(unit_info))}
 
+        # Ficheiros que vão com outro: legendas, edições de fotografias, partes de arquivos, páginas guardadas.
+        companion_of = _companions(files, placements)
+        page_dirs = {d: i for i, d in _saved_pages(files, scan).items()}  # pasta «…_files» → a página
+
         # 5) Destinos: simplificar a árvore antes de criar as ações
         entries: list[tuple[Placement, str]] = []
         for i, f in enumerate(files):
             p = placements[i]
-            if not p.trash:
+            if not p.trash and i not in companion_of:
                 entries.append((p, bases_by_root[self._root_for(f.path)][p.base]))
         unit_places: list[Placement] = []
         for n, (u, dominant, ufiles) in enumerate(unit_info):
@@ -474,15 +488,22 @@ class Planner:
                                   base_key=p.base, count=count))
             next_id += 1
 
+        unit_paths = {u.path for u in units}
+        final_of: dict[int, Path] = {}  # onde fica cada ficheiro que muda de sítio
         for i, f in enumerate(files):
             p = placements[i]
             if p.trash:
                 if st.clean_junk:
                     add("trash", f.path, "", tx.JUNK, f.size, p, enabled=p.trash_default)
                 continue
+            if i in companion_of:
+                continue  # vai com o ficheiro que acompanha (mais abaixo)
+            page_dir = next((d for d, j in page_dirs.items() if j == i), None)
+            if page_dir is not None and page_dir not in unit_paths:
+                continue  # página guardada cuja pasta «…_files» fica: sem ela a página não abre
             r_bases = bases_by_root[self._root_for(f.path)]
             dst_dir = Path(r_bases[p.base], *p.rel)
-            dst = dst_dir / (p.new_name or f.name)
+            dst = dst_dir / (f.name if page_dir else (p.new_name or f.name))  # a página aponta para «…_files»
             if str(dst) == f.path:
                 continue
             final = unique_path(dst, taken)
@@ -491,10 +512,41 @@ class Planner:
             taken.add(path_key(final))
             add("move", f.path, str(final), f.kind, f.size, p)
             actions[-1].renamed = final.name != f.name  # um «(2)» também é um nome novo
+            final_of[i] = final
+
+        for i, j in companion_of.items():
+            if j not in final_of:
+                continue  # o ficheiro que acompanha fica onde está: este também
+            f, main, main_final = files[i], files[j], final_of[j]
+            what = tx.COMPANION_EXT.get(f.ext, ("parte do arquivo",))[0]
+            stem, new_stem = os.path.splitext(main.name)[0], os.path.splitext(main_final.name)[0]
+            name = f.name
+            if new_stem != stem and name.lower().startswith(stem.lower()):
+                name = new_stem + name[len(stem):]  # «filme.srt» acompanha «filme» quando este muda de nome
+            dst = main_final.parent / name
+            if str(dst) == f.path:
+                continue
+            final = unique_path(dst, taken)
+            taken.add(path_key(final))
+            pm = placements[j]
+            add("move", f.path, str(final), f.kind, f.size,
+                Placement(pm.base, (), reason=f"Acompanha «{main.name}» ({what}), por isso vai para a mesma pasta. Se "
+                          f"mudares o destino de «{main.name}», muda também o deste.", confidence=pm.confidence,
+                          source=pm.source, area=pm.area))
+            actions[-1].renamed = final.name != f.name
 
         for (u, dominant, ufiles), p in zip(unit_info, unit_places):
             r_bases = bases_by_root[self._root_for(u.path)]
             dst = Path(r_bases[p.base], *p.rel, u.name)
+            page = page_dirs.get(u.path)
+            if page is not None:  # a pasta «…_files» de uma página guardada vai com ela
+                if page not in final_of:
+                    continue
+                dst = final_of[page].parent / u.name
+                p = Placement(placements[page].base, (), reason=f"Tem as imagens e o resto da página «{files[page].name}» "
+                              "e vai para a mesma pasta, para a página continuar a abrir.",
+                              confidence=placements[page].confidence, source=placements[page].source,
+                              area=placements[page].area)
             if str(dst) == u.path or is_within(dst, u.path):
                 continue
             final = unique_path(dst, taken)
@@ -634,6 +686,48 @@ def _documents_base(action: Action, plan: Plan) -> str:
         if is_within(action.src, root) and "documents" in bases:
             return bases["documents"]
     return plan.bases["documents"]
+
+
+def _companions(files: list[FileItem], placements: dict[int, Placement]) -> dict[int, int]:
+    """Ficheiros que acompanham outro da mesma pasta com o mesmo nome (legendas, edições de fotografias, listas
+    de faixas, partes de um arquivo): índice do acompanhante → índice do ficheiro que acompanha."""
+    by_name: dict[str, dict[str, int]] = defaultdict(dict)
+    for i, f in enumerate(files):
+        if placements[i].trash or f.ext in tx.COMPANION_EXT or tx.SPLIT_ARCHIVE.fullmatch(f.ext):
+            continue
+        names = by_name[f.parent]
+        names.setdefault(f.name.lower(), i)
+        names.setdefault(split_ext(f.name)[0].lower(), i)
+    out: dict[int, int] = {}
+    for i, f in enumerate(files):
+        if placements[i].trash:
+            continue
+        if f.ext in tx.COMPANION_EXT:
+            kinds = tx.COMPANION_EXT[f.ext][1]
+        elif tx.SPLIT_ARCHIVE.fullmatch(f.ext):
+            kinds = {tx.ARCHIVE}
+        else:
+            continue
+        stem = os.path.splitext(f.name)[0]
+        while stem:  # «IMG_1.CR2.xmp» → «IMG_1.CR2», «IMG_1»; «filme.pt.srt» → «filme.pt», «filme»
+            j = by_name[f.parent].get(stem.lower())
+            if j is not None and files[j].kind in kinds:
+                out[i] = j
+                break
+            shorter = os.path.splitext(stem)[0]
+            stem = "" if shorter == stem else shorter
+    return out
+
+
+def _saved_pages(files: list[FileItem], scan: ScanResult) -> dict[int, str]:
+    """Páginas guardadas com «Guardar página como… completa»: índice do .html → a pasta «…_files» ao lado."""
+    out: dict[int, str] = {}
+    for i, f in enumerate(files):
+        if f.ext in ("html", "htm"):
+            d = os.path.join(f.parent, split_ext(f.name)[0] + "_files")
+            if d in scan.folders:
+                out[i] = d
+    return out
 
 
 def rebase_document(action: Action, plan: Plan, area: str) -> None:

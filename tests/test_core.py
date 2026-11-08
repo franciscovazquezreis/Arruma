@@ -455,6 +455,51 @@ class PlanChoiceTests(unittest.TestCase):
         self.assertTrue(any(line.endswith("de «Fotografias» para outras pastas.") for line in resumo), resumo)
         self.assertTrue(any(line.endswith("de «Fotografias repetidas» para outras pastas.") for line in resumo))
 
+    def test_files_that_belong_together_stay_together(self):
+        r = self.tmp / "Bagunça"
+        for name in ("O.Filme.2021.1080p.mkv", "O.Filme.2021.1080p.srt", "O.Filme.2021.1080p.pt.srt",
+                     "IMG_4521.CR2", "IMG_4521.CR2.xmp", "IMG_4521.AAE", "backup.zip", "backup.z01", "backup.z02",
+                     "album.flac", "album.cue"):
+            write(r / name, b"\x00" * 2048)
+        plan = Planner(scan(str(r)), self.settings, MODE_INSIDE).build()
+        dst = {os.path.basename(a.src): a.dst for a in plan.actions if a.op == "move"}
+        for main, companions in (("O.Filme.2021.1080p.mkv", ("O.Filme.2021.1080p.srt", "O.Filme.2021.1080p.pt.srt")),
+                                 ("IMG_4521.CR2", ("IMG_4521.CR2.xmp", "IMG_4521.AAE")),
+                                 ("backup.zip", ("backup.z01", "backup.z02")), ("album.flac", ("album.cue",))):
+            for c in companions:
+                self.assertEqual(os.path.dirname(dst[c]), os.path.dirname(dst[main]), c)
+                self.assertEqual(os.path.basename(dst[c]), c)
+        srt = next(a for a in plan.actions if a.src.endswith("O.Filme.2021.1080p.srt"))
+        self.assertGreaterEqual(srt.confidence, 0.55)  # não fica em «A rever (pouca certeza)»
+
+    def test_shortcuts_stay_where_they_are(self):
+        r = self.tmp / "Secretária"
+        for name in ("Banco.url", "firefox.desktop", "Google Chrome.lnk"):
+            write(r / name, "[Desktop Entry]")
+        write(r / "relatorio_medico.txt", "Relatório médico: consulta de cardiologia, hemograma, receita")
+        plan = Planner(scan(str(r)), self.settings, "personal").build()
+        self.assertEqual([os.path.basename(a.src) for a in plan.actions], ["relatorio_medico.txt"])
+        self.assertTrue(any(n.startswith("3 atalhos ficam onde estão") for n in plan.notes), plan.notes)
+
+    def test_saved_web_page_keeps_its_folder(self):
+        r = self.tmp / "Transferências"
+        write(r / "Receita bolo.html", "<html><body>Receita de bolo de laranja <img src='Receita bolo_files/a.png'>")
+        write(r / "Receita bolo_files" / "a.png", b"\x89PNG fake")
+        plan = Planner(scan(str(r)), self.settings, "personal").build()
+        dst = {os.path.basename(a.src): a.dst for a in plan.actions}
+        self.assertEqual(os.path.dirname(dst["Receita bolo_files"]), os.path.dirname(dst["Receita bolo.html"]))
+        self.assertEqual(os.path.basename(dst["Receita bolo.html"]), "Receita bolo.html")
+        # Arrumada dentro da própria pasta, a pasta «…_files» fica (tem nome próprio), e a página também.
+        plan = Planner(scan(str(r)), self.settings, MODE_INSIDE).build()
+        self.assertFalse(any(a.src.startswith(str(r / "Receita bolo")) for a in plan.actions))
+
+    def test_numbered_scans_keep_their_number(self):
+        from arruma.core.classifier import document_placement
+        from arruma.core.scanner import FileItem
+        item = FileItem("/x/scan_003.pdf", "scan_003.pdf", "pdf", 10, 0.0, tx.DOCUMENT, "/x")
+        p = document_placement(item, Settings(rename_unclear=True), "Casa", "", 0.9, "IA", "", "Contrato de arrendamento")
+        self.assertEqual(p.new_name, "Contrato de arrendamento - 003.pdf")
+
 
 def _apply_summary():
     """A confirmação de «Aplicar alterações» (precisa do PyGObject; sem ele, None)."""
