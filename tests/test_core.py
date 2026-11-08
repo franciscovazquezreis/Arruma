@@ -494,6 +494,19 @@ class PlanChoiceTests(unittest.TestCase):
         plan = Planner(scan(str(r)), self.settings, MODE_INSIDE).build()
         self.assertFalse(any(a.src.startswith(str(r / "Receita bolo")) for a in plan.actions))
 
+    def test_destinations_synced_to_the_cloud_are_pointed_out(self):
+        from arruma.core.system import synced_service
+        r = self.tmp / "Dropbox" / "Papéis"
+        write(r / "relatorio_medico.txt", "Relatório médico: consulta de cardiologia, hemograma, receita")
+        self.assertEqual(synced_service(r), "Dropbox")
+        self.assertIsNone(synced_service(self.a))
+        with mock.patch.dict(os.environ, {"OneDrive": str(self.tmp)}):
+            self.assertEqual(synced_service(self.a), "OneDrive")
+        plan = Planner(scan(str(r)), self.settings, MODE_INSIDE).build()
+        self.assertTrue(any(n.startswith("«Documentos» está sincronizada com Dropbox") for n in plan.notes), plan.notes)
+        plan = Planner(scan(str(self.a)), self.settings, MODE_INSIDE).build()
+        self.assertFalse(any("sincronizada" in n for n in plan.notes))
+
     def test_numbered_scans_keep_their_number(self):
         from arruma.core import planner
         r = self.tmp / "Digitalizações"

@@ -162,7 +162,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
         foot = hbox(8, margin_top=8, margin_bottom=14, margin_start=16, margin_end=16)
         foot.pack_start(icon("security-high-symbolic", 15, "dim"), False, False, 0)
-        foot.pack_start(label("Os teus ficheiros nunca saem deste computador.", "small", "dim",
+        foot.pack_start(label("O Arruma não envia os teus ficheiros para a internet.", "small", "dim",
                               wrap=True, max_width=22), True, True, 0)
         side.pack_end(foot, False, False, 0)
         return side

@@ -21,7 +21,7 @@ from .db import Database
 from .extract import date_from_name, extract_text, image_info, plausible
 from .fsutil import (is_generic_dir_name, is_within, path_key, plural, sanitize_name, split_ext, unique_path,
                      user_dirs)
-from .system import is_external_mount
+from .system import is_external_mount, synced_service
 from .scanner import FileItem, FolderInfo, ScanResult, is_home
 from .settings import Settings
 
@@ -593,6 +593,21 @@ class Planner:
                 + (f" e, se {'ficar vazia, é removida' if one else 'ficarem vazias, são removidas'}"
                    if st.remove_empty_dirs else "")
                 + ". Para manteres o que lá está, desmarca-o na lista.")
+
+        # Pastas de destino sincronizadas com a nuvem: o que o Arruma lá puser é enviado pelo serviço.
+        synced: dict[str, str] = {}
+        for bases in bases_by_root.values():
+            for b in bases.values():
+                if b in synced or not any(a.dst and is_within(a.dst, b) for a in actions):
+                    continue
+                service = synced_service(b)
+                if service:
+                    synced[b] = service
+        for b, service in synced.items():
+            if any(o != b and is_within(b, o) for o in synced):
+                continue  # já dito pela pasta de cima
+            self.notes.append(f"«{os.path.basename(b) or b}» está sincronizada com {service}: o que o Arruma lá "
+                              f"puser também vai para a nuvem e para os teus outros dispositivos.")
 
         order = {"move_dir": 0, "move": 1, "trash": 2, "rmdir": 3}
         actions.sort(key=lambda a: (order[a.op], a.dst.lower(), a.src.lower()))
