@@ -18,9 +18,9 @@ from .. import APP_ID, APP_NAME, AUTHOR, COPYRIGHT, REPO_URL, __version__  # noq
 from ..core import taxonomy as tx  # noqa: E402
 from ..core.ai import RECOMMENDED_MODEL, AIError, AIStatus, LocalAI  # noqa: E402
 from ..core.db import Database  # noqa: E402
-from ..core.duplicates import find_duplicates  # noqa: E402
+from ..core.duplicates import check_copy, find_duplicates  # noqa: E402
 from ..core.executor import Executor  # noqa: E402
-from ..core.fsutil import COMPUTER_TOKEN, check_root_allowed, is_within, plural  # noqa: E402
+from ..core.fsutil import COMPUTER_TOKEN, check_root_allowed, display_path, is_within, plural  # noqa: E402
 from ..core.planner import Action, PlanCancelled, Planner  # noqa: E402
 from ..core.scanner import ScanCancelled, ScanResult, check_root_protected, scan  # noqa: E402
 from ..core.settings import Settings  # noqa: E402
@@ -590,7 +590,10 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
         run_bg(work, done, fail)
 
-    def trash_duplicates(self, paths: list[str]) -> None:
+    def trash_duplicates(self, paths: list[str], keepers: dict[str, list[str]],
+                         sigs: dict[str, tuple[int, int]]) -> None:
+        """Envia para o Lixo as cópias escolhidas. «keepers»: as cópias do mesmo grupo que ficam; cada uma só
+        sai se ainda for igual a uma delas (ver check_copy)."""
         if not self.scan_result or self._refuse_if_busy():
             return
         root = self.scan_result.root
@@ -598,9 +601,12 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                    for i, p in enumerate(paths)]
         title = f"Remoção de duplicados em «{self.scan_result.title}»"
         cancel = self._start_busy("trash")
+        self.duplicates_page.show_trashing()
+        prog = Throttle(self.duplicates_page.update_trashing)
 
         def work():
-            return self.executor.apply(actions, root, title, remove_empty=False, cancel=cancel)
+            return self.executor.apply(actions, root, title, remove_empty=False, progress=prog, cancel=cancel,
+                                       check=lambda a: check_copy(a.src, keepers.get(a.src, []), sigs))
 
         def done(res):
             if self._end_busy(cancel):
@@ -609,14 +615,23 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             self.scan_result.files = [f for f in self.scan_result.files if f.path not in removed]
             self.history_page.refresh()
             self.find_duplicates()
-            self.toast.show(f"{plural(res.ok, 'cópia enviada', 'cópias enviadas')} {TRASH_TO}.",
-                            "Anular", lambda: self.undo_session(res.session_id))
+            if res.ok:
+                self.toast.show(f"{plural(res.ok, 'cópia enviada', 'cópias enviadas')} {TRASH_TO}.",
+                                "Anular", lambda: self.undo_session(res.session_id))
+            if res.errors:
+                shown = "\n".join(f"{display_path(p)}\n{msg}" for p, msg in res.errors[:6])
+                more = len(res.errors) - 6
+                if more > 0:
+                    shown += f"\n… e mais {plural(more, 'cópia', 'cópias')}."
+                message(self, plural(len(res.errors), "cópia ficou onde estava", "cópias ficaram onde estavam"),
+                        shown, Gtk.MessageType.WARNING)
 
         def fail(e: Exception):
             if self._end_busy(cancel):
                 return
             self.history_page.refresh()
             message(self, f"Erro ao enviar as cópias {TRASH_TO}", str(e), Gtk.MessageType.ERROR)
+            self.find_duplicates()  # a lista volta a partir do que está no disco
 
         run_bg(work, done, fail)
 

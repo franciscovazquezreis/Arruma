@@ -76,6 +76,8 @@ class Plan:
     bases: dict[str, str]
     actions: list[Action]
     respected: list[tuple[str, str]] = field(default_factory=list)
+    # As pastas-base de cada pasta analisada (com várias pastas ou discos, cada uma tem as suas).
+    bases_by_root: dict[str, dict[str, str]] = field(default_factory=dict)
     cleanup_dirs: list[str] = field(default_factory=list)
     ai_model: str = ""
     ai_count: int = 0
@@ -111,8 +113,17 @@ class PlanCancelled(Exception):
 def default_mode(scan_or_root: ScanResult | str) -> str:
     xdg = user_dirs()
     if isinstance(scan_or_root, ScanResult):
-        if scan_or_root.whole_computer or len(scan_or_root.roots) > 1:
+        if scan_or_root.whole_computer:
             return MODE_PERSONAL
+        roots = scan_or_root.roots
+        if len(roots) > 1:
+            # Juntar tudo nas pastas pessoais esvazia as pastas escolhidas (até as subpastas com nome próprio
+            # saem inteiras): só por defeito quando são todas pastas pessoais, como Transferências e Secretária.
+            personal = {path_key(str(xdg[k])) for k in ("DOWNLOAD", "DESKTOP", "DOCUMENTS", "PICTURES", "VIDEOS",
+                                                         "MUSIC") if k in xdg}
+            if any(is_home(r) for r in roots) or all(path_key(r) in personal for r in roots):
+                return MODE_PERSONAL
+            return MODE_INSIDE
         root = scan_or_root.root
     else:
         root = scan_or_root
@@ -479,6 +490,7 @@ class Planner:
                 p.reason += f" Já existe «{dst.name}» no destino; ficará «{final.name}»."
             taken.add(path_key(final))
             add("move", f.path, str(final), f.kind, f.size, p)
+            actions[-1].renamed = final.name != f.name  # um «(2)» também é um nome novo
 
         for (u, dominant, ufiles), p in zip(unit_info, unit_places):
             r_bases = bases_by_root[self._root_for(u.path)]
@@ -488,6 +500,7 @@ class Planner:
             final = unique_path(dst, taken)
             taken.add(path_key(final))
             add("move_dir", u.path, str(final), dominant, u.total_size, p, count=u.total_files)
+            actions[-1].renamed = final.name != u.name
 
         # Pastas vazias: só com a definição ligada, e nunca as que vão receber ficheiros deste plano
         # (ex.: «Documentos/Outros» vazia quando há documentos sem área).
@@ -500,6 +513,20 @@ class Planner:
                 add("rmdir", d, "", tx.OTHER, 0,
                     Placement("", (), reason="Pasta vazia sem nome próprio.", confidence=0.95))
 
+        # As pastas sem nome próprio («Nova pasta», «Diversos») são desfeitas: o que têm vai para as pastas certas.
+        dissolved = [d for d in flatten if any(a.op in ("move", "move_dir") and is_within(a.src, d) for a in actions)]
+        if dissolved:
+            names = [f"«{os.path.basename(d)}»" for d in dissolved[:4]] + (
+                [f"mais {len(dissolved) - 4}"] if len(dissolved) > 4 else [])
+            listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " e " + names[-1]
+            one = len(dissolved) == 1
+            self.notes.append(
+                f"{'A pasta' if one else 'As pastas'} {listed} não {'tem' if one else 'têm'} nome próprio: o que "
+                f"{'tem' if one else 'têm'} dentro vai para as pastas certas"
+                + (f" e, se {'ficar vazia, é removida' if one else 'ficarem vazias, são removidas'}"
+                   if st.remove_empty_dirs else "")
+                + ". Para manteres o que lá está, desmarca-o na lista.")
+
         order = {"move_dir": 0, "move": 1, "trash": 2, "rmdir": 3}
         actions.sort(key=lambda a: (order[a.op], a.dst.lower(), a.src.lower()))
         for n, a in enumerate(actions):
@@ -509,7 +536,7 @@ class Planner:
         return Plan(root=scan.root, roots=list(scan.roots), whole_computer=scan.whole_computer,
                     mode=self.mode, bases=primary_bases, actions=actions,
                     respected=respected, cleanup_dirs=flatten, ai_model=model, ai_count=ai_count,
-                    notes=self.notes)
+                    notes=self.notes, bases_by_root=bases_by_root)
 
     def _unit_placement(self, u: FolderInfo, dominant: str, ufiles: list[FileItem],
                         ai_result: dict | None) -> Placement:
@@ -600,9 +627,18 @@ def simplify_tree(entries: list[tuple[Placement, str]]) -> None:
             changed = True
 
 
+def _documents_base(action: Action, plan: Plan) -> str:
+    """A pasta de documentos da pasta analisada (ou do disco) de onde o item sai: mudar a área nunca o leva
+    para outra pasta escolhida nem para outro disco."""
+    for root, bases in plan.bases_by_root.items():
+        if is_within(action.src, root) and "documents" in bases:
+            return bases["documents"]
+    return plan.bases["documents"]
+
+
 def rebase_document(action: Action, plan: Plan, area: str) -> None:
     """Muda a área de um documento escolhida pelo utilizador."""
-    base = plan.bases["documents"]
+    base = _documents_base(action, plan)
     name = os.path.basename(action.dst)
     if action.op == "move_dir":
         new = Path(base, area, name)
@@ -618,8 +654,17 @@ def rebase_document(action: Action, plan: Plan, area: str) -> None:
     action.reason = f"Escolheste a área {area}."
 
 
+def stays_in(action: Action, folder: str) -> bool:
+    """Se «folder» é a pasta onde o item já está: escolhê-la como destino quer dizer que fica onde está."""
+    return path_key(os.path.dirname(action.src)) == path_key(folder)
+
+
 def retarget(action: Action, plan: Plan, folder: str) -> None:
-    """Muda a pasta de destino de um ficheiro ou pasta (incluindo por arrastar e largar)."""
+    """Muda a pasta de destino de um ficheiro ou pasta (incluindo por arrastar e largar). A pasta onde o item
+    já está desmarca-o: fica onde está (antes, ganhava um «(2)» no nome, ao lado de si próprio)."""
+    if stays_in(action, folder):
+        action.enabled = False
+        return
     name = os.path.basename(action.dst or action.src)
     if action.op == "trash":
         action.op = "move"
@@ -673,10 +718,11 @@ def _rewrite_prefix(plan: Plan, old_dir: str, new_dir: str, reason: str) -> None
         a.source = "manual"
         a.confidence = 1.0
         a.reason = reason
-    for k, b in list(plan.bases.items()):
-        if is_within(b, old_dir):
-            rel = os.path.relpath(b, old_dir)
-            plan.bases[k] = new_dir if rel == "." else os.path.join(new_dir, rel)
+    for bases in (plan.bases, *plan.bases_by_root.values()):
+        for k, b in list(bases.items()):
+            if is_within(b, old_dir):
+                rel = os.path.relpath(b, old_dir)
+                bases[k] = new_dir if rel == "." else os.path.join(new_dir, rel)
 
 
 def rename_folder_in_plan(plan: Plan, old_dir: str, new_name: str) -> str:

@@ -537,6 +537,31 @@ class WindowTests(unittest.TestCase):
     def moved(self):
         return [p.name for p in self.root.iterdir() if p.is_file()]
 
+    def test_only_copies_that_are_still_copies_go_to_the_trash(self):
+        a = write(self.root / "Fotografias" / "foto.jpg", "igual " * 100)
+        b = write(self.root / "Repetidas" / "foto.jpg", "igual " * 100)
+        c = write(self.root / "Fotografias" / "praia.jpg", "praia " * 100)
+        d = write(self.root / "Repetidas" / "praia.jpg", "praia " * 100)
+        self.win.start_scan(str(self.root))
+        self.assertTrue(pump(lambda: self.win._task is None and self.win.scan_result is not None))
+        self.win.find_duplicates()
+        page = self.win.duplicates_page
+        self.assertTrue(pump(lambda: page.get_visible_child_name() == "content"))
+        sigs = {p: s for g in page.groups for p, s in g.sigs.items()}
+        d.write_text("praia, mas editada " * 100, encoding="utf-8")  # mudou depois da procura
+        bin_ = self.tmp / "Lixo"
+        bin_.mkdir()
+        with mock.patch.object(executor_mod, "send_to_trash", lambda p: os.rename(p, bin_ / os.path.basename(p))):
+            self.win.trash_duplicates([str(b), str(d)], {str(b): [str(a)], str(d): [str(c)]}, sigs)
+            self.assertTrue(pump(lambda: self.win._busy is None))
+        self.assertFalse(b.exists())
+        self.assertTrue(d.exists() and a.exists() and c.exists())
+        self.assertEqual(len(self.messages), 1)
+        title, text = self.messages[0]
+        self.assertEqual(title, "1 cópia ficou onde estava")
+        self.assertIn("mudou desde a procura", text)
+        self.assertEqual(self.win.toast.text.get_text(), "1 cópia enviada para o Lixo.")
+
     def test_nothing_interrupts_the_apply(self):
         plan = self.build_plan()
         session = self.win.executor.apply([], str(self.root), "outra")  # uma sessão qualquer para anular
@@ -548,7 +573,7 @@ class WindowTests(unittest.TestCase):
         self.addCleanup(chooser.stop)
         for attempt in (lambda: self.win.start_scan(str(self.root)), self.win.find_duplicates,
                         lambda: self.win.build_plan("inside"), lambda: self.win.undo_session(session.session_id),
-                        lambda: self.win.trash_duplicates([str(self.root / "fatura_4.txt")]),
+                        lambda: self.win.trash_duplicates([str(self.root / "fatura_4.txt")], {}, {}),
                         self.win._choose_folder_header, lambda: self.win.apply_plan(plan.enabled())):
             attempt()
             self.assertFalse(cancel.is_set())

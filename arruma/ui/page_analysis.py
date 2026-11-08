@@ -244,7 +244,9 @@ class AnalysisPage(Gtk.Stack):
                 r1, pessoais)
             d1 = label("Cada pasta escolhida fica organizada dentro de si própria (ex.: «Pasta/Documentos/Finanças»).",
                        "small", "dim", wrap=True, margin_start=26)
-            d2 = label("Junta e organiza os ficheiros de todas as pastas selecionadas nas tuas pastas pessoais.",
+            d2 = label("Junta nas tuas pastas pessoais tudo o que está nas pastas selecionadas, incluindo as "
+                       "subpastas com nome próprio, que vão inteiras. Nas pastas selecionadas só fica o que estiver "
+                       "protegido.",
                        "small", "dim", wrap=True, margin_start=26)
             if any(is_home(rt) for rt in scan.roots):
                 r1.set_sensitive(False)
@@ -257,7 +259,8 @@ class AnalysisPage(Gtk.Stack):
                        "As subpastas que já têm nome próprio ficam como estão.",
                        "small", "dim", wrap=True, margin_start=26)
             d2 = label(f"Recomendado para {folder_display_name('DOWNLOAD')} e {folder_display_name('DESKTOP')}: "
-                       f"cada ficheiro vai para a pasta pessoal certa (ex.: «{docs}/Saúde», «{imgs}/Fotografias/2024»).", "small", "dim", wrap=True, margin_start=26)
+                       f"cada ficheiro vai para a pasta pessoal certa (ex.: «{docs}/Saúde», «{imgs}/Fotografias/2024»), "
+                       "e as subpastas com nome próprio vão inteiras.", "small", "dim", wrap=True, margin_start=26)
             if is_home(root):
                 r1.set_sensitive(False)
                 d1.set_text("Não disponível para a pasta pessoal.")

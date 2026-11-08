@@ -418,27 +418,45 @@ Se a operação inteira falhar (é raro), aparece «Erro ao arrumar», com a exp
 
 ### Duplicados
 
-Esta vista procura cópias exatas entre os ficheiros da última análise. Compara o conteúdo, byte a byte, e não o nome: dois ficheiros com nomes diferentes podem ser cópias, e dois com o mesmo nome podem não ser. Não entram as pastas protegidas, os ficheiros ocultos (salvo se ligares a definição) nem os ficheiros vazios.
+Esta vista procura cópias exatas entre os ficheiros da última análise. Compara o conteúdo, byte a byte, e não o nome: dois ficheiros com nomes diferentes podem ser cópias, e dois com o mesmo nome podem não ser. Não entram as pastas protegidas, os ficheiros ocultos (salvo se ligares a definição) nem os ficheiros vazios. Dois caminhos para o mesmo ficheiro (uma ligação física, por exemplo) também não contam como cópias: enviar um deles para o Lixo levaria o único que existe.
 
 Sem análise, a vista diz «Procura ficheiros repetidos» e pede-te que analises primeiro uma pasta. Depois de uma análise, carrega em «Procurar duplicados».
 
 ![Vista Duplicados antes de procurar](imagens/08a-duplicados-procurar.png)
 
-Enquanto procura, aparece «A comparar ficheiros», com um contador e o botão «Cancelar». No fim, os grupos de cópias aparecem ordenados pelo espaço que libertam, com quantas cópias iguais há e o tamanho de cada uma.
+Enquanto procura, aparece «A comparar ficheiros», com um contador e o botão «Cancelar». No fim, aparecem os grupos de cópias, com quantas cópias iguais há em cada um, se estão na mesma pasta ou em pastas diferentes e o tamanho de cada cópia. Os grupos com cópias nas mesmas pastas aparecem juntos.
 
-![Resultados: três grupos de cópias, cada um com a cópia a manter](imagens/08-duplicados.png)
+**Uma caixa marcada quer dizer que essa cópia vai para o Lixo.** Ao lado de cada cópia, a verde ou a vermelho, lê-se «fica» ou «vai para o Lixo», e a etiqueta acompanha as caixas quando as mudas. Por baixo vêm o nome, a data e a pasta onde a cópia está. Em cada grupo fica sempre pelo menos uma cópia: se tentares marcar todas, o Arruma avisa «Tem de ficar pelo menos uma cópia de cada ficheiro.».
 
-Em cada grupo, o Arruma sugere a cópia a manter, assinala-a com «manter», a verde, e usa o nome dela como título do grupo. Dá preferência à que tem o nome sem «(1)» ou «cópia», depois à que está fora de Transferências e da Secretária e, em caso de empate, à mais antiga. **Uma caixa marcada quer dizer que essa cópia vai para o Lixo.** A sugerida vem com a caixa desmarcada e as outras com a caixa marcada, mas podes mudá-las. O «manter» não acompanha essas mudanças; o que conta são as caixas. Não é possível marcar todas as cópias de um grupo: o Arruma avisa «Tem de ficar pelo menos uma cópia de cada ficheiro.».
+#### Cópias na mesma pasta
 
-Na barra de baixo vês quantas cópias estão marcadas e quanto espaço libertam. «Mostrar na pasta» mostra a cópia selecionada no gestor de ficheiros e o duplo clique abre-a. «Procurar de novo» repete a procura. «Enviar para o Lixo» (no Windows, «Enviar para a Reciclagem») pede confirmação:
+Quando as cópias de um grupo estão todas na mesma pasta, o que as distingue é o nome, e é o nome que aparece em destaque. Se uma delas tiver «(1)», «cópia» ou «copy» no nome e outra não tiver, a que tem a marca já vem marcada para o Lixo: é o caso de uma transferência feita duas vezes. Podes mudar as marcas à vontade.
 
-![Confirmação «Enviar 3 cópias para o Lixo?»](imagens/08b-duplicados-confirmar.png)
+![Três grupos de cópias na mesma pasta, com as cópias «(1)» marcadas para o Lixo](imagens/08-duplicados.png)
+
+#### Cópias em pastas diferentes
+
+Quando as cópias estão em pastas diferentes, o Arruma não escolhe por ti, porque só tu sabes qual é a pasta boa: nenhuma destas cópias vem marcada. Em cada cópia, em destaque, está o nome da pasta onde ela está. Por cima da lista aparece «Cópias em pastas diferentes», com uma linha para cada conjunto de pastas que têm cópias umas das outras. A linha mostra os nomes das pastas, quantos ficheiros repetidos têm, quanto espaço podes libertar e o caminho completo de cada pasta. Enquanto houver um conjunto por escolher, aparece a laranja «Falta escolher em 1 conjunto de pastas.».
+
+![Cópias em «Verão 2025» e «Cópia do telemóvel», sem nada marcado e com «Falta escolher em 1 conjunto de pastas.»](imagens/08d-duplicados-pastas.png)
+
+Na lista à direita da linha, escolhe «Ficam as de «…»» para guardares as cópias dessa pasta: as das outras pastas do conjunto ficam marcadas para ir para o Lixo. Se uma pasta tiver duas cópias do mesmo ficheiro, fica só uma, a que não tem «(1)» nem «cópia» no nome. «Ficam todas» tira as marcas do conjunto e «Escolher…» volta ao princípio. Se mudares uma marca à mão, a lista passa a dizer «Marcadas à mão».
+
+![«Ficam as de «Verão 2025»»: as cópias de «Cópia do telemóvel» ficam marcadas para o Lixo](imagens/08e-duplicados-pastas-escolha.png)
+
+#### Enviar para o Lixo
+
+Na barra de baixo vês quantas cópias estão marcadas para ir para o Lixo e quanto espaço libertam. «Mostrar na pasta» mostra a cópia selecionada no gestor de ficheiros e o duplo clique abre-a. «Procurar de novo» repete a procura. «Enviar para o Lixo» (no Windows, «Enviar para a Reciclagem») só fica ativo quando há cópias marcadas e pede confirmação. A confirmação diz de que pastas saem as cópias e em que pastas ficam as iguais, para veres se a escolha está ao contrário:
+
+![Confirmação «Enviar 5 cópias para o Lixo?», com «Saem de: 5 de ~/Imagens/Cópia do telemóvel» e «As cópias iguais que ficam estão em: 5 de ~/Imagens/Fotografias/Verão 2025»](imagens/08f-duplicados-pastas-confirmar.png)
+
+Antes de enviar cada cópia, o Arruma confirma que ainda é igual a uma das cópias que ficam. Se, desde a procura, essa cópia tiver sido alterada, ou se a cópia que ficava tiver mudado ou desaparecido, ela fica onde está. No fim aparece «1 cópia ficou onde estava», com o caminho e o motivo, por exemplo «Ficou onde estava: mudou desde a procura e já não é igual a nenhuma das cópias que ficam.».
 
 As cópias vão para o Lixo do sistema, de onde as podes recuperar. Enquanto o Arruma as envia, tal como ao arrumar, não começa outras tarefas e, se fechares a janela, pergunta primeiro («O Arruma ainda está a enviar cópias para o Lixo»). A operação fica no Histórico como «Remoção de duplicados em «…»», aparece uma notificação com «Anular» e a procura repete-se sozinha.
 
 ![«Não há duplicados» depois de enviar as cópias, com a notificação «3 cópias enviadas para o Lixo.»](imagens/08c-duplicados-enviados.png)
 
-Se uma cópia não puder ir para o Lixo, o Arruma não mostra erro: a cópia fica na lista. No Windows, isso acontece com as cópias em pens USB, que não têm Reciclagem, e com as que não cabem na Reciclagem, se disseres que não quando o Windows perguntar se as apaga de vez. O ecrã «Não há duplicados» não tem botão para procurar outra vez; para isso, volta à Análise e carrega em «Analisar novamente».
+Se uma cópia não puder ir para o Lixo, fica na lista e a mesma mensagem diz qual e porquê. No Windows, isso acontece com as cópias em pens USB, que não têm Reciclagem, e com as que não cabem na Reciclagem, se disseres que não quando o Windows perguntar se as apaga de vez. O ecrã «Não há duplicados» não tem botão para procurar outra vez; para isso, volta à Análise e carrega em «Analisar novamente».
 
 ### Histórico
 

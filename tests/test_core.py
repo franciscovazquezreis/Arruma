@@ -53,9 +53,11 @@ class NameTests(unittest.TestCase):
             self.assertFalse(is_unclear_name(n), n)
 
     def test_generic_dirs(self):
-        for n in ["Nova pasta", "New Folder (2)", "untitled folder", "temp", "Diversos"]:
+        for n in ["Nova pasta", "New Folder (2)", "untitled folder", "temp", "Diversos", "8f3a2c91d0e4b7aa"]:
             self.assertTrue(is_generic_dir_name(n), n)
-        for n in ["Férias Algarve", "2023", "Casamento Ana", "IRS"]:
+        # Um número pode ser um NIF, um processo ou um cliente; «Antigos» e «Teste» dizem o que lá está.
+        for n in ["Férias Algarve", "2023", "Casamento Ana", "IRS", "501234567", "123456789012", "Antigos 2019",
+                  "Old", "Teste", "20231015_143000"]:
             self.assertFalse(is_generic_dir_name(n), n)
 
     def test_sanitize(self):
@@ -161,10 +163,10 @@ class PlanTests(unittest.TestCase):
         groups = find_duplicates(result.files)
         group = next(g for g in groups if any(f.name == "fatura_123.txt" for f in g.files))
         self.assertEqual(sorted(f.name for f in group.files), ["fatura_123 (1).txt", "fatura_123.txt"])
-        self.assertEqual(os.path.basename(group.keep), "fatura_123.txt")
-        # O título do grupo nos Duplicados é o da cópia que fica, não o da primeira por ordem alfabética.
-        self.assertEqual(group.files[0].name, "fatura_123 (1).txt")
-        self.assertEqual(group.keep_file.name, "fatura_123.txt")
+        # Na mesma pasta, a cópia com «(1)» vem marcada para o Lixo; o título é o nome sem «(1)».
+        self.assertEqual([os.path.basename(p) for p in group.suggested()], ["fatura_123 (1).txt"])
+        self.assertEqual([f.name for f in group.files], ["fatura_123.txt", "fatura_123 (1).txt"])
+        self.assertEqual(group.title, "fatura_123.txt")
 
     def test_duplicates_compare_the_whole_content(self):
         from arruma.core.duplicates import CHUNK
@@ -388,6 +390,197 @@ def _tsv(words: list[tuple[str, float]]) -> str:
             "1\t1\t0\t0\t0\t0\t0\t0\t100\t100\t-1\t"]
     rows += [f"5\t1\t1\t1\t1\t{i}\t0\t0\t10\t10\t{conf}\t{word}" for i, (word, conf) in enumerate(words, 1)]
     return "\n".join(rows) + "\n"
+
+
+class PlanChoiceTests(unittest.TestCase):
+    """O plano não decide por ti o que muda a organização que já tens."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="arruma-teste-")).resolve()
+        self.a, self.b = self.tmp / "Fotografias", self.tmp / "Fotografias repetidas"
+        for folder in (self.a, self.b):
+            write(folder / "relatorio_medico.txt", "Relatório médico: consulta de cardiologia, hemograma, receita")
+            write(folder / "Casamento" / "notas.txt", "lista de convidados")
+        write(self.b / "501234567" / "fatura.txt", "FATURA nº 2025/123 NIF 501234567 Total a pagar 42,10 EUR")
+        self.settings = Settings(use_ai=False)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_several_folders_are_organised_inside_each_one(self):
+        from arruma.core.planner import default_mode
+        res = scan([str(self.a), str(self.b)])
+        self.assertEqual(default_mode(res), MODE_INSIDE)
+        plan = Planner(res, self.settings, default_mode(res)).build()
+        for a in plan.actions:
+            if a.dst:  # nada sai da pasta onde está
+                self.assertEqual(is_within_any(a.dst, [self.a, self.b]), is_within_any(a.src, [self.a, self.b]))
+        # A pasta com o NIF fica como está (um número pode ser um cliente ou um processo).
+        self.assertFalse(any(a.src.startswith(str(self.b / "501234567")) for a in plan.actions))
+
+    def test_area_change_keeps_the_document_in_its_folder(self):
+        from arruma.core.planner import rebase_document
+        plan = Planner(scan([str(self.a), str(self.b)]), self.settings, MODE_INSIDE).build()
+        doc = next(a for a in plan.actions if a.src == str(self.b / "relatorio_medico.txt"))
+        rebase_document(doc, plan, "Pessoal")
+        self.assertTrue(doc.dst.startswith(str(self.b / "Documentos" / "Pessoal")), doc.dst)
+
+    def test_choosing_the_current_folder_means_it_stays(self):
+        from arruma.core.planner import retarget
+        plan = Planner(scan(str(self.a)), self.settings, MODE_INSIDE).build()
+        doc = next(a for a in plan.actions if a.src == str(self.a / "relatorio_medico.txt"))
+        dst = doc.dst
+        retarget(doc, plan, str(self.a))
+        self.assertFalse(doc.enabled)
+        self.assertEqual(doc.dst, dst)  # nada de «relatorio_medico (2).txt» ao lado de si próprio
+
+    def test_the_plan_says_which_folders_are_dissolved(self):
+        write(self.a / "Diversos" / "contrato.txt", "Contrato de arrendamento entre senhorio e inquilino")
+        plan = Planner(scan(str(self.a)), Settings(use_ai=False, remove_empty_dirs=True), MODE_INSIDE).build()
+        self.assertTrue(any(n.startswith("A pasta «Diversos» não tem nome próprio") and "é removida" in n
+                            for n in plan.notes), plan.notes)
+        apply_summary = _apply_summary()
+        if apply_summary is None:
+            return  # sem o PyGObject
+        resumo = apply_summary(plan.enabled(), plan, remove_empty=True)
+        self.assertIn("A pasta sem nome próprio «Diversos» é desfeita e removida se ficar vazia.", resumo)
+        self.assertNotIn("removida", " ".join(apply_summary(plan.enabled(), plan, remove_empty=False)[:-1]))
+
+    def test_the_confirmation_says_what_leaves_each_folder(self):
+        apply_summary = _apply_summary()
+        if apply_summary is None:
+            self.skipTest("sem o PyGObject")
+        plan = Planner(scan([str(self.a), str(self.b)]), self.settings, "personal").build()
+        resumo = apply_summary(plan.enabled(), plan)
+        self.assertTrue(any(line.endswith("de «Fotografias» para outras pastas.") for line in resumo), resumo)
+        self.assertTrue(any(line.endswith("de «Fotografias repetidas» para outras pastas.") for line in resumo))
+
+
+def _apply_summary():
+    """A confirmação de «Aplicar alterações» (precisa do PyGObject; sem ele, None)."""
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        gi.require_version("Gdk", "3.0")
+        from arruma.ui.page_plan import apply_summary
+    except (ImportError, ValueError):
+        return None
+    return apply_summary
+
+
+def is_within_any(path, folders) -> str | None:
+    return next((str(f) for f in folders if str(path).startswith(str(f) + os.sep)), None)
+
+
+class DuplicateChoiceTests(unittest.TestCase):
+    """Entre pastas diferentes é o utilizador que escolhe que cópias ficam; antes de enviar para o Lixo, cada
+    cópia é comparada outra vez com as que ficam."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp(prefix="arruma-teste-")).resolve()
+        self.photos = [write(self.root / "Fotografias" / f"IMG_{i:04d}.jpg", f"foto {i} ".encode() * 200)
+                       for i in range(3)]
+        write(self.root / "Fotografias" / "IMG_9999.jpg", b"so nesta pasta" * 300)
+        for p in self.photos:
+            write(self.root / "Repetidas" / p.name, p.read_bytes())
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def groups(self):
+        return find_duplicates(scan(self.root).files)
+
+    def test_nothing_is_marked_between_folders(self):
+        # O caso real: «Repetidas» tem um caminho mais curto do que «Fotografias», e o Arruma marcava as
+        # fotografias da pasta principal para irem para o Lixo.
+        groups = self.groups()
+        self.assertEqual(len(groups), 3)
+        fotos, repetidas = str(self.root / "Fotografias"), str(self.root / "Repetidas")
+        for g in groups:
+            self.assertEqual(g.folders, (fotos, repetidas))
+            self.assertEqual(g.suggested(), set())
+            self.assertEqual(g.keeping(fotos), {str(self.root / "Repetidas" / g.title)})
+            self.assertEqual(g.keeping(repetidas), {str(self.root / "Fotografias" / g.title)})
+
+    def test_copy_marks_only_inside_the_same_folder(self):
+        write(self.root / "Fotografias" / "IMG_0000 (1).jpg", self.photos[0].read_bytes())
+        write(self.root / "Outra" / "IMG_0001 - Cópia.jpg", self.photos[1].read_bytes())
+        by_title = {g.title: g for g in self.groups()}
+        g0 = by_title["IMG_0000.jpg"]
+        self.assertEqual(g0.suggested(), {str(self.root / "Fotografias" / "IMG_0000 (1).jpg")})
+        # Ficam as de «Fotografias»: fica uma só, a que não tem «(1)».
+        self.assertEqual(g0.keeping(str(self.root / "Fotografias")),
+                         {str(self.root / "Fotografias" / "IMG_0000 (1).jpg"), str(self.root / "Repetidas" / "IMG_0000.jpg")})
+        # «- Cópia» noutra pasta não chega para a marcar: a pasta pode ser a boa.
+        self.assertEqual(by_title["IMG_0001.jpg"].suggested(), set())
+
+    def test_copy_marks(self):
+        from arruma.core.duplicates import has_copy_mark
+        for name in ("foto (1).jpg", "foto - Cópia.jpg", "Cópia de foto.jpg", "foto copy.jpg", "foto copy 2.jpg",
+                     "foto (outra cópia).jpg", "foto_2.jpg", "foto - 3.jpg"):
+            self.assertTrue(has_copy_mark(name), name)
+        for name in ("foto.jpg", "Copiadora manual.pdf", "IMG_0001.jpg", "Copyright.txt", "relatório 2024.pdf"):
+            self.assertFalse(has_copy_mark(name), name)
+
+    @unittest.skipUnless(hasattr(os, "link"), "sem ligações físicas")
+    def test_the_same_file_twice_is_not_a_copy(self):
+        # Dois caminhos para o mesmo ficheiro: enviar um para o Lixo levava o único que existe.
+        os.link(self.photos[0], self.root / "Fotografias" / "outro nome.jpg")
+        g = next(g for g in self.groups() if g.title == "IMG_0000.jpg")
+        self.assertEqual(len(g.files), 2)
+
+    def test_check_before_trashing(self):
+        from arruma.core.duplicates import NotACopy, check_copy
+        g = next(g for g in self.groups() if g.title == "IMG_0000.jpg")
+        fica, sai = str(self.photos[0]), str(self.root / "Repetidas" / "IMG_0000.jpg")
+        check_copy(sai, [fica], g.sigs)  # nada mudou
+        os.utime(sai)  # a data mudou, o conteúdo não: compara-se tudo e continua a ser uma cópia
+        check_copy(sai, [fica], g.sigs)
+        Path(sai).write_bytes(Path(sai).read_bytes()[:-1] + b"X")  # alterada depois da procura
+        with self.assertRaises(NotACopy):
+            check_copy(sai, [fica], g.sigs)
+        Path(sai).write_bytes(Path(fica).read_bytes())
+        os.remove(fica)  # a cópia que ficava desapareceu
+        with self.assertRaises(NotACopy):
+            check_copy(sai, [fica], g.sigs)
+        os.remove(sai)
+        with self.assertRaises(FileNotFoundError):
+            check_copy(sai, [fica], g.sigs)
+
+    def test_system_trash_backup_and_sync_folders_are_left_out(self):
+        foto = self.photos[0].read_bytes()
+        for rel in ("$RECYCLE.BIN/S-1-5-21/$R1A2B3C.jpg", ".Trash-1000/files/IMG_0000.jpg", "Disco/FileHistory/a.jpg",
+                    "OneDrive - Empresa/a.jpg", "Dropbox (Equipa)/a.jpg", "Disco/Windows/System32/a.jpg",
+                    "Disco/Program Files/App/a.jpg", "Disco/Users/Ana/AppData/Local/a.jpg", "Disco/timeshift/a.jpg"):
+            write(self.root / rel, foto)
+        res = scan(self.root, include_hidden=True)
+        self.assertEqual(sorted(os.path.relpath(f.path, self.root) for f in res.files if f.name.endswith("0000.jpg")),
+                         [os.path.join("Fotografias", "IMG_0000.jpg"), os.path.join("Repetidas", "IMG_0000.jpg")])
+        self.assertFalse(any(f.name == "a.jpg" or f.name.startswith("$R") for f in res.files))
+        protegidas = {os.path.basename(p) for p, _ in res.protected}
+        for nome in ("$RECYCLE.BIN", ".Trash-1000", "FileHistory", "OneDrive - Empresa", "Dropbox (Equipa)",
+                     "Windows", "Program Files", "AppData", "timeshift"):
+            self.assertIn(nome, protegidas)
+
+    def test_cloud_only_files_are_not_read(self):
+        from arruma.core import duplicates
+        real = os.stat
+
+        def stat(path, *a, **k):
+            st = real(path, *a, **k)
+            if "Repetidas" not in str(path):
+                return st
+            fields = list(st)
+            return mock.Mock(wraps=st, st_size=st.st_size, st_mtime_ns=st.st_mtime_ns, st_dev=st.st_dev,
+                             st_ino=st.st_ino, st_file_attributes=0x400000, st_flags=0, st_mode=fields[0])
+        with mock.patch.object(duplicates.os, "stat", stat):
+            self.assertEqual(self.groups(), [])
+
+    def test_short_folder_names(self):
+        from arruma.core.duplicates import short_names
+        a, b, c = (os.path.join(str(self.root), *p) for p in (("2023", "Fotos"), ("2024", "Fotos"), ("Docs",)))
+        self.assertEqual(short_names([a, b, c]),
+                         {a: os.path.join("2023", "Fotos"), b: os.path.join("2024", "Fotos"), c: "Docs"})
 
 
 class OcrLanguageTests(unittest.TestCase):

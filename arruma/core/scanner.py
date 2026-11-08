@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import re
 import threading
 from collections import Counter
 from dataclasses import dataclass, field
@@ -15,7 +16,7 @@ from . import taxonomy as tx
 from .fsutil import (COMPUTER_TOKEN, HOME, common_root, display_path, is_generic_dir_name, is_within,
                      normalize_roots, path_key, split_ext, user_dirs)
 from .system import (PROTECTED_NAMES, is_filesystem_root, is_hidden_entry, is_link_entry, is_package_dir,
-                     is_whole_computer_path)
+                     is_whole_computer_path, program_data_dirs)
 
 # Pastas de projetos de programação: nunca são desmontadas.
 PROJECT_MARKERS = {
@@ -73,6 +74,31 @@ PROTECTED_DIR_NAMES = {
     ".Trashes": "Lixo do sistema",
     **PROTECTED_NAMES,
 }
+
+
+# Em qualquer sistema (um disco do Windows lido no Linux, um disco externo com cópias de segurança): pastas
+# do sistema e de programas, o Lixo e as cópias de segurança. Os nomes comparam-se sem maiúsculas.
+ALWAYS_PROTECTED = {
+    "$recycle.bin": "Reciclagem do Windows",
+    "system volume information": "pasta do sistema",
+    "program files": "programas instalados",
+    "program files (x86)": "programas instalados",
+    "programdata": "dados de programas do Windows",
+    "appdata": "dados de programas do Windows",
+    "windowsapps": "programas instalados",
+    "windows.old": "instalação anterior do Windows",
+    "$windows.~bt": "ficheiros de atualização do Windows",
+    "$windows.~ws": "ficheiros de atualização do Windows",
+    "$winreagent": "ficheiros de atualização do Windows",
+    ".trash": "Lixo do sistema",
+    ".trashes": "Lixo do sistema",
+    "filehistory": "cópias de segurança (Histórico de Ficheiros do Windows)",
+    "windowsimagebackup": "cópia de segurança do Windows",
+    "backups.backupdb": "cópias do Time Machine",
+    "backintime": "cópias de segurança (Back In Time)",
+    "timeshift": "cópias de segurança (Timeshift)",
+}
+_TRASH_OF_USER = re.compile(r"\.trash-\d+")  # o Lixo de cada utilizador num disco externo
 
 
 @dataclass(slots=True)
@@ -142,6 +168,19 @@ class ScanCancelled(Exception):
 def _protection_reason(path: str, name: str, entries: list[str], is_root: bool) -> str | None:
     if not is_root and name in PROTECTED_DIR_NAMES:
         return PROTECTED_DIR_NAMES[name]
+    low = name.lower()
+    if not is_root:
+        if low in ALWAYS_PROTECTED:
+            return ALWAYS_PROTECTED[low]
+        if _TRASH_OF_USER.fullmatch(low):
+            return "Lixo do sistema"
+        # Contas de trabalho e de equipa: «OneDrive - Empresa», «Dropbox (Equipa)».
+        if low.startswith("onedrive - "):
+            return "pasta sincronizada (OneDrive)"
+        if low.startswith("dropbox ("):
+            return "pasta sincronizada (Dropbox)"
+        if any(e.lower() == "system32" for e in entries):
+            return "pasta do Windows"
     if not is_root and is_package_dir(name):
         return "pacote de aplicação ou biblioteca (é um ficheiro só)"
     names = set(entries)
@@ -170,6 +209,7 @@ def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
          cancel: threading.Event | None = None) -> ScanResult:
     roots, whole_computer = normalize_roots(root)
     excluded = [str(Path(e).expanduser()) for e in (excluded or [])]
+    program_data = {path_key(str(p)) for p in program_data_dirs()}
     files: list[FileItem] = []
     folders: dict[str, FolderInfo] = {}
     protected: list[tuple[str, str]] = []
@@ -200,6 +240,8 @@ def scan(root: str | Path | list[str | Path] | tuple[str | Path, ...],
             continue
 
         reason = _protection_reason(info.path, info.name, [e.name for e in entries], info.depth == 0)
+        if not reason and info.depth > 0 and path_key(info.path) in program_data:
+            reason = "dados de programas"  # só se chega cá com «Incluir ficheiros ocultos»; o Lixo do Linux também
         if reason:
             info.protected = reason
             protected.append((info.path, reason))

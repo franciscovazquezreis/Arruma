@@ -12,7 +12,7 @@ from ..core.executor import Result
 from ..core.fsutil import (HOME, common_root, display_path, human_count, human_size, is_within, path_key,
                            path_parts, plural, sanitize_name)
 from ..core.planner import (Action, Plan, move_folder_in_plan, rebase_document,
-                            rename_action_in_plan, rename_folder_in_plan, retarget)
+                            rename_action_in_plan, rename_folder_in_plan, retarget, stays_in)
 from ..core.system import TRASH_NAME, TRASH_TO
 from .widgets import (Placeholder, ProgressPanel, add_classes, button, card, choose_folder, confirm,
                       esc, format_eta, hbox, icon, kind_icon, label, markup_column, open_path, prompt_text,
@@ -55,10 +55,18 @@ PHASES = {
 }
 
 
-def apply_summary(actions: list[Action]) -> list[str]:
-    """Linhas da confirmação de «Aplicar alterações». O que vai para o Lixo não são só ficheiros
-    temporários: também pode ir o que arrastaste para lá, incluindo pastas inteiras."""
-    moves = sum(1 for a in actions if a.op in ("move", "move_dir"))
+def _names(paths: list[str], limit: int = 4) -> str:
+    names = [f"«{os.path.basename(p) or p}»" for p in paths[:limit]]
+    if len(paths) > limit:
+        names.append(f"mais {len(paths) - limit}")
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " e " + names[-1]
+
+
+def apply_summary(actions: list[Action], plan: Plan | None = None, remove_empty: bool = True) -> list[str]:
+    """Linhas da confirmação de «Aplicar alterações»: o que sai de cada pasta analisada, o que muda de nome, o
+    que tem pouca certeza e as pastas que ficam vazias, além do que vai para o Lixo. O que vai para o Lixo não
+    são só ficheiros temporários: também pode ir o que arrastaste para lá, incluindo pastas inteiras."""
+    moves = [a for a in actions if a.op in ("move", "move_dir")]
     trash = [a for a in actions if a.op == "trash"]
     temp = sum(1 for a in trash if a.kind == tx.JUNK)
     folders = [a for a in trash if a.kind != tx.JUNK and os.path.isdir(a.src)]
@@ -66,7 +74,22 @@ def apply_summary(actions: list[Action]) -> list[str]:
     empty = sum(1 for a in actions if a.op == "rmdir")
     parts = []
     if moves:
-        parts.append(f"{plural(moves, 'item vai ser movido', 'itens vão ser movidos')} para as novas pastas.")
+        parts.append(f"{plural(len(moves), 'item vai mudar de pasta', 'itens vão mudar de pasta')}.")
+        if plan is not None:
+            leaving: dict[str, int] = {}
+            for a in moves:
+                root = next((r for r in plan.roots if is_within(a.src, r)), None)
+                if root is not None and not is_within(a.dst, root):
+                    leaving[root] = leaving.get(root, 0) + 1
+            for root, n in leaving.items():
+                parts.append(f"{plural(n, 'item sai', 'itens saem')} de «{os.path.basename(root) or root}» para "
+                             "outras pastas.")
+        renamed = sum(1 for a in moves if a.renamed)
+        if renamed:
+            parts.append(f"{plural(renamed, 'item muda', 'itens mudam')} de nome (filtro «Com nome novo»).")
+        low = sum(1 for a in moves if a.confidence < 0.55)
+        if low:
+            parts.append(f"{plural(low, 'item tem', 'itens têm')} pouca certeza (filtro «A rever (pouca certeza)»).")
     if temp:
         parts.append(f"{plural(temp, 'ficheiro temporário vai', 'ficheiros temporários vão')} {TRASH_TO}.")
     if files:
@@ -77,6 +100,13 @@ def apply_summary(actions: list[Action]) -> list[str]:
                      f"que {'tem' if len(folders) == 1 else 'têm'} dentro ({inside}).")
     if empty:
         parts.append(f"{plural(empty, 'pasta vazia vai ser removida', 'pastas vazias vão ser removidas')}.")
+    if plan is not None and remove_empty:
+        emptied = [d for d in plan.cleanup_dirs if any(is_within(a.src, d) for a in moves)]
+        if emptied:
+            one = len(emptied) == 1
+            parts.append(f"{'A pasta' if one else 'As pastas'} sem nome próprio {_names(emptied)} "
+                         f"{'é desfeita e removida' if one else 'são desfeitas e removidas'} se "
+                         f"{'ficar vazia' if one else 'ficarem vazias'}.")
     parts.append("Nada é apagado definitivamente e podes anular tudo no Histórico.")
     return parts
 
@@ -860,6 +890,11 @@ class PlanPage(Gtk.Stack):
                 if a.op in ("move", "move_dir") and os.path.dirname(a.dst) == target_dir:
                     context.finish(False, False, time)
                     return
+                if stays_in(a, target_dir):  # largado na pasta onde já está: fica onde está (desmarcado)
+                    retarget(a, self.plan, target_dir)
+                    context.finish(True, False, time)
+                    GLib.idle_add(self._finish_dnd, a.id, None, f"«{a.src_name}» fica onde está.")
+                    return
                 retarget(a, self.plan, target_dir)
                 context.finish(True, False, time)
                 GLib.idle_add(self._finish_dnd, a.id, None,
@@ -1080,11 +1115,13 @@ class PlanPage(Gtk.Stack):
             retarget(a, self.plan, folder)
             self._repopulate(select_id=a.id)
             self._show_detail(a)
+            if stays_in(a, folder):
+                self.win.toast.show(f"«{a.src_name}» fica onde está.")
 
     # ================================================================== aplicar
     def _on_apply(self) -> None:
         en = self.plan.enabled()
-        parts = apply_summary(en)
+        parts = apply_summary(en, self.plan, self.win.settings.remove_empty_dirs)
         if confirm(self.win, f"Aplicar {plural(len(en), 'alteração', 'alterações')}?", "\n".join(parts), "Aplicar"):
             self.win.apply_plan(en)
 

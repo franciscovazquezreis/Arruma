@@ -103,7 +103,7 @@ def without_colors(markup: str) -> str:
 
 def markup_column(column: Gtk.TreeViewColumn, cell: Gtk.CellRendererText, model_col: int) -> None:
     """A célula mostra o markup da coluna «model_col» do modelo. Na linha selecionada, as etiquetas
-    coloridas («palavras-chave», «• nova», «manter»…) ficam com a cor do texto: no fundo de destaque quase
+    coloridas («palavras-chave», «• nova», «fica»…) ficam com a cor do texto: no fundo de destaque quase
     não se liam."""
     def data(col, renderer, model, it, _data=None):
         markup = model.get_value(it, model_col) or ""
