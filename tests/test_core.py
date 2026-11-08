@@ -639,9 +639,13 @@ class DuplicateChoiceTests(unittest.TestCase):
         g = next(g for g in self.groups() if g.title == "IMG_0000.jpg")
         fica, sai = str(self.photos[0]), str(self.root / "Repetidas" / "IMG_0000.jpg")
         check_copy(sai, [fica], g.sigs)  # nada mudou
-        os.utime(sai)  # a data mudou, o conteúdo não: compara-se tudo e continua a ser uma cópia
+        # As datas mudam-se à mão: no Windows o relógio dos ficheiros avança aos saltos (cerca de 15 ms) e uma
+        # alteração logo a seguir à procura podia ficar com a mesma data.
+        t = os.stat(sai).st_mtime_ns
+        os.utime(sai, ns=(t + 5_000_000_000, t + 5_000_000_000))  # a data mudou, o conteúdo não: compara-se tudo
         check_copy(sai, [fica], g.sigs)
         Path(sai).write_bytes(Path(sai).read_bytes()[:-1] + b"X")  # alterada depois da procura
+        os.utime(sai, ns=(t + 10_000_000_000, t + 10_000_000_000))
         with self.assertRaises(NotACopy):
             check_copy(sai, [fica], g.sigs)
         Path(sai).write_bytes(Path(fica).read_bytes())
