@@ -459,6 +459,20 @@ class Planner:
                 ai_count += 1
             self._unit_ai = {n: results.get(1_000_000 + n) for n in range(len(unit_info))}
 
+        # Páginas numeradas («scan_001», «scan_002»…) que recebem o mesmo nome novo: o número fica no nome, para
+        # não se perder a ordem (com «(2)», «(3)»… ficava ao acaso).
+        runs: dict[tuple[str, str, str], list[tuple[int, str]]] = defaultdict(list)
+        for i, f in enumerate(files):
+            new_name = placements[i].new_name
+            m = re.fullmatch(r"(.*?)[\s_\-]*(\d{1,4})", split_ext(f.name)[0]) if new_name else None
+            if m:
+                runs[(f.parent, m.group(1).lower(), new_name.lower())].append((i, m.group(2)))
+        for items in runs.values():
+            if len(items) > 1:
+                for i, number in items:
+                    stem, ext = split_ext(placements[i].new_name)
+                    placements[i].new_name = sanitize_name(f"{stem} - {number}") + ext
+
         # Ficheiros que vão com outro: legendas, edições de fotografias, partes de arquivos, páginas guardadas.
         companion_of = _companions(files, placements)
         page_dirs = {d: i for i, d in _saved_pages(files, scan).items()}  # pasta «…_files» → a página

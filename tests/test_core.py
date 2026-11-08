@@ -494,12 +494,19 @@ class PlanChoiceTests(unittest.TestCase):
         self.assertFalse(any(a.src.startswith(str(r / "Receita bolo")) for a in plan.actions))
 
     def test_numbered_scans_keep_their_number(self):
-        from arruma.core.classifier import document_placement
-        from arruma.core.scanner import FileItem
-        item = FileItem("/x/scan_003.pdf", "scan_003.pdf", "pdf", 10, 0.0, tx.DOCUMENT, "/x")
-        p = document_placement(item, Settings(rename_unclear=True), "Casa", "", 0.9, "IA", "", "Contrato de arrendamento")
-        self.assertEqual(p.new_name, "Contrato de arrendamento - 003.pdf")
-
+        from arruma.core import planner
+        r = self.tmp / "Digitalizações"
+        for n in ("001", "002", "003"):
+            write(r / f"scan_{n}.txt", f"Contrato de arrendamento, página {n}")
+        write(r / "doc_7.txt", "Contrato de trabalho")  # sozinho: o número não diz nada
+        from arruma.core.classifier import Placement
+        # A IA dá o mesmo título a todas as páginas.
+        with mock.patch.object(planner, "document_placement", lambda f, st, *a, **k: Placement(
+                "documents", ("Casa",), new_name="Contrato de arrendamento.txt", reason="IA")):
+            plan = Planner(scan(str(r)), self.settings, MODE_INSIDE).build()
+        names = sorted(os.path.basename(a.dst) for a in plan.actions)
+        self.assertEqual(names, ["Contrato de arrendamento - 001.txt", "Contrato de arrendamento - 002.txt",
+                                 "Contrato de arrendamento - 003.txt", "Contrato de arrendamento.txt"])
 
 def _apply_summary():
     """A confirmação de «Aplicar alterações» (precisa do PyGObject; sem ele, None)."""
