@@ -101,7 +101,7 @@ class HomePage(Gtk.ScrolledWindow):
         # Garantias
         promises = hbox(28, margin_top=4)
         for ico, title, text in (
-            ("network-offline-symbolic", "Sem internet", "Nenhum ficheiro sai do computador."),
+            ("network-offline-symbolic", "Sem internet", "O Arruma não envia nada para fora do computador."),
             ("view-dual-symbolic", "Revês tudo antes", "Nada muda sem a tua aprovação."),
             ("edit-undo-symbolic", "Sempre reversível", "Podes anular qualquer arrumação."),
         ):

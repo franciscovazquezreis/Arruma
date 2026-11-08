@@ -236,7 +236,8 @@ class WindowsRecycleBinTests(unittest.TestCase):
             windll = types.SimpleNamespace(
                 kernel32=types.SimpleNamespace(GetDriveTypeW=lambda drive: 3),  # disco fixo
                 shell32=types.SimpleNamespace(SHFileOperationW=lambda ref: operate(ref, answer_no)))
-            with mock.patch.object(ctypes, "windll", windll, create=True):
+            with mock.patch.object(ctypes, "windll", windll, create=True), \
+                    mock.patch.object(trash, "_recycled", lambda *a: True):
                 if answer_no:
                     with self.assertRaises(OSError):
                         trash._win_trash(str(target))
@@ -244,6 +245,15 @@ class WindowsRecycleBinTests(unittest.TestCase):
                 else:
                     self.assertIsNone(trash._win_trash(str(target)))
                     self.assertFalse(target.exists())
+        # «Sim» à pergunta: o Windows apagou de vez. Não fica registado como se estivesse na Reciclagem.
+        target.write_text("grande", encoding="utf-8")
+        windll = types.SimpleNamespace(kernel32=types.SimpleNamespace(GetDriveTypeW=lambda drive: 3),
+                                       shell32=types.SimpleNamespace(SHFileOperationW=operate))
+        with mock.patch.object(ctypes, "windll", windll, create=True), \
+                mock.patch.object(trash, "_recycled", lambda *a: False), \
+                self.assertRaisesRegex(trash.PermanentlyDeleted, "apagado definitivamente"):
+            trash._win_trash(str(target))
+        flags.pop()
         FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_WANTNUKEWARNING = 0x10, 0x40, 0x4000
         self.assertTrue(all(f & FOF_ALLOWUNDO and f & FOF_NOCONFIRMATION and f & FOF_WANTNUKEWARNING
                             for f in flags) and len(flags) == 2, [hex(f) for f in flags])

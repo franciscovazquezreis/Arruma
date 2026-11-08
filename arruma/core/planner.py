@@ -21,7 +21,7 @@ from .db import Database
 from .extract import date_from_name, extract_text, image_info, plausible
 from .fsutil import (is_generic_dir_name, is_within, path_key, plural, sanitize_name, split_ext, unique_path,
                      user_dirs)
-from .system import is_external_mount
+from .system import is_external_mount, synced_service
 from .scanner import FileItem, FolderInfo, ScanResult, is_home
 from .settings import Settings
 
@@ -56,6 +56,8 @@ class Action:
     source: str
     renamed: bool = False
     enabled: bool = True
+    default_enabled: bool = True  # como o plano o propôs (cópias de segurança e afins vêm por confirmar)
+    follows: int = -1  # o item que este acompanha (legendas, a pasta «…_files» de uma página): vai para onde ele for
     area: str | None = None
     base_key: str = ""
     count: int = 1
@@ -76,6 +78,8 @@ class Plan:
     bases: dict[str, str]
     actions: list[Action]
     respected: list[tuple[str, str]] = field(default_factory=list)
+    # As pastas-base de cada pasta analisada (com várias pastas ou discos, cada uma tem as suas).
+    bases_by_root: dict[str, dict[str, str]] = field(default_factory=dict)
     cleanup_dirs: list[str] = field(default_factory=list)
     ai_model: str = ""
     ai_count: int = 0
@@ -111,8 +115,17 @@ class PlanCancelled(Exception):
 def default_mode(scan_or_root: ScanResult | str) -> str:
     xdg = user_dirs()
     if isinstance(scan_or_root, ScanResult):
-        if scan_or_root.whole_computer or len(scan_or_root.roots) > 1:
+        if scan_or_root.whole_computer:
             return MODE_PERSONAL
+        roots = scan_or_root.roots
+        if len(roots) > 1:
+            # Juntar tudo nas pastas pessoais esvazia as pastas escolhidas (até as subpastas com nome próprio
+            # saem inteiras): só por defeito quando são todas pastas pessoais, como Transferências e Secretária.
+            personal = {path_key(str(xdg[k])) for k in ("DOWNLOAD", "DESKTOP", "DOCUMENTS", "PICTURES", "VIDEOS",
+                                                         "MUSIC") if k in xdg}
+            if any(is_home(r) for r in roots) or all(path_key(r) in personal for r in roots):
+                return MODE_PERSONAL
+            return MODE_INSIDE
         root = scan_or_root.root
     else:
         root = scan_or_root
@@ -330,6 +343,17 @@ class Planner:
         individual, units, respected, flatten, empty_generic = self._traverse(bases_by_root)
 
         files = [f for f in scan.files if f.parent in individual]
+        # Atalhos e lançadores ficam onde estão: servem para abrir programas e sítios a partir dali.
+        shortcuts = [f for f in files if f.ext in tx.SHORTCUT_EXT or (not f.ext and _is_mac_alias(f.path))]
+        if shortcuts:
+            skip = {f.path for f in shortcuts}
+            files = [f for f in files if f.path not in skip]
+            n = len(shortcuts)
+            self.notes.append(f"{plural(n, 'atalho fica', 'atalhos ficam')} onde {'está' if n == 1 else 'estão'} "
+                              f"(por exemplo, «{shortcuts[0].name}»): servem para abrir programas e sítios a "
+                              "partir dali.")
+        # Por ordem do nome: quando dois ficam com o mesmo nome, o «(2)» vai para o segundo, sempre o mesmo.
+        files.sort(key=lambda f: (f.parent.casefold(), f.name.casefold(), f.path))
         placements: dict[int, Placement] = {}
         docs: list[int] = []
 
@@ -438,11 +462,29 @@ class Planner:
                 ai_count += 1
             self._unit_ai = {n: results.get(1_000_000 + n) for n in range(len(unit_info))}
 
+        # Páginas numeradas («scan_001», «scan_002»…) que recebem o mesmo nome novo: o número fica no nome, para
+        # não se perder a ordem (com «(2)», «(3)»… ficava ao acaso).
+        runs: dict[tuple[str, str, str], list[tuple[int, str]]] = defaultdict(list)
+        for i, f in enumerate(files):
+            new_name = placements[i].new_name
+            m = re.fullmatch(r"(.*?)[\s_\-]*(\d{1,4})", split_ext(f.name)[0]) if new_name else None
+            if m:
+                runs[(f.parent, m.group(1).lower(), new_name.lower())].append((i, m.group(2)))
+        for items in runs.values():
+            if len(items) > 1:
+                for i, number in items:
+                    stem, ext = split_ext(placements[i].new_name)
+                    placements[i].new_name = sanitize_name(f"{stem} - {number}") + ext
+
+        # Ficheiros que vão com outro: legendas, edições de fotografias, partes de arquivos, páginas guardadas.
+        companion_of = _companions(files, placements)
+        page_dirs = {d: i for i, d in _saved_pages(files, scan).items()}  # pasta «…_files» → a página
+
         # 5) Destinos: simplificar a árvore antes de criar as ações
         entries: list[tuple[Placement, str]] = []
         for i, f in enumerate(files):
             p = placements[i]
-            if not p.trash:
+            if not p.trash and i not in companion_of:
                 entries.append((p, bases_by_root[self._root_for(f.path)][p.base]))
         unit_places: list[Placement] = []
         for n, (u, dominant, ufiles) in enumerate(unit_info):
@@ -459,19 +501,28 @@ class Planner:
         def add(op, src, dst, kind, size, p: Placement, count=1, enabled=True):
             nonlocal next_id
             actions.append(Action(next_id, op, src, dst, kind, size, p.reason, p.confidence, p.source,
-                                  renamed=bool(p.new_name), enabled=enabled, area=p.area,
+                                  renamed=bool(p.new_name), enabled=enabled, default_enabled=enabled, area=p.area,
                                   base_key=p.base, count=count))
             next_id += 1
 
+        unit_paths = {u.path for u in units}
+        final_of: dict[int, Path] = {}  # onde fica cada ficheiro que muda de sítio
+        action_of: dict[int, Action] = {}
+        followers: list[tuple[Action, Action]] = []  # (acompanhante, principal)
         for i, f in enumerate(files):
             p = placements[i]
             if p.trash:
                 if st.clean_junk:
                     add("trash", f.path, "", tx.JUNK, f.size, p, enabled=p.trash_default)
                 continue
+            if i in companion_of:
+                continue  # vai com o ficheiro que acompanha (mais abaixo)
+            page_dir = next((d for d, j in page_dirs.items() if j == i), None)
+            if page_dir is not None and page_dir not in unit_paths:
+                continue  # página guardada cuja pasta «…_files» fica: sem ela a página não abre
             r_bases = bases_by_root[self._root_for(f.path)]
             dst_dir = Path(r_bases[p.base], *p.rel)
-            dst = dst_dir / (p.new_name or f.name)
+            dst = dst_dir / (f.name if page_dir else (p.new_name or f.name))  # a página aponta para «…_files»
             if str(dst) == f.path:
                 continue
             final = unique_path(dst, taken)
@@ -479,15 +530,53 @@ class Planner:
                 p.reason += f" Já existe «{dst.name}» no destino; ficará «{final.name}»."
             taken.add(path_key(final))
             add("move", f.path, str(final), f.kind, f.size, p)
+            actions[-1].renamed = final.name != f.name  # um «(2)» também é um nome novo
+            final_of[i] = final
+            action_of[i] = actions[-1]
+
+        for i, j in companion_of.items():
+            if j not in final_of:
+                continue  # o ficheiro que acompanha fica onde está: este também
+            f, main, main_final = files[i], files[j], final_of[j]
+            what = tx.COMPANION_EXT.get(f.ext, ("parte do arquivo",))[0]
+            stem, new_stem = os.path.splitext(main.name)[0], os.path.splitext(main_final.name)[0]
+            name = f.name
+            if new_stem != stem and name.lower().startswith(stem.lower()):
+                name = new_stem + name[len(stem):]  # «filme.srt» acompanha «filme» quando este muda de nome
+            dst = main_final.parent / name
+            if str(dst) == f.path:
+                continue
+            final = unique_path(dst, taken)
+            taken.add(path_key(final))
+            pm = placements[j]
+            add("move", f.path, str(final), f.kind, f.size,
+                Placement(pm.base, (), reason=f"Acompanha «{main.name}» ({what}), por isso vai para a mesma pasta. Se "
+                          f"mudares o destino ou o nome de «{main.name}», este vai com ele.", confidence=pm.confidence,
+                          source=pm.source, area=pm.area))
+            actions[-1].renamed = final.name != f.name
+            followers.append((actions[-1], action_of[j]))
 
         for (u, dominant, ufiles), p in zip(unit_info, unit_places):
             r_bases = bases_by_root[self._root_for(u.path)]
             dst = Path(r_bases[p.base], *p.rel, u.name)
+            page = page_dirs.get(u.path)
+            if page is not None:  # a pasta «…_files» de uma página guardada vai com ela
+                if page not in final_of:
+                    continue
+                dst = final_of[page].parent / u.name
+                p = Placement(placements[page].base, (), reason=f"Tem as imagens e o resto da página «{files[page].name}» "
+                              "e vai para a mesma pasta, para a página continuar a abrir. Se mudares o destino da "
+                              "página, esta pasta vai com ela.",
+                              confidence=placements[page].confidence, source=placements[page].source,
+                              area=placements[page].area)
             if str(dst) == u.path or is_within(dst, u.path):
                 continue
             final = unique_path(dst, taken)
             taken.add(path_key(final))
             add("move_dir", u.path, str(final), dominant, u.total_size, p, count=u.total_files)
+            actions[-1].renamed = final.name != u.name
+            if page is not None:
+                followers.append((actions[-1], action_of[page]))
 
         # Pastas vazias: só com a definição ligada, e nunca as que vão receber ficheiros deste plano
         # (ex.: «Documentos/Outros» vazia quando há documentos sem área).
@@ -500,16 +589,47 @@ class Planner:
                 add("rmdir", d, "", tx.OTHER, 0,
                     Placement("", (), reason="Pasta vazia sem nome próprio.", confidence=0.95))
 
+        # As pastas sem nome próprio («Nova pasta», «Diversos») são desfeitas: o que têm vai para as pastas certas.
+        dissolved = [d for d in flatten if any(a.op in ("move", "move_dir") and is_within(a.src, d) for a in actions)]
+        if dissolved:
+            names = [f"«{os.path.basename(d)}»" for d in dissolved[:4]] + (
+                [f"mais {len(dissolved) - 4}"] if len(dissolved) > 4 else [])
+            listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " e " + names[-1]
+            one = len(dissolved) == 1
+            self.notes.append(
+                f"{'A pasta' if one else 'As pastas'} {listed} não {'tem' if one else 'têm'} nome próprio: o que "
+                f"{'tem' if one else 'têm'} dentro vai para as pastas certas"
+                + (f" e, se {'ficar vazia, é removida' if one else 'ficarem vazias, são removidas'}"
+                   if st.remove_empty_dirs else "")
+                + ". Para manteres o que lá está, desmarca-o na lista.")
+
+        # Pastas de destino sincronizadas com a nuvem: o que o Arruma lá puser é enviado pelo serviço.
+        synced: dict[str, str] = {}
+        for bases in bases_by_root.values():
+            for b in bases.values():
+                if b in synced or not any(a.dst and is_within(a.dst, b) for a in actions):
+                    continue
+                service = synced_service(b)
+                if service:
+                    synced[b] = service
+        for b, service in synced.items():
+            if any(o != b and is_within(b, o) for o in synced):
+                continue  # já dito pela pasta de cima
+            self.notes.append(f"«{os.path.basename(b) or b}» está sincronizada com {service}: o que o Arruma lá "
+                              f"puser também vai para a nuvem e para os teus outros dispositivos.")
+
         order = {"move_dir": 0, "move": 1, "trash": 2, "rmdir": 3}
         actions.sort(key=lambda a: (order[a.op], a.dst.lower(), a.src.lower()))
         for n, a in enumerate(actions):
             a.id = n
+        for follower, main_action in followers:
+            follower.follows = main_action.id
 
         model = ai.model if ai is not None else ""
         return Plan(root=scan.root, roots=list(scan.roots), whole_computer=scan.whole_computer,
                     mode=self.mode, bases=primary_bases, actions=actions,
                     respected=respected, cleanup_dirs=flatten, ai_model=model, ai_count=ai_count,
-                    notes=self.notes)
+                    notes=self.notes, bases_by_root=bases_by_root)
 
     def _unit_placement(self, u: FolderInfo, dominant: str, ufiles: list[FileItem],
                         ai_result: dict | None) -> Placement:
@@ -600,9 +720,73 @@ def simplify_tree(entries: list[tuple[Placement, str]]) -> None:
             changed = True
 
 
+def _documents_base(action: Action, plan: Plan) -> str:
+    """A pasta de documentos da pasta analisada (ou do disco) de onde o item sai: mudar a área nunca o leva
+    para outra pasta escolhida nem para outro disco."""
+    for root, bases in plan.bases_by_root.items():
+        if is_within(action.src, root) and "documents" in bases:
+            return bases["documents"]
+    return plan.bases["documents"]
+
+
+def _is_mac_alias(path: str) -> bool:
+    """Um atalho do Finder (alias), que não tem extensão: começa por «book», quatro zeros e «mark»."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(12) == b"book\x00\x00\x00\x00mark"
+    except OSError:
+        return False
+
+
+def _companions(files: list[FileItem], placements: dict[int, Placement]) -> dict[int, int]:
+    """Ficheiros que acompanham outro da mesma pasta com o mesmo nome (legendas, edições de fotografias, listas
+    de faixas, partes de um arquivo): índice do acompanhante → índice do ficheiro que acompanha."""
+    by_name: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
+    for i, f in enumerate(files):
+        if placements[i].trash or f.ext in tx.COMPANION_EXT or tx.SPLIT_ARCHIVE.fullmatch(f.ext):
+            continue
+        names = by_name[f.parent]
+        names[f.name.lower()].append(i)
+        stem = split_ext(f.name)[0].lower()
+        if stem != f.name.lower():
+            names[stem].append(i)
+    out: dict[int, int] = {}
+    for i, f in enumerate(files):
+        if placements[i].trash:
+            continue
+        if f.ext in tx.COMPANION_EXT:
+            kinds = tx.COMPANION_EXT[f.ext][1]
+        elif tx.SPLIT_ARCHIVE.fullmatch(f.ext):
+            kinds = (tx.ARCHIVE,)
+        else:
+            continue
+        stem = os.path.splitext(f.name)[0]
+        while stem:  # «IMG_1.CR2.xmp» → «IMG_1.CR2», «IMG_1»; «filme.pt.srt» → «filme.pt», «filme»
+            # Com o mesmo nome pode haver vários («Concerto.jpg» e «Concerto.mp4»): o do tipo certo, pela ordem de
+            # preferência, e nunca um relatório (.log) se houver outro.
+            cands = [j for j in by_name[f.parent].get(stem.lower(), []) if files[j].kind in kinds]
+            if cands:
+                out[i] = min(cands, key=lambda j: (kinds.index(files[j].kind), files[j].ext in tx.COMPANION_WEAK,
+                                                   files[j].name.lower()))
+                break
+            shorter = os.path.splitext(stem)[0]
+            stem = "" if shorter == stem else shorter
+    return out
+
+def _saved_pages(files: list[FileItem], scan: ScanResult) -> dict[int, str]:
+    """Páginas guardadas com «Guardar página como… completa»: índice do .html → a pasta «…_files» ao lado."""
+    out: dict[int, str] = {}
+    for i, f in enumerate(files):
+        if f.ext in ("html", "htm"):
+            d = os.path.join(f.parent, split_ext(f.name)[0] + "_files")
+            if d in scan.folders:
+                out[i] = d
+    return out
+
+
 def rebase_document(action: Action, plan: Plan, area: str) -> None:
     """Muda a área de um documento escolhida pelo utilizador."""
-    base = plan.bases["documents"]
+    base = _documents_base(action, plan)
     name = os.path.basename(action.dst)
     if action.op == "move_dir":
         new = Path(base, area, name)
@@ -616,10 +800,45 @@ def rebase_document(action: Action, plan: Plan, area: str) -> None:
     action.source = "manual"
     action.confidence = 1.0
     action.reason = f"Escolheste a área {area}."
+    carry_followers(plan, action)
+
+
+def carry_followers(plan: Plan, main: Action) -> None:
+    """Os itens que acompanham «main» (legendas, edições, a pasta «…_files» de uma página) vão para a pasta dele
+    e ficam marcados como ele; um acompanhante cujo nome começa pelo de «main» muda de nome com ele."""
+    if main.op not in ("move", "move_dir") or not main.dst:
+        return
+    stem = os.path.splitext(main.src_name)[0]
+    new_stem = os.path.splitext(os.path.basename(main.dst))[0]
+    for f in plan.actions:
+        if f.follows != main.id or f is main or f.op not in ("move", "move_dir"):
+            continue
+        name = f.src_name
+        if f.op == "move" and new_stem != stem and name.lower().startswith(stem.lower()):
+            name = new_stem + name[len(stem):]
+        cand = Path(os.path.dirname(main.dst)) / name
+        if path_key(cand) != path_key(f.dst):
+            taken = {path_key(a.dst) for a in plan.actions if a is not f and a.dst}
+            f.dst = str(unique_path(cand, taken))
+        f.renamed = os.path.basename(f.dst) != f.src_name
+        f.enabled = main.enabled
+
+
+def stays_in(action: Action, folder: str) -> bool:
+    """Se «folder» é a pasta onde o item já está: escolhê-la como destino quer dizer que fica onde está."""
+    return path_key(os.path.dirname(action.src)) == path_key(folder)
 
 
 def retarget(action: Action, plan: Plan, folder: str) -> None:
-    """Muda a pasta de destino de um ficheiro ou pasta (incluindo por arrastar e largar)."""
+    """Muda a pasta de destino de um ficheiro ou pasta (incluindo por arrastar e largar). A pasta onde o item
+    já está desmarca-o: fica onde está (antes, ganhava um «(2)» no nome, ao lado de si próprio)."""
+    if stays_in(action, folder):
+        action.enabled = False
+        if action.op == "trash":
+            action.default_enabled = False  # «Selecionar tudo» já não o manda para o Lixo
+        carry_followers(plan, action)
+        return
+    action.enabled = True  # escolher outro destino é pedir para o mover (mesmo que antes tenha ficado onde está)
     name = os.path.basename(action.dst or action.src)
     if action.op == "trash":
         action.op = "move"
@@ -629,6 +848,7 @@ def retarget(action: Action, plan: Plan, folder: str) -> None:
     action.source = "manual"
     action.confidence = 1.0
     action.reason = f"Movido por ti para «{os.path.basename(folder) or folder}»."
+    carry_followers(plan, action)
 
 
 def rename_action_in_plan(action: Action, plan: Plan, new_name: str) -> None:
@@ -651,6 +871,7 @@ def rename_action_in_plan(action: Action, plan: Plan, new_name: str) -> None:
     action.source = "manual"
     action.confidence = 1.0
     action.reason = f"Nome alterado por ti para «{os.path.basename(action.dst)}»."
+    carry_followers(plan, action)
 
 
 def _rewrite_prefix(plan: Plan, old_dir: str, new_dir: str, reason: str) -> None:
@@ -673,10 +894,11 @@ def _rewrite_prefix(plan: Plan, old_dir: str, new_dir: str, reason: str) -> None
         a.source = "manual"
         a.confidence = 1.0
         a.reason = reason
-    for k, b in list(plan.bases.items()):
-        if is_within(b, old_dir):
-            rel = os.path.relpath(b, old_dir)
-            plan.bases[k] = new_dir if rel == "." else os.path.join(new_dir, rel)
+    for bases in (plan.bases, *plan.bases_by_root.values()):
+        for k, b in list(bases.items()):
+            if is_within(b, old_dir):
+                rel = os.path.relpath(b, old_dir)
+                bases[k] = new_dir if rel == "." else os.path.join(new_dir, rel)
 
 
 def rename_folder_in_plan(plan: Plan, old_dir: str, new_name: str) -> str:

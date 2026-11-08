@@ -76,8 +76,9 @@ class SettingsPage(Gtk.ScrolledWindow):
                      "Se desligares, agrupa apenas por ano.",
                      self.photos_month),
             pref_row("Sugerir nomes claros para ficheiros com nomes vagos",
-                     "Só propõe mudar nomes como «scan_003.pdf» ou «Documento (1).pdf». "
-                     "Nomes que já fazem sentido nunca são alterados.",
+                     "Só propõe mudar nomes que não dizem o que o ficheiro é, como «scan_003.pdf», "
+                     "«Documento (1).pdf» ou «Contrato.pdf». Cada nome novo aparece no plano, assinalado, e "
+                     "podes recusá-lo.",
                      self.rename_unclear),
             pref_row(f"Propor envio de ficheiros temporários {TRASH_TO}",
                      "Ficheiros como Thumbs.db, .DS_Store ou transferências incompletas antigas.",
@@ -166,9 +167,11 @@ class SettingsPage(Gtk.ScrolledWindow):
             self.win.settings.excluded.append(path)
             self.win.settings.save()
             self._rebuild_excluded()
+            self.win.exclusions_changed()
 
     def _remove_excluded(self, path: str) -> None:
         if path in self.win.settings.excluded:
             self.win.settings.excluded.remove(path)
             self.win.settings.save()
             self._rebuild_excluded()
+            self.win.exclusions_changed()

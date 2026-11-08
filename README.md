@@ -77,11 +77,14 @@ Para evitar pastas que não fazem sentido:
 - uma subárea (por exemplo «Finanças/Faturas e Recibos») ou um álbum de música só ganham pasta própria quando têm pelo menos 3 ficheiros; com menos, ficam na pasta de cima;
 - as fotografias só são separadas por ano quando algum ano tem pelo menos 3, e por mês a partir de 40 fotografias nesse ano;
 - ao arrumar dentro de uma pasta, as subpastas que já têm nome próprio ficam onde estão; só as pastas genéricas («Nova pasta», «temp», «Diversos») são esvaziadas;
-- as imagens recebidas por WhatsApp, Telegram ou Signal ficam em «Recebidas por mensagem», separadas das fotografias tiradas por ti.
+- as imagens recebidas por WhatsApp, Telegram ou Signal ficam em «Recebidas por mensagem», separadas das fotografias tiradas por ti;
+- os ficheiros que andam juntos vão juntos (legendas com o filme, edições .xmp com a fotografia, .cue com o disco, partes de um arquivo, uma página guardada com a sua pasta «…_files»), e os atalhos ficam onde estão.
 
 Os ficheiros com nomes vagos («scan_003.pdf», «Documento (1).docx», «Contrato.pdf») podem receber um nome claro, com a data no início quando ela está escrita no documento (por exemplo `2025-02-20 Contrato de arrendamento para habitação.pdf`). Um nome proposto pela IA é recusado se citar uma empresa ou pessoa que não aparece no texto.
 
-O Arruma nunca toca em pastas de programas, projetos de programação, bibliotecas (Calibre, Fotografias do macOS, Steam…), pastas sincronizadas (Dropbox, OneDrive, Nextcloud…) nem em pastas do sistema.
+O Arruma nunca toca em pastas de programas, projetos de programação, bibliotecas (Calibre, Fotografias do macOS, Steam…), pastas sincronizadas (Dropbox, OneDrive, Nextcloud…), no Lixo, em cópias de segurança (Time Machine, Histórico de Ficheiros do Windows, Timeshift…) nem em pastas do sistema, incluindo as de um disco do Windows lido no Linux.
+
+Nos ficheiros repetidos, o Arruma compara o conteúdo byte a byte e mostra em que pastas está cada cópia. Quando as cópias estão em pastas diferentes, não escolhe por ti: és tu que dizes de que pasta ficam. Antes de enviar cada cópia para o Lixo, confirma que ainda é igual à que fica.
 
 ## Qualidade da organização
 

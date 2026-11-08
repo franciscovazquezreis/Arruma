@@ -521,8 +521,6 @@ def correr(casa: Path, saida: Path) -> int:
             self.captura("08-duplicados")
             depois(dup.trash_btn.clicked)
             yield lambda: dialogo(Gtk.MessageDialog) is not None
-            yield 0.8
-            self.captura("08b-duplicados-confirmar", dialogo(Gtk.MessageDialog))
             dialogo(Gtk.MessageDialog).response(Gtk.ResponseType.OK)
             yield lambda: dialogo(Gtk.MessageDialog) is None and dup.get_visible_child_name() == "none"
             self.focar(win)
@@ -611,6 +609,14 @@ def correr(casa: Path, saida: Path) -> int:
             yield lambda: not win.toast.get_child_revealed()
             yield 0.5
             self.captura("07-historico")
+            # «O que mudou» da arrumação: de que pastas para que pastas foram os itens.
+            mudou = botao(next(r for r in hist.list.get_children() if any(t.startswith("Arrumação") for t in textos(r))),
+                          "O que mudou")
+            mudou.set_active(True)
+            yield 1.0
+            self.captura("07e-historico-o-que-mudou")
+            mudou.set_active(False)
+            yield 0.5
 
             # Definições (o princípio e o fim da página).
             win.navigate("settings")
@@ -676,6 +682,39 @@ def correr(casa: Path, saida: Path) -> int:
             self.focar(win)
             yield 1.0
             self.captura("07d-historico-anulada-em-parte")
+
+            # Cópias em pastas diferentes: as fotografias do verão em Imagens/Fotografias e uma cópia do
+            # telemóvel noutra pasta. O Arruma não marca nada até a Ana escolher de que pasta ficam.
+            rnd = random.Random(2025)
+            verao = casa / "Imagens" / "Fotografias" / "Verão 2025"
+            telemovel = casa / "Imagens" / "Cópia do telemóvel"
+            verao.mkdir(parents=True)
+            telemovel.mkdir()
+            for i in range(6):
+                quando = f"2025:07:{12 + i // 2:02d} {10 + i}:{7 * i:02d}:00"
+                nome = f"IMG_202507{12 + i // 2:02d}_{10 + i}{7 * i:02d}00.jpg"
+                _foto(verao / nome, rnd, (200 - i * 15, 150 + i * 10, 90 + i * 20), ("samsung", "SM-A546B"), quando)
+                _data(verao / nome, quando)
+                if i < 5:
+                    shutil.copy2(verao / nome, telemovel / nome)
+            win.start_scan(str(casa / "Imagens"))
+            yield lambda: analise.get_visible_child_name() == "content" and win._task is None
+            win.navigate("duplicates")
+            yield 0.6
+            botao(dup.intro, "Procurar duplicados").clicked()
+            yield lambda: dup.get_visible_child_name() == "content"
+            yield 1.0
+            self.captura("08d-duplicados-pastas")
+            conjunto = next(c for c in dup.sets.values() if c.combo is not None)
+            conjunto.combo.set_active_id(f"keep:{verao}")
+            yield 0.8
+            self.captura("08e-duplicados-pastas-escolha")
+            depois(dup.trash_btn.clicked)
+            yield lambda: dialogo(Gtk.MessageDialog) is not None
+            yield 0.8
+            self.captura("08f-duplicados-pastas-confirmar", dialogo(Gtk.MessageDialog))
+            dialogo(Gtk.MessageDialog).response(Gtk.ResponseType.CANCEL)
+            yield lambda: dialogo(Gtk.MessageDialog) is None
 
         @staticmethod
         def _anular(hist, titulo: str) -> Gtk.Button:

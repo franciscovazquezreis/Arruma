@@ -7,6 +7,7 @@ guardado no histórico e ajuda a anular a operação mais tarde."""
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 from .system import IS_MAC, IS_WINDOWS, TRASH_FROM, TRASH_IN
@@ -154,10 +155,52 @@ def _win_trash(path: str) -> str | None:
     op = SHFILEOPSTRUCTW(None, FO_DELETE, os.path.abspath(path) + "\0", None,
                          FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_WANTNUKEWARNING,
                          False, None, None)
+    since = time.time()
     code = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
     if code or op.fAnyOperationsAborted or os.path.lexists(path):
         raise OSError(f"Não foi possível enviar para a Reciclagem (código {code}).")
+    if not _recycled(path, drive, since):
+        # Respondeste «Sim» à pergunta do Windows: não cabia na Reciclagem (ou ela está para apagar logo) e foi
+        # apagado. Fica registado assim, e não como se se pudesse ir buscar à Reciclagem.
+        raise PermanentlyDeleted("Foi apagado definitivamente: não cabia na Reciclagem e o Windows perguntou "
+                                 "antes de o apagar.")
     return None
+
+
+class PermanentlyDeleted(OSError):
+    """O Windows apagou de vez em vez de pôr na Reciclagem (com a autorização da pessoa)."""
+
+
+def _recycled(path: str, drive: str, since: float) -> bool:
+    """Se o Windows acabou de pôr «path» na Reciclagem: há um ficheiro $I novo com esse caminho original. Se não
+    for possível ler a Reciclagem, dá-se o benefício da dúvida."""
+    bin_root = Path(drive + "\\") / "$Recycle.Bin"
+    sid = _current_user_sid()
+    folders = [bin_root / sid] if sid else []
+    try:
+        folders += [p for p in bin_root.iterdir() if p.is_dir() and p not in folders]
+    except OSError:
+        pass
+    target = os.path.normcase(os.path.realpath(path))
+    readable = False
+    for folder in folders:
+        try:
+            with os.scandir(folder) as it:
+                infos = [e for e in it if e.name.startswith("$I")]
+        except OSError:
+            continue
+        readable = True
+        for e in infos:
+            try:
+                if e.stat().st_mtime < since - 60:  # só os que acabaram de ser criados
+                    continue
+                with open(e.path, "rb") as fh:
+                    orig, _deleted = parse_recycle_index(fh.read())
+            except OSError:
+                continue
+            if orig and os.path.normcase(os.path.realpath(orig)) == target:
+                return True
+    return not readable
 
 
 def _current_user_sid() -> str | None:

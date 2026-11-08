@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 
 from gi.repository import Gtk
@@ -29,8 +30,41 @@ def _when(ts: float) -> str:
     return f"{day}, {d:%H:%M}"
 
 
-def undo_question(s) -> tuple[str, str, str]:
-    """Título, texto e botão da confirmação antes de anular uma sessão (ou o que falta de uma anulada em parte)."""
+def changes_summary(ops, undo: bool = False, limit: int = 6) -> list[str]:
+    """De que pasta para que pasta foram os itens de uma sessão (ou, ao anular, de onde para onde voltam), do que
+    tem mais itens para o que tem menos. «ops»: as operações feitas (estado «ok»)."""
+    counts: dict[tuple[str, str], int] = {}
+    for o in ops:
+        if o["op"] in ("move", "move_dir") and o["dst"]:
+            key = (os.path.dirname(o["src"]), os.path.dirname(o["dst"]))
+        elif o["op"] == "trash":
+            key = (os.path.dirname(o["src"]), "")
+        else:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+    lines = []
+    for (src, dst), n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]:
+        if not dst:
+            lines.append(f"• {n} {'sai' if n == 1 else 'saem'} {TRASH_FROM} para {display_path(src)}" if undo
+                         else f"• {n} de {display_path(src)} {TRASH_TO}")
+        elif undo:
+            lines.append(f"• {n} {'volta' if n == 1 else 'voltam'} de {display_path(dst)} para {display_path(src)}")
+        else:
+            lines.append(f"• {n} de {display_path(src)} para {display_path(dst)}")
+    if len(counts) > limit:
+        lines.append(f"• e mais {plural(len(counts) - limit, 'pasta', 'pastas')}")
+    return lines
+
+
+def undo_question(s, ops=None) -> tuple[str, str, str]:
+    """Título, texto e botão da confirmação antes de anular uma sessão (ou o que falta de uma anulada em parte).
+    Com «ops» (as operações por anular), diz também de que pastas para que pastas voltam os itens."""
+    where = changes_summary(ops, undo=True, limit=4) if ops else []
+    title, text, ok = _undo_question(s)
+    return title, text + ("\n\n" + "\n".join(where) if where else ""), ok
+
+
+def _undo_question(s) -> tuple[str, str, str]:
     keep = "Nada é substituído: se já houver outro com o mesmo nome no sítio original, esse item fica onde está."
     if s["undone"] == UNDONE_PARTLY:
         n = s["n_left"]
@@ -94,6 +128,27 @@ class HistoryPage(Gtk.Stack):
         self.progress.stop()
         self.refresh()
 
+    def _details_button(self, s) -> Gtk.MenuButton:
+        """«O que mudou»: de que pastas para que pastas foram os itens desta sessão."""
+        btn = Gtk.MenuButton(label="O que mudou")
+        add_classes(btn, "flat")
+        btn.set_valign(Gtk.Align.CENTER)
+        pop = Gtk.Popover()
+        box = vbox(6, margin_top=12, margin_bottom=12, margin_start=14, margin_end=14)
+        box.pack_start(label(s["title"], "section-title", ellipsize=True, max_width=60), False, False, 0)
+        lines = changes_summary([o for o in self.win.db.ops(s["id"]) if o["status"] in ("ok", "anulada")],
+                                limit=12)
+        box.pack_start(label("\n".join(lines) or "Só pastas vazias removidas.", wrap=True, max_width=70),
+                       False, False, 0)
+        if s["undone"]:
+            box.pack_start(label("Esta arrumação foi anulada: os itens voltaram ao sítio onde estavam."
+                                 if s["undone"] == UNDONE else "Parte destes itens já voltou ao sítio onde estava.",
+                                 "small", "dim", wrap=True, max_width=70), False, False, 0)
+        box.show_all()
+        pop.add(box)
+        btn.set_popover(pop)
+        return btn
+
     def refresh(self) -> None:
         sessions = self.win.db.sessions()
         running = self.win.executor.running
@@ -134,6 +189,8 @@ class HistoryPage(Gtk.Stack):
                 box.pack_end(b, False, False, 0)
                 if partly:
                     box.pack_end(label("Anulada em parte", "pill", "off"), False, False, 0)
+            if s["id"] != running:
+                box.pack_end(self._details_button(s), False, False, 0)  # à esquerda do «Anular»
             row.add(box)
             self.list.add(row)
         self.list.show_all()

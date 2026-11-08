@@ -86,13 +86,22 @@ class ApplySummaryTests(unittest.TestCase):
             Action(4, "rmdir", str(self.tmp / "Nova pasta"), "", tx.OTHER, 0, "", 0.95, "regras"),
         ]
         self.assertEqual(apply_summary(actions), [
-            "1 item vai ser movido para as novas pastas.",
+            "1 item vai mudar de pasta.",
             f"1 ficheiro temporário vai {TRASH_TO}.",
             f"1 ficheiro que escolheste vai {TRASH_TO}.",
             f"1 pasta inteira vai {TRASH_TO}, com tudo o que tem dentro (12 ficheiros).",
             "1 pasta vazia vai ser removida.",
             "Nada é apagado definitivamente e podes anular tudo no Histórico.",
         ])
+        # O que vinha por confirmar: uma cópia de segurança e uma transferência que ainda pode estar a decorrer.
+        bak = Action(5, "trash", str(self.tmp / "Orçamento.xlsx.bak"), "", tx.JUNK, 1, "", 0.5, "regras",
+                     default_enabled=False)
+        parcial = Action(6, "trash", str(self.tmp / "ubuntu.iso.crdownload"), "", tx.JUNK, 1, "", 0.5, "regras",
+                         default_enabled=False)
+        resumo = apply_summary([bak, parcial])
+        self.assertIn(f"1 ficheiro que pode ser uma cópia de segurança (.bak, .old…) vai {TRASH_TO}.", resumo)
+        self.assertIn("1 ficheiro temporário recente (transferência incompleta ou bloqueio de um documento aberto) "
+                      f"vai {TRASH_TO}.", resumo)
         only_junk = apply_summary([actions[1]])
         self.assertEqual(only_junk[0], f"1 ficheiro temporário vai {TRASH_TO}.")
         self.assertFalse(any("pasta" in line or "escolheste" in line for line in only_junk))
@@ -357,17 +366,101 @@ class DuplicatesPageTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def test_group_title_is_the_copy_that_stays(self):
+    def page(self):
         from arruma.core.duplicates import find_duplicates
-        from arruma.ui.page_duplicates import COL_MARKUP, DuplicatesPage
-        for name in ("foto (1).jpg", "foto.jpg"):
-            (self.tmp / name).write_bytes(b"\xff\xd8\xff\xe0 igual" * 50)
-        groups = find_duplicates(scan(self.tmp).files)
+        from arruma.ui.page_duplicates import DuplicatesPage
         page = DuplicatesPage(fake_window())
         self.addCleanup(page.destroy)
-        page.show_groups(groups)
+        page.show_groups(find_duplicates(scan(self.tmp).files))
+        return page
+
+    def test_group_title_is_the_copy_that_stays(self):
+        from arruma.ui.page_duplicates import COL_MARKUP
+        for name in ("foto (1).jpg", "foto.jpg"):
+            (self.tmp / name).write_bytes(b"\xff\xd8\xff\xe0 igual" * 50)
+        page = self.page()
         title = page.store.get_value(page.store.get_iter_first(), COL_MARKUP)
         self.assertTrue(title.startswith("<b>foto.jpg</b>"), title)
+        # Na mesma pasta, a «(1)» vem marcada; não há escolha de pastas a fazer.
+        self.assertEqual([os.path.basename(p) for p in page._selected_paths()], ["foto (1).jpg"])
+        self.assertFalse(page.folders_box.get_visible())
+
+    def test_the_user_chooses_between_folders(self):
+        from arruma.ui.page_duplicates import BY_HAND, CHOOSE, COL_MARKUP, KEEP_ALL
+        for i in range(3):
+            for folder in ("Fotografias", "Repetidas"):
+                (self.tmp / folder).mkdir(exist_ok=True)
+                (self.tmp / folder / f"IMG_{i}.jpg").write_bytes(f"foto {i} ".encode() * 300)
+        fotos, repetidas = str(self.tmp / "Fotografias"), str(self.tmp / "Repetidas")
+        page = self.page()
+        # Nada marcado e o botão desligado até o utilizador escolher.
+        self.assertEqual(page._selected_paths(), [])
+        self.assertFalse(page.trash_btn.get_sensitive())
+        self.assertEqual(page.pending.get_text(), "Falta escolher em 1 conjunto de pastas.")
+        self.assertTrue(page.folders_box.get_visible())
+        rows = page.folders_list.get_children()
+        self.assertEqual(len(rows), 1)
+        s = page.sets[(fotos, repetidas)]
+        self.assertEqual(s.combo.get_active_id(), CHOOSE)
+        # Cada cópia mostra a pasta em destaque e se fica ou vai para o Lixo.
+        first = page.store.iter_children(page.store.get_iter_first())
+        self.assertTrue(page.store.get_value(first, COL_MARKUP).startswith("<b>Fotografias</b>"))
+        self.assertIn(">fica<", page.store.get_value(first, COL_MARKUP))
+
+        s.combo.set_active_id(f"keep:{fotos}")
+        self.assertEqual(sorted(page._selected_paths()), [os.path.join(repetidas, f"IMG_{i}.jpg") for i in range(3)])
+        self.assertTrue(page.trash_btn.get_sensitive())
+        self.assertFalse(page.pending.get_visible())
+        resumo = page.trash_summary(page._selected_paths())
+        self.assertIn(f"3 de {repetidas}", resumo)
+        self.assertIn(f"3 de {fotos}", resumo.split("ficam estão em:")[1])
+
+        # Mudar uma marca à mão: a escolha passa a «Marcadas à mão»; repô-la volta à escolha da pasta.
+        fica = page.store.iter_children(page.parents[0])  # a de Fotografias
+        sai = page.store.iter_next(fica)  # a de Repetidas, marcada
+        page._on_toggled(None, page.store.get_path(sai).to_string())
+        self.assertEqual(s.combo.get_active_id(), BY_HAND)
+        page._on_toggled(None, page.store.get_path(sai).to_string())
+        self.assertEqual(s.combo.get_active_id(), f"keep:{fotos}")
+        # A última cópia que fica não se pode marcar.
+        page._on_toggled(None, page.store.get_path(fica).to_string())
+        page.win.toast.show.assert_called_with("Tem de ficar pelo menos uma cópia de cada ficheiro.")
+        self.assertEqual(page._marks(0), {os.path.join(repetidas, "IMG_0.jpg")})
+
+        s.combo.set_active_id(f"keep:{repetidas}")
+        self.assertEqual(sorted(page._selected_paths()), [os.path.join(fotos, f"IMG_{i}.jpg") for i in range(3)])
+        s.combo.set_active_id(KEEP_ALL)
+        self.assertEqual(page._selected_paths(), [])
+
+    def test_only_the_largest_folder_sets_get_a_choice(self):
+        from arruma.ui import page_duplicates
+        for i in range(4):
+            for folder in (f"Álbum {i}", f"Cópia/Álbum {i}"):
+                (self.tmp / folder).mkdir(parents=True, exist_ok=True)
+                (self.tmp / folder / "faixa.mp3").write_bytes(f"faixa {i} ".encode() * (300 + 100 * i))
+        with mock.patch.object(page_duplicates, "MAX_SETS", 3):
+            page = self.page()
+        rows = page.folders_list.get_children()
+        self.assertEqual(len(rows), 4)  # 3 com escolha e a linha do resto
+        self.assertEqual(sum(1 for s in page.sets.values() if s.combo is not None), 3)
+        self.assertIsNone(page.sets[min(page.sets, key=lambda k: page.sets[k].wasted)].combo)
+        self.assertEqual(page.pending.get_text(), "Falta escolher em 3 conjuntos de pastas.")
+
+    def test_copies_on_another_disk_may_be_a_backup(self):
+        from arruma.ui import page_duplicates
+        for folder in ("Fotografias", "Disco externo"):
+            (self.tmp / folder).mkdir()
+            (self.tmp / folder / "IMG_1.jpg").write_bytes(b"foto " * 300)
+
+        def texts(widget):
+            if isinstance(widget, Gtk.Label):
+                return [widget.get_text()]
+            return [t for c in getattr(widget, "get_children", lambda: [])() for t in texts(c)]
+        with mock.patch.object(page_duplicates, "_disks", lambda folders: {1, 2}):
+            page = self.page()
+        self.assertTrue(any("discos diferentes" in t for t in texts(page.folders_list)))
+        page = self.page()
+        self.assertFalse(any("discos diferentes" in t for t in texts(page.folders_list)))
 
 
 @unittest.skipUnless(HAS_DISPLAY and Gdk.Display.get_default().__gtype__.name == "GdkX11Display",

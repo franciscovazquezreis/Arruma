@@ -18,9 +18,9 @@ from .. import APP_ID, APP_NAME, AUTHOR, COPYRIGHT, REPO_URL, __version__  # noq
 from ..core import taxonomy as tx  # noqa: E402
 from ..core.ai import RECOMMENDED_MODEL, AIError, AIStatus, LocalAI  # noqa: E402
 from ..core.db import Database  # noqa: E402
-from ..core.duplicates import find_duplicates  # noqa: E402
+from ..core.duplicates import check_copy, find_duplicates  # noqa: E402
 from ..core.executor import Executor  # noqa: E402
-from ..core.fsutil import COMPUTER_TOKEN, check_root_allowed, is_within, plural  # noqa: E402
+from ..core.fsutil import COMPUTER_TOKEN, check_root_allowed, display_path, is_within, plural  # noqa: E402
 from ..core.planner import Action, PlanCancelled, Planner  # noqa: E402
 from ..core.scanner import ScanCancelled, ScanResult, check_root_protected, scan  # noqa: E402
 from ..core.settings import Settings  # noqa: E402
@@ -162,7 +162,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
         foot = hbox(8, margin_top=8, margin_bottom=14, margin_start=16, margin_end=16)
         foot.pack_start(icon("security-high-symbolic", 15, "dim"), False, False, 0)
-        foot.pack_start(label("Os teus ficheiros nunca saem deste computador.", "small", "dim",
+        foot.pack_start(label("O Arruma não envia os teus ficheiros para a internet.", "small", "dim",
                               wrap=True, max_width=22), True, True, 0)
         side.pack_end(foot, False, False, 0)
         return side
@@ -417,7 +417,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                 message(self, f"Não é possível escolher «{os.path.basename(os.path.normpath(p)) or p}»", err,
                         Gtk.MessageType.WARNING)
                 return
-        if self._refuse_if_busy():
+        if self._refuse_if_busy() or (not refresh and not self.drop_edited_plan()):
             return
         if COMPUTER_TOKEN in raw_list or "/" in raw_list:
             title = "Todo o computador"
@@ -478,6 +478,31 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
         run_bg(work, done, fail)
 
+    def exclusions_changed(self) -> None:
+        """«Pastas a ignorar sempre» mudou: a análise atual volta a fazer-se já com a lista nova, e o plano e os
+        duplicados, que ainda contavam com essas pastas, deixam de valer."""
+        if not self.scan_result or self._busy:
+            return  # a meio de mudar ficheiros, a lista conta a partir da próxima análise
+        if self.plan_page.plan is not None:
+            self.plan_page.reset()
+            self.nav_badges["plan"].set_text("")
+        self._refresh_analysis()
+        self.toast.show("A análise foi refeita com a lista nova de pastas a ignorar.")
+
+    def drop_edited_plan(self, why: str = "Um plano novo começa do zero, com as propostas do Arruma") -> bool:
+        """Antes de deitar fora o plano: se tem escolhas tuas (marcas, destinos, nomes), pergunta primeiro.
+        Verdadeiro se pode seguir."""
+        plan = self.plan_page.plan
+        if plan is None or self.plan_page.get_visible_child_name() != "content":
+            return True
+        changed = sum(1 for a in plan.actions if a.enabled != a.default_enabled or a.source == "manual")
+        if not changed:
+            return True
+        return confirm(self, "Descartar as tuas escolhas no plano?",
+                       f"Mudaste {plural(changed, 'item', 'itens')} no plano atual (marcas, destinos ou nomes). "
+                       f"{why}, e essas escolhas perdem-se.",
+                       "Descartar e continuar", destructive=True)
+
     def _refresh_analysis(self) -> None:
         """Depois de mudar ficheiros, volta a analisar as mesmas pastas em segundo plano (como depois de anular):
         a Análise e os Duplicados mostram onde as coisas estão agora e um plano novo parte do que está no disco."""
@@ -486,7 +511,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             self.start_scan(COMPUTER_TOKEN if sr.whole_computer else list(sr.roots), refresh=True)
 
     def build_plan(self, mode: str) -> None:
-        if not self.scan_result or self._refuse_if_busy():
+        if not self.scan_result or self._refuse_if_busy() or not self.drop_edited_plan():
             return
         cancel = self._new_task("plan")
         skip = threading.Event()
@@ -590,33 +615,56 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
         run_bg(work, done, fail)
 
-    def trash_duplicates(self, paths: list[str]) -> None:
+    def trash_duplicates(self, paths: list[str], keepers: dict[str, list[str]],
+                         sigs: dict[str, tuple[int, int]]) -> None:
+        """Envia para o Lixo as cópias escolhidas. «keepers»: as cópias do mesmo grupo que ficam; cada uma só
+        sai se ainda for igual a uma delas (ver check_copy)."""
         if not self.scan_result or self._refuse_if_busy():
+            return
+        # Depois de as cópias saírem, o plano deixa de valer (ainda as movia): as escolhas feitas nele perdem-se.
+        if not self.drop_edited_plan(f"Enviar cópias {TRASH_TO} faz o plano deixar de valer"):
             return
         root = self.scan_result.root
         actions = [Action(i, "trash", p, "", tx.OTHER, 0, "Cópia duplicada", 1.0, "manual")
                    for i, p in enumerate(paths)]
         title = f"Remoção de duplicados em «{self.scan_result.title}»"
         cancel = self._start_busy("trash")
+        self.duplicates_page.show_trashing()
+        prog = Throttle(self.duplicates_page.update_trashing)
 
         def work():
-            return self.executor.apply(actions, root, title, remove_empty=False, cancel=cancel)
+            return self.executor.apply(actions, root, title, remove_empty=False, progress=prog, cancel=cancel,
+                                       check=lambda a: check_copy(a.src, keepers.get(a.src, []), sigs))
 
         def done(res):
             if self._end_busy(cancel):
                 return
-            removed = set(paths) - {p for p, _ in res.errors}
+            # O que saiu mesmo do disco: com «Cancelar» a meio, o resto nem chegou a ser tentado.
+            removed = {p for p in paths if not os.path.lexists(p)}
             self.scan_result.files = [f for f in self.scan_result.files if f.path not in removed]
+            if removed and self.plan_page.plan is not None:  # o plano ainda movia as cópias que foram para o Lixo
+                self.plan_page.reset()
+                self.nav_badges["plan"].set_text("")
             self.history_page.refresh()
             self.find_duplicates()
-            self.toast.show(f"{plural(res.ok, 'cópia enviada', 'cópias enviadas')} {TRASH_TO}.",
-                            "Anular", lambda: self.undo_session(res.session_id))
+            if res.ok:
+                self.toast.show(f"{plural(res.ok, 'cópia enviada', 'cópias enviadas')} {TRASH_TO}.",
+                                "Anular", lambda: self.undo_session(res.session_id))
+            if res.errors:
+                shown = "\n".join(f"{display_path(p)}\n{msg}" for p, msg in res.errors[:6])
+                more = len(res.errors) - 6
+                if more > 0:
+                    shown += f"\n… e mais {plural(more, 'cópia', 'cópias')}."
+                n = len(res.errors)  # cada linha diz o que aconteceu (ficou onde estava, apagada de vez…)
+                message(self, f"{plural(n, 'cópia não foi', 'cópias não foram')} {TRASH_TO}", shown,
+                        Gtk.MessageType.WARNING)
 
         def fail(e: Exception):
             if self._end_busy(cancel):
                 return
             self.history_page.refresh()
             message(self, f"Erro ao enviar as cópias {TRASH_TO}", str(e), Gtk.MessageType.ERROR)
+            self.find_duplicates()  # a lista volta a partir do que está no disco
 
         run_bg(work, done, fail)
 
@@ -629,7 +677,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         if s["undone"] == UNDONE:
             self.toast.show(f"{s['title']}: já foi anulada.")
             return
-        title, text, ok_label = undo_question(s)
+        title, text, ok_label = undo_question(s, [o for o in self.db.ops(session_id) if o["status"] == "ok"])
         if not confirm(self, title, text, ok_label):
             return
         rescan = self._task == "scan"  # uma análise a meio é interrompida e volta a fazer-se no fim

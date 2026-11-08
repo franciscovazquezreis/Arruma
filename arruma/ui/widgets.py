@@ -103,7 +103,7 @@ def without_colors(markup: str) -> str:
 
 def markup_column(column: Gtk.TreeViewColumn, cell: Gtk.CellRendererText, model_col: int) -> None:
     """A célula mostra o markup da coluna «model_col» do modelo. Na linha selecionada, as etiquetas
-    coloridas («palavras-chave», «• nova», «manter»…) ficam com a cor do texto: no fundo de destaque quase
+    coloridas («palavras-chave», «• nova», «fica»…) ficam com a cor do texto: no fundo de destaque quase
     não se liam."""
     def data(col, renderer, model, it, _data=None):
         markup = model.get_value(it, model_col) or ""
@@ -556,10 +556,13 @@ def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str,
     dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.QUESTION,
                             buttons=Gtk.ButtonsType.NONE, text=title)
     dlg.format_secondary_text(text)
-    dlg.add_button(cancel_label, Gtk.ResponseType.CANCEL)
+    cancel = dlg.add_button(cancel_label, Gtk.ResponseType.CANCEL)
     ok = dlg.add_button(ok_label, Gtk.ResponseType.OK)
     add_classes(ok, "destructive-action" if destructive else "suggested-action")
-    dlg.set_default_response(Gtk.ResponseType.OK)
+    # Numa ação que apaga ou desfaz, um Enter a mais (ou carregado sem querer) cancela em vez de confirmar.
+    dlg.set_default_response(Gtk.ResponseType.CANCEL if destructive else Gtk.ResponseType.OK)
+    if destructive:
+        cancel.grab_focus()
     resp = dlg.run()
     dlg.destroy()
     return resp == Gtk.ResponseType.OK

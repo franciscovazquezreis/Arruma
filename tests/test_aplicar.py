@@ -165,6 +165,53 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual((video.stat().st_size, (album / "foto.jpg").read_text()), (100_000, "foto"))
         self.assertFalse(dest.exists())
 
+    def test_move_to_another_disk_when_the_original_cannot_be_removed(self):
+        # Um ficheiro aberto noutro programa (no Windows não se apaga): nada fica a meio, e diz-se porquê.
+        pen = self.tmp / "Pen"
+        album = pen / "Viagem Paris"
+        for i in range(4):
+            write(album / f"foto_{i}.jpg", f"foto {i}")
+        video = write(pen / "ferias.mp4", "V" * 1000)
+        dest = self.root / "Imagens"
+        actions = [Action(0, "move_dir", str(album), str(dest / album.name), tx.IMAGE, 4, "", 1.0, "regras"),
+                   move(1, video, dest / video.name)]
+        real_remove = os.remove
+
+        def remove(path, *a, **k):
+            if str(path) == str(video):
+                raise PermissionError(errno.EACCES, "O ficheiro está a ser usado por outro processo", str(path))
+            return real_remove(path, *a, **k)
+
+        def remove_tree(path):  # apaga dois ficheiros do álbum e para no terceiro, aberto noutro programa
+            for i in (0, 1):
+                real_remove(os.path.join(path, f"foto_{i}.jpg"))
+            raise PermissionError(errno.EACCES, "O ficheiro está a ser usado por outro processo",
+                                  os.path.join(path, "foto_2.jpg"))
+        with self.cross_device(pen), mock.patch.object(os, "remove", remove), \
+                mock.patch.object(executor_mod, "_remove_tree", remove_tree):
+            res = self.ex.apply(actions, str(pen), "teste", remove_empty=False)
+        self.assertEqual(res.ok, 0)
+        self.assertEqual(len(res.errors), 2)
+        self.assertTrue(all("ficou onde estava" in msg for _, msg in res.errors), res.errors)
+        self.assertEqual(sorted(os.listdir(album)), [f"foto_{i}.jpg" for i in range(4)])
+        self.assertEqual((album / "foto_0.jpg").read_text(), "foto 0")
+        self.assertTrue(video.exists())
+        self.assertFalse(dest.exists() and os.listdir(dest))
+
+    def test_read_only_files_do_not_stop_a_move_to_another_disk(self):
+        # No Windows, um ficheiro só de leitura não se apaga sem lhe tirar essa marca.
+        pen = self.tmp / "Pen"
+        album = write(pen / "Álbum" / "foto.jpg", "foto").parent
+        os.chmod(album / "foto.jpg", 0o444)
+        dest = self.root / "Imagens"
+        with self.cross_device(pen):
+            res = self.ex.apply([Action(0, "move_dir", str(album), str(dest / album.name), tx.IMAGE, 4, "", 1.0,
+                                        "regras")], str(pen), "teste", remove_empty=False)
+        self.assertEqual((res.ok, res.errors), (1, []))
+        self.assertFalse(album.exists())
+        self.assertEqual((dest / "Álbum" / "foto.jpg").read_text(), "foto")
+        os.chmod(dest / "Álbum" / "foto.jpg", 0o644)
+
     def test_move_to_another_disk_cut_half_way(self):
         # O Arruma morre (corte de luz, sessão terminada) a meio de copiar um vídeo da pen: o original, inteiro,
         # fica no sítio e a cópia incompleta não fica com o nome certo. Anular não o dá como «outro item com o
@@ -451,6 +498,20 @@ class UndoTextTests(unittest.TestCase):
         self.assertIn("Ainda faltam 3 itens por voltar ao sítio onde estavam.",
                       undo_question({**s, "undone": 2, "n_left": 3})[1])
 
+    def test_where_things_go_back_to(self):
+        from arruma.core.system import TRASH_FROM, TRASH_TO
+        from arruma.ui.page_history import changes_summary, undo_question
+        t, d, r = (os.path.join(os.sep, "casa", n) for n in ("Transferências", "Documentos", "Repetidas"))
+        ops = [{"op": "move", "src": os.path.join(t, f"f{i}.pdf"), "dst": os.path.join(d, f"f{i}.pdf")}
+               for i in range(3)]
+        ops += [{"op": "trash", "src": os.path.join(r, "foto.jpg"), "dst": None},
+                {"op": "mkdir", "src": d, "dst": None}]
+        self.assertEqual(changes_summary(ops), [f"• 3 de {t} para {d}", f"• 1 de {r} {TRASH_TO}"])
+        self.assertEqual(changes_summary(ops, undo=True), [f"• 3 voltam de {d} para {t}",
+                                                           f"• 1 sai {TRASH_FROM} para {r}"])
+        s = {"title": "Arrumação de «Transferências»", "undone": 0, "n_ok": 4, "n_left": 4, "n_items": 4}
+        self.assertTrue(undo_question(s, ops)[1].endswith(f"\n\n• 3 voltam de {d} para {t}\n• 1 sai {TRASH_FROM} para {r}"))
+
     def test_report_gives_the_real_reasons(self):
         from arruma.ui.page_history import REPORT_MAX, undo_report
         res = Result(1, ok=3, errors=[("/r/a.pdf", "Já existe um item com o mesmo nome no local original."),
@@ -537,6 +598,102 @@ class WindowTests(unittest.TestCase):
     def moved(self):
         return [p.name for p in self.root.iterdir() if p.is_file()]
 
+    def test_a_new_plan_asks_before_dropping_your_choices(self):
+        plan = self.build_plan()
+        plan.actions[0].enabled = False  # desmarcado por ti
+        self.answers = [False]
+        self.win.build_plan("inside")
+        self.assertEqual(self.questions[-1][0], "Descartar as tuas escolhas no plano?")
+        self.assertIs(self.win.plan_page.plan, plan)
+        self.answers = [False]
+        self.win.start_scan(str(self.root))  # «Analisar novamente» também pergunta
+        self.assertEqual(len(self.questions), 2)
+        self.assertIs(self.win.plan_page.plan, plan)
+        self.win.build_plan("inside")  # sim
+        self.assertTrue(pump(lambda: self.win.plan_page.plan is not plan and self.win.plan_page.plan is not None))
+
+    def test_ignoring_a_folder_takes_it_out_of_the_current_analysis(self):
+        write(self.root / "Fotografias" / "foto.jpg", "igual " * 100)
+        write(self.root / "Repetidas" / "foto.jpg", "igual " * 100)
+        self.win.start_scan(str(self.root))
+        self.assertTrue(pump(lambda: self.win._task is None and self.win.scan_result is not None))
+        self.build_plan()
+        self.win.settings.excluded.append(str(self.root / "Fotografias"))
+        self.win.exclusions_changed()
+        self.assertIsNone(self.win.plan_page.plan)
+        self.assertTrue(pump(lambda: self.win._task is None and self.win.scan_result is not None))
+        self.assertFalse(any("Fotografias" in f.path for f in self.win.scan_result.files))
+        self.assertTrue(any("Repetidas" in f.path for f in self.win.scan_result.files))
+
+    def test_only_copies_that_are_still_copies_go_to_the_trash(self):
+        a = write(self.root / "Fotografias" / "foto.jpg", "igual " * 100)
+        b = write(self.root / "Repetidas" / "foto.jpg", "igual " * 100)
+        c = write(self.root / "Fotografias" / "praia.jpg", "praia " * 100)
+        d = write(self.root / "Repetidas" / "praia.jpg", "praia " * 100)
+        self.win.start_scan(str(self.root))
+        self.assertTrue(pump(lambda: self.win._task is None and self.win.scan_result is not None))
+        self.win.find_duplicates()
+        page = self.win.duplicates_page
+        self.assertTrue(pump(lambda: page.get_visible_child_name() == "content"))
+        sigs = {p: s for g in page.groups for p, s in g.sigs.items()}
+        d.write_text("praia, mas editada " * 100, encoding="utf-8")  # mudou depois da procura
+        bin_ = self.tmp / "Lixo"
+        bin_.mkdir()
+        with mock.patch.object(executor_mod, "send_to_trash", lambda p: os.rename(p, bin_ / os.path.basename(p))):
+            self.win.trash_duplicates([str(b), str(d)], {str(b): [str(a)], str(d): [str(c)]}, sigs)
+            self.assertTrue(pump(lambda: self.win._busy is None))
+        self.assertFalse(b.exists())
+        self.assertTrue(d.exists() and a.exists() and c.exists())
+        self.assertEqual(len(self.messages), 1)
+        title, text = self.messages[0]
+        from arruma.core.system import TRASH_TO
+        self.assertEqual(title, f"1 cópia não foi {TRASH_TO}")
+        self.assertIn("mudou desde a procura", text)
+        self.assertEqual(self.win.toast.text.get_text(), f"1 cópia enviada {TRASH_TO}.")
+
+    def duplicate_pairs(self, n):
+        pairs = []
+        for i in range(n):
+            a = write(self.root / "Fotografias" / f"foto_{i}.jpg", f"foto {i} " * 100)
+            b = write(self.root / "Repetidas" / f"foto_{i}.jpg", f"foto {i} " * 100)
+            pairs.append((str(a), str(b)))
+        self.win.start_scan(str(self.root))
+        self.assertTrue(pump(lambda: self.win._task is None and self.win.scan_result is not None))
+        self.win.find_duplicates()
+        self.assertTrue(pump(lambda: self.win.duplicates_page.get_visible_child_name() == "content"))
+        sigs = {p: s for g in self.win.duplicates_page.groups for p, s in g.sigs.items()}
+        return pairs, sigs
+
+    def test_trashing_duplicates_asks_before_dropping_an_edited_plan(self):
+        pairs, sigs = self.duplicate_pairs(1)
+        plan = self.build_plan()
+        plan.actions[0].enabled = False
+        self.answers = [False]
+        a, b = pairs[0]
+        self.win.trash_duplicates([b], {b: [a]}, sigs)
+        self.assertEqual(self.questions[-1][0], "Descartar as tuas escolhas no plano?")
+        self.assertIn("Enviar cópias", self.questions[-1][1])
+        self.assertTrue(os.path.exists(b))
+        self.assertIs(self.win.plan_page.plan, plan)
+
+    def test_cancelled_trash_keeps_the_rest_in_the_analysis(self):
+        pairs, sigs = self.duplicate_pairs(3)
+        bin_ = self.tmp / "Lixo"
+        bin_.mkdir()
+
+        def to_trash(p):  # «Cancelar» logo depois da primeira cópia
+            os.rename(p, bin_ / os.path.basename(p))
+            self.win._cancel.set()
+        trash = [b for _a, b in pairs]
+        with mock.patch.object(executor_mod, "send_to_trash", to_trash):
+            self.win.trash_duplicates(trash, {b: [a] for a, b in pairs}, sigs)
+            self.assertTrue(pump(lambda: self.win._busy is None))
+        left = {f.path for f in self.win.scan_result.files}
+        self.assertNotIn(trash[0], left)
+        self.assertTrue({trash[1], trash[2]} <= left)  # ficaram no disco e continuam na análise
+        self.assertTrue(pump(lambda: self.win.duplicates_page.get_visible_child_name() == "content"))
+        self.assertEqual(len(self.win.duplicates_page.groups), 2)
+
     def test_nothing_interrupts_the_apply(self):
         plan = self.build_plan()
         session = self.win.executor.apply([], str(self.root), "outra")  # uma sessão qualquer para anular
@@ -548,7 +705,7 @@ class WindowTests(unittest.TestCase):
         self.addCleanup(chooser.stop)
         for attempt in (lambda: self.win.start_scan(str(self.root)), self.win.find_duplicates,
                         lambda: self.win.build_plan("inside"), lambda: self.win.undo_session(session.session_id),
-                        lambda: self.win.trash_duplicates([str(self.root / "fatura_4.txt")]),
+                        lambda: self.win.trash_duplicates([str(self.root / "fatura_4.txt")], {}, {}),
                         self.win._choose_folder_header, lambda: self.win.apply_plan(plan.enabled())):
             attempt()
             self.assertFalse(cancel.is_set())

@@ -56,10 +56,12 @@ def strip_accents(text: str) -> str:
 
 # --------------------------------------------------------------------------- nomes
 
+# «Antigos», «Old» ou «Teste» dizem alguma coisa sobre o que lá está (o que já não se usa, uma
+# experiência), e um número pode ser um NIF, um processo ou um cliente: essas pastas ficam.
 _GENERIC_DIR = re.compile(
     r"^(nova pasta|new folder|untitled folder|pasta sem t[ií]tulo|sem t[ií]tulo|untitled|"
-    r"novo|nova|new|temp|tmp|misc|diversos|v[aá]rios|outros|stuff|coisas|lixo|old|"
-    r"antigo|antigos|teste|test|ficheiros|files|folder|pasta|desktop|downloads?|"
+    r"novo|nova|new|temp|tmp|misc|diversos|v[aá]rios|outros|stuff|coisas|lixo|"
+    r"ficheiros|files|folder|pasta|desktop|downloads?|"
     r"transfer[eê]ncias?|organizar|por organizar|para organizar|arrumar)"
     r"[\s_\-]*(\(?\d+\)?)?$",
     re.IGNORECASE,
@@ -71,12 +73,10 @@ def is_generic_dir_name(name: str) -> bool:
     n = name.strip()
     if _GENERIC_DIR.match(n):
         return True
-    compact = re.sub(r"[\s_\-\.]", "", n)
-    if compact.isdigit() and len(compact) > 4 and not re.fullmatch(r"(19|20)\d{2}(\d{2}){0,2}", compact):
-        return True
-    if re.fullmatch(r"[0-9a-f]{12,}", compact.lower()):
-        return True
-    return False
+    # Nomes gerados por programas («8f3a2c91d0e4…»): letras de a a f e algarismos, sem mais nada.
+    compact = re.sub(r"[\s_\-\.]", "", n).lower()
+    return bool(re.fullmatch(r"[0-9a-f]{12,}", compact) and re.search(r"[a-f]", compact)
+                and re.search(r"\d", compact))
 
 
 _UNCLEAR_FILE = re.compile(
@@ -105,7 +105,9 @@ def is_unclear_name(stem: str) -> bool:
         return True
     if re.fullmatch(r"[0-9a-f]{8,}", s.replace("-", "")):
         return True
-    if re.fullmatch(r"[a-z]{0,5}[\s_\-]?\d{4,}([\s_\-]\d+)*", s):
+    m = re.fullmatch(r"([a-z]{0,5})[\s_\-]?(\d{4,})([\s_\-]\d+)*", s)
+    # «IMG_0001», «doc20250312» não dizem nada; «IRS 2023», «IMI 2022» ou «CV 2024» são nomes escolhidos.
+    if m and not (len(m.group(1)) >= 2 and re.fullmatch(r"(19|20)\d{2}", m.group(2)) and not m.group(3)):
         return True
     letters = sum(c.isalpha() for c in s)
     return len(s) >= 10 and letters / len(s) < 0.35

@@ -189,6 +189,34 @@ def program_data_dirs() -> list[Path]:
     return dirs
 
 
+# Pastas que um serviço de sincronização envia para a nuvem (por nome de uma das pastas do caminho).
+_SYNC_DIRS = {
+    "dropbox": "Dropbox", "nextcloud": "Nextcloud", "owncloud": "ownCloud", "onedrive": "OneDrive",
+    "pclouddrive": "pCloud", "insync": "Insync", "google drive": "Google Drive", "icloud drive": "iCloud",
+    "iclouddrive": "iCloud", "mobile documents": "iCloud", "cloudstorage": "a nuvem",
+}
+
+
+def synced_service(path: str | Path) -> str | None:
+    """O serviço que sincroniza «path» com a nuvem, se houver: no Windows, as pastas pessoais redirecionadas
+    para o OneDrive; em todos, uma pasta do Dropbox, do Nextcloud, do iCloud Drive…"""
+    p = os.path.normcase(os.path.realpath(str(path)))
+    for var in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
+        root = os.environ.get(var)
+        if root:
+            r = os.path.normcase(os.path.realpath(root))
+            if p == r or p.startswith(r.rstrip(os.sep) + os.sep):
+                return "OneDrive"
+    for part in Path(os.path.realpath(str(path))).parts:  # sem normcase: no Windows ficava tudo em minúsculas
+        low = part.lower()
+        service = _SYNC_DIRS.get(low) or ("MEGA" if part == "MEGA" else None)  # «Mega» pode ser outra coisa
+        if service is None and low.startswith(("onedrive - ", "dropbox (")):
+            service = "OneDrive" if low.startswith("onedrive") else "Dropbox"
+        if service:
+            return service
+    return None
+
+
 def temp_dir() -> str:
     return os.path.realpath(tempfile.gettempdir())
 

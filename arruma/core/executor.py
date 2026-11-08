@@ -6,6 +6,8 @@ from __future__ import annotations
 import errno
 import os
 import shutil
+import stat
+import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,10 +56,50 @@ def safe_move(src: str, dst: str) -> None:
         except BaseException:
             _remove(tmp)
             raise
-        if is_dir:
-            shutil.rmtree(src)
-        else:
-            os.remove(src)
+        try:
+            if is_dir:
+                _remove_tree(src)
+            else:
+                os.remove(src)
+        except OSError as err:
+            # O original não saiu todo (um ficheiro aberto noutro programa, sem permissão…). Para não ficar metade
+            # em cada sítio, o que já tinha saído volta ao original e a cópia sai: fica tudo onde estava.
+            why = err.strerror or str(err)
+            try:
+                if is_dir:
+                    _restore_tree(dst, src)
+            except OSError:
+                raise OSError(err.errno, f"Não foi possível retirar o original ({why}). A cópia completa ficou em "
+                              f"«{dst}» e no sítio original ficaram só alguns ficheiros.", err.filename) from err
+            _remove(dst)
+            raise OSError(err.errno, f"Não foi possível retirar o original ({why}), por isso ficou onde estava.",
+                          err.filename) from err
+
+
+def _writable_and_retry(func, path, _exc) -> None:
+    """Para o shutil.rmtree: um ficheiro só de leitura (no Windows não se apaga) perde essa marca e tenta-se outra
+    vez. Se ainda assim falhar, o erro segue."""
+    os.chmod(path, stat.S_IREAD | stat.S_IWRITE | (stat.S_IEXEC if os.path.isdir(path) else 0))
+    func(path)
+
+
+def _remove_tree(path: str) -> None:
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=_writable_and_retry)
+    else:
+        shutil.rmtree(path, onerror=_writable_and_retry)
+
+
+def _restore_tree(copy: str, original: str) -> None:
+    """Põe de volta em «original» o que falta lá e está na cópia (o que já tinha sido apagado)."""
+    for dirpath, dirs, files in os.walk(copy):
+        rel = os.path.relpath(dirpath, copy)
+        target = original if rel == "." else os.path.join(original, rel)
+        os.makedirs(target, exist_ok=True)
+        for name in [*files, *(d for d in dirs if os.path.islink(os.path.join(dirpath, d)))]:
+            there = os.path.join(target, name)
+            if not os.path.lexists(there):
+                shutil.copy2(os.path.join(dirpath, name), there, follow_symlinks=False)
 
 
 def _remove(path: str) -> None:
@@ -83,17 +125,20 @@ class Executor:
     def apply(self, actions, root: str, title: str, cleanup_dirs: list[str] | None = None,
               protect: set[str] | None = None, remove_empty: bool = True,
               progress: ProgressFn | None = None, cancel: threading.Event | None = None,
-              roots: list[str] | None = None) -> Result:
+              roots: list[str] | None = None, check: Callable[..., None] | None = None) -> Result:
         """«roots»: as pastas analisadas (por defeito, só «root»). Só se removem pastas vazias dentro delas;
-        com pastas em discos diferentes (C: e D:), «root» é apenas a primeira."""
+        com pastas em discos diferentes (C: e D:), «root» é apenas a primeira. «check»: chamado mesmo antes de
+        enviar cada item para o Lixo; se levantar uma exceção, o item fica e o erro fica registado."""
         sid = self.db.new_session(root, title)
         self.running = sid
         try:
-            return self._apply(sid, actions, root, cleanup_dirs, protect, remove_empty, progress, cancel, roots)
+            return self._apply(sid, actions, root, cleanup_dirs, protect, remove_empty, progress, cancel, roots,
+                               check)
         finally:
             self.running = None
 
-    def _apply(self, sid, actions, root, cleanup_dirs, protect, remove_empty, progress, cancel, roots) -> Result:
+    def _apply(self, sid, actions, root, cleanup_dirs, protect, remove_empty, progress, cancel, roots,
+               check) -> Result:
         res = Result(sid)
         seq = 0
         protect = {os.path.normpath(p) for p in [*(protect or ()), *(roots or ()), root]}
@@ -146,6 +191,8 @@ class Executor:
                     res.ok += 1
                     res.bytes_moved += a.size
                 elif a.op == "trash":
+                    if check is not None:
+                        check(a)
                     op_id, where = first_log("trash", a.src, None, lambda: send_to_trash(a.src))
                     if where:  # só o macOS diz onde o item ficou no Lixo
                         self.db.set_op_dst(op_id, where)
