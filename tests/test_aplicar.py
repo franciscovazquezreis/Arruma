@@ -648,7 +648,8 @@ class WindowTests(unittest.TestCase):
         title, text = self.messages[0]
         self.assertEqual(title, "1 cópia ficou onde estava")
         self.assertIn("mudou desde a procura", text)
-        self.assertEqual(self.win.toast.text.get_text(), "1 cópia enviada para o Lixo.")
+        from arruma.core.system import TRASH_TO
+        self.assertEqual(self.win.toast.text.get_text(), f"1 cópia enviada {TRASH_TO}.")
 
     def test_nothing_interrupts_the_apply(self):
         plan = self.build_plan()
