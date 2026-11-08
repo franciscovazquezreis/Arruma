@@ -2,7 +2,7 @@
 
 O Arruma põe ordem nas pastas do teu computador. Escolhes uma pasta (ou várias, ou o computador inteiro), ele vê o que lá está e propõe um plano: que ficheiros vão para onde, que pastas novas aparecem, que restos podem ir para o Lixo. Só depois de reveres e aprovares esse plano é que alguma coisa muda. O Arruma assenta em três promessas, as mesmas que vês no fundo da vista Início: «Sem internet», porque nenhum ficheiro sai do computador; «Revês tudo antes», porque nada muda sem a tua aprovação; e «Sempre reversível», porque podes anular qualquer arrumação.
 
-Este manual descreve a versão 0.2.3, para Linux Mint (e também Ubuntu), Windows 10 e 11 e macOS 15 ou mais recente. Começa pela instalação e pela primeira arrumação, explica depois cada vista do Arruma e as regras que ele segue, e acaba com os problemas frequentes, as mensagens que podem aparecer, a atualização e a desinstalação, e o sítio onde ficam os teus dados.
+Este manual descreve a versão 0.2.4, para Linux Mint (e também Ubuntu), Windows 10 e 11 e macOS 15 ou mais recente. Começa pela instalação e pela primeira arrumação, explica depois cada vista do Arruma e as regras que ele segue, e acaba com os problemas frequentes, as mensagens que podem aparecer, a atualização e a desinstalação, e o sítio onde ficam os teus dados.
 
 ## Índice
 
@@ -24,13 +24,13 @@ Este manual descreve a versão 0.2.3, para Linux Mint (e também Ubuntu), Window
 
 | Sistema | Versão mínima | Palavra-passe de administrador | Ficheiro a descarregar |
 |---|---|---|---|
-| Linux | Linux Mint 21 ou Ubuntu 22.04 (o Arruma precisa do Python 3.10 ou mais recente) | Sim, na instalação normal; há uma alternativa sem ela | `arruma_0.2.3_all.deb` |
-| Windows | Windows 10 ou 11 de 64 bits | Não, na instalação normal | `Arruma-0.2.3-windows-instalador.exe` (ou a versão portátil, `Arruma-0.2.3-windows-portatil.zip`) |
-| macOS | macOS 15 (Sequoia) | Sim | `Arruma-0.2.3-macos-apple-silicon.pkg` ou `Arruma-0.2.3-macos-intel.pkg` |
+| Linux | Linux Mint 21 ou Ubuntu 22.04 (o Arruma precisa do Python 3.10 ou mais recente) | Sim, na instalação normal; há uma alternativa sem ela | `arruma_0.2.4_all.deb` |
+| Windows | Windows 10 ou 11 de 64 bits | Não, na instalação normal | `Arruma-0.2.4-windows-instalador.exe` (ou a versão portátil, `Arruma-0.2.4-windows-portatil.zip`) |
+| macOS | macOS 15 (Sequoia) | Sim | `Arruma-0.2.4-macos-apple-silicon.pkg` ou `Arruma-0.2.4-macos-intel.pkg` |
 
 O LMDE e o Debian 12 têm um Python que serve, mas o Arruma não foi testado neles. Para saberes que versão do Linux Mint tens, abre o menu e procura «Informações do sistema» (o nome pode variar ligeiramente). No Windows, a instalação ocupa cerca de 120 MB.
 
-Nos nomes dos ficheiros, `0.2.3` é a versão. Se descarregares outra, troca o número nos comandos deste manual (no endereço do `wget`, o número aparece duas vezes).
+Nos nomes dos ficheiros, `0.2.4` é a versão. Se descarregares outra, troca o número nos comandos deste manual (no endereço do `wget`, o número aparece duas vezes).
 
 ### Que Mac tenho?
 
@@ -66,20 +66,20 @@ Não precisas de saber usar o Terminal: copia cada comando, cola-o no Terminal c
 3. Descarrega o pacote. Se já o descarregaste no navegador (que o guarda em Transferências), salta este passo.
 
    ```bash
-   wget https://github.com/franciscovazquezreis/Arruma/releases/download/v0.2.3/arruma_0.2.3_all.deb
+   wget https://github.com/franciscovazquezreis/Arruma/releases/download/v0.2.4/arruma_0.2.4_all.deb
    ```
 
 4. Instala-o:
 
    ```bash
-   sudo apt install ./arruma_0.2.3_all.deb
+   sudo apt install ./arruma_0.2.4_all.deb
    ```
 
    O `./` antes do nome é obrigatório. Sem ele, o sistema procura um pacote com esse nome nos repositórios de software e não o encontra.
 
 5. Quando aparecer `[sudo] senha para ana:` (com o teu nome de utilizador em vez de «ana»), escreve a palavra-passe com que entras no computador e carrega em Enter. No Linux Mint aparece um asterisco por cada carácter que escreves.
 6. Se o Terminal perguntar `Deseja continuar? [S/n]`, carrega em Enter.
-7. Vão aparecendo linhas como `A ler as listas de pacotes... Pronto` e `A instalar arruma (0.2.3) ...`. Algumas saem com a grafia antiga (`actualizados`, `seleccionar`) e outras em português do Brasil ou em inglês, conforme as traduções instaladas no sistema. Perto do fim pode aparecer uma linha que começa por `N: O download é executado sem isolamento` (ou, em inglês, `N: Download is performed unsandboxed`) e acaba em `(13: Permissão recusada)`: é só um aviso, e a instalação já ficou feita. A instalação termina quando o Terminal volta a mostrar a linha de comandos, parecida com `ana@computador:~/Transferências$`, pronta para o comando seguinte. O apt não escreve «concluído».
+7. Vão aparecendo linhas como `A ler as listas de pacotes... Pronto` e `A instalar arruma (0.2.4) ...`. Algumas saem com a grafia antiga (`actualizados`, `seleccionar`) e outras em português do Brasil ou em inglês, conforme as traduções instaladas no sistema. Perto do fim pode aparecer uma linha que começa por `N: O download é executado sem isolamento` (ou, em inglês, `N: Download is performed unsandboxed`) e acaba em `(13: Permissão recusada)`: é só um aviso, e a instalação já ficou feita. A instalação termina quando o Terminal volta a mostrar a linha de comandos, parecida com `ana@computador:~/Transferências$`, pronta para o comando seguinte. O apt não escreve «concluído».
 8. Instala também os extras recomendados. O Linux Mint costuma deixá-los de fora; se já os tiveres, o comando não muda nada. Servem para ler a data e a câmara das fotografias, as etiquetas da música e os PDF digitalizados. O Arruma funciona sem eles, mas arruma melhor com eles.
 
    ```bash
@@ -94,7 +94,7 @@ O `wget` e o `apt` precisam de internet, porque o apt pode ter de descarregar pe
 
 #### Com duplo clique no ficheiro
 
-1. Descarrega `arruma_0.2.3_all.deb` no navegador. Fica na pasta Transferências.
+1. Descarrega `arruma_0.2.4_all.deb` no navegador. Fica na pasta Transferências.
 2. Abre essa pasta no gestor de ficheiros e faz duplo clique no ficheiro. Deve abrir-se o «Instalador de Pacotes» (no Linux Mint 22.1 e mais recentes é o programa Captain; no 21 e no 22.0, o GDebi).
 3. Carrega em «Instalar pacote» (no GDebi, «Instalar Pacote»).
 4. Escreve a tua palavra-passe quando o sistema a pedir. No Linux Mint 22.1 e mais recentes, a janela diz «Para instalar este pacote, é necessário autenticar-se.»; no GDebi o pedido pode aparecer em inglês («Authentication is required to run GDebi»).
@@ -106,19 +106,19 @@ Esta maneira ainda não foi experimentada num Linux Mint real. Se o duplo clique
 
 O `instalar.sh` instala o Arruma na tua pasta pessoal. Não precisa de `sudo`, mas também não instala as peças de que o Arruma depende (no Linux Mint costumam já lá estar).
 
-1. Na página de versões, descarrega «Source code (tar.gz)». Fica em Transferências com o nome `Arruma-0.2.3.tar.gz`.
+1. Na página de versões, descarrega «Source code (tar.gz)». Fica em Transferências com o nome `Arruma-0.2.4.tar.gz`.
 2. No Terminal:
 
    ```bash
    cd ~/Transferências
-   tar xzf Arruma-0.2.3.tar.gz
-   cd Arruma-0.2.3
+   tar xzf Arruma-0.2.4.tar.gz
+   cd Arruma-0.2.4
    ./instalar.sh
    ```
 
 3. Quando aparecer «✓ Arruma instalado com sucesso!», o Arruma está no menu (Acessórios → Arruma), no clique direito das pastas do Nemo e no Terminal (se o Terminal disser que o comando `arruma` não existe, termina a sessão e volta a entrar, ou escreve o caminho completo, `~/.local/bin/arruma`).
 
-Depois de instalar, move a pasta `Arruma-0.2.3` para fora de Transferências (por exemplo, para a tua pasta pessoal) e guarda-a: é lá que corres `./instalar.sh --remover` se um dia quiseres retirar esta cópia. Se a deixares em Transferências, o Arruma pode mudá-la de sítio quando arrumares essa pasta.
+Depois de instalar, move a pasta `Arruma-0.2.4` para fora de Transferências (por exemplo, para a tua pasta pessoal) e guarda-a: é lá que corres `./instalar.sh --remover` se um dia quiseres retirar esta cópia. Se a deixares em Transferências, o Arruma pode mudá-la de sítio quando arrumares essa pasta.
 
 As duas instalações não se misturam. Com o pacote `.deb` instalado, o `instalar.sh` recusa-se a instalar. E quando instalas o pacote, ele retira a cópia do `instalar.sh` que encontrar na tua pasta pessoal (o histórico e as definições ficam). Se essa cópia for mais recente do que o pacote, ou estiver numa pasta ligada a outro sítio, fica onde está e o pacote avisa (ver as [linhas «Arruma: …»](#linhas-arruma--durante-a-instalação-do-pacote)).
 
@@ -128,7 +128,7 @@ Se aparecer uma mensagem que não esperavas, vê [Mensagens que podem aparecer](
 
 As imagens do instalador foram tiradas num Windows em inglês. Por isso, a caixa do modo de instalação mostra «Cancel» e as caixas sobre a versão mostram «Cancel», «Yes» e «No»; num Windows em português leem-se «Cancelar», «Sim» e «Não». A pasta de instalação mostra o utilizador da máquina onde as imagens foram tiradas («runneradmin»); no teu computador aparece o teu nome.
 
-1. Descarrega `Arruma-0.2.3-windows-instalador.exe` da página de versões. O ficheiro fica na pasta Transferências. O navegador pode avisar que este ficheiro não costuma ser descarregado. No Microsoft Edge, o aviso aparece na lista de transferências, no canto superior direito: passa o rato por cima do ficheiro, carrega em «…» e escolhe «Manter»; se aparecer outro aviso, carrega em «Mostrar mais» e depois em «Manter mesmo assim» (a redação pode variar ligeiramente). Noutros navegadores, procura a opção para manter ou guardar o ficheiro.
+1. Descarrega `Arruma-0.2.4-windows-instalador.exe` da página de versões. O ficheiro fica na pasta Transferências. O navegador pode avisar que este ficheiro não costuma ser descarregado. No Microsoft Edge, o aviso aparece na lista de transferências, no canto superior direito: passa o rato por cima do ficheiro, carrega em «…» e escolhe «Manter»; se aparecer outro aviso, carrega em «Mostrar mais» e depois em «Manter mesmo assim» (a redação pode variar ligeiramente). Noutros navegadores, procura a opção para manter ou guardar o ficheiro.
 2. Faz duplo clique no ficheiro. Como o instalador não tem assinatura digital, o Windows mostra o aviso do SmartScreen «O Windows protegeu o seu PC». Carrega em «Mais informações» e depois em «Executar mesmo assim» (a redação pode variar ligeiramente; há versões que dizem «Executar de qualquer forma»). Se não aparecer «Mais informações» nem «Executar mesmo assim» e o Windows disser que bloqueou a aplicação, vê [Controlo Inteligente de Aplicações](#controlo-inteligente-de-aplicações-windows-11).
 3. Numa primeira instalação, aparece a caixa «Selecione o Modo de Instalação». Escolhe «Instalar apenas para mim (recomendado)».
 
@@ -169,7 +169,7 @@ A única saída é desativar o Controlo Inteligente de Aplicações nesse mesmo 
 
 A versão portátil não cria entrada no menu Iniciar nem clique direito nas pastas, e não aparece na lista de aplicações instaladas.
 
-1. Descarrega `Arruma-0.2.3-windows-portatil.zip`.
+1. Descarrega `Arruma-0.2.4-windows-portatil.zip`.
 2. Extrai o ficheiro: clique direito em cima dele → «Extrair tudo…» (o nome pode variar ligeiramente). Não abras o Arruma de dentro do `.zip` sem extrair.
 3. Abre a pasta `Arruma` que foi extraída e faz duplo clique em `Arruma.exe`. Tal como com o instalador, aparece o aviso do SmartScreen, e no Windows 11 o Controlo Inteligente de Aplicações, se estiver ativo, também bloqueia a versão portátil.
 
@@ -177,12 +177,12 @@ As definições e o histórico da versão portátil não ficam na pasta do Arrum
 
 ### macOS
 
-1. Descarrega o instalador certo para o teu Mac (ver [Que Mac tenho?](#que-mac-tenho)): `Arruma-0.2.3-macos-apple-silicon.pkg` ou `Arruma-0.2.3-macos-intel.pkg`. Se o Safari perguntar se permites transferências deste site, carrega em «Permitir» (a redação pode variar ligeiramente). O ficheiro fica na pasta Descargas (`~/Downloads`), a que o Arruma chama «Transferências».
+1. Descarrega o instalador certo para o teu Mac (ver [Que Mac tenho?](#que-mac-tenho)): `Arruma-0.2.4-macos-apple-silicon.pkg` ou `Arruma-0.2.4-macos-intel.pkg`. Se o Safari perguntar se permites transferências deste site, carrega em «Permitir» (a redação pode variar ligeiramente). O ficheiro fica na pasta Descargas (`~/Downloads`), a que o Arruma chama «Transferências».
 2. Faz duplo clique no ficheiro. Da primeira vez, o macOS recusa abri-lo, porque o instalador não tem assinatura de programador nem notarização da Apple. O aviso diz que a Apple não conseguiu verificar se o ficheiro está livre de software malicioso (a redação pode variar ligeiramente). Fecha-o com «Concluído» e não escolhas «Mover para o Lixo». Desde o macOS 15, o Control + clique já não serve para contornar este aviso.
 3. Abre o menu Apple → Definições do Sistema e, na barra lateral, carrega em «Privacidade e segurança» (pode ser preciso deslocar a barra para baixo).
 4. Desce até «Segurança». Ao lado da indicação de que o instalador do Arruma foi bloqueado, carrega em «Abrir» (o nome do botão pode variar ligeiramente, por exemplo «Abrir mesmo assim»). Este botão só fica disponível durante cerca de uma hora depois da tentativa do passo 2; se já lá não estiver, repete o passo 2.
 5. O aviso volta a aparecer, agora com a opção de abrir. Carrega em «Abrir», escreve a palavra-passe com que entras no Mac (ou usa o Touch ID) e confirma. A partir daqui, o ficheiro abre com duplo clique.
-6. Abre-se o instalador, «Instalar Arruma 0.2.3», na página «Introdução». Carrega em «Continuar».
+6. Abre-se o instalador, «Instalar Arruma 0.2.4», na página «Introdução». Carrega em «Continuar».
 
    ![Instalador do macOS na página «Introdução»](imagens/macos-01-instalador.png)
 
@@ -555,7 +555,7 @@ As definições guardam-se sozinhas assim que as mudas; não há botão para gua
 
 O botão com o «i» na barra de cima («Acerca do Arruma») mostra a versão, a licença (GNU General Public License, versão 3 ou posterior) e a ligação «Código-fonte no GitHub». «Créditos» mostra o autor e «Licença» o texto completo da licença. No Linux, a janela chama-se «Sobre Arruma». No Windows e no macOS há também o botão «Licenças de terceiros», que abre a pasta com as licenças dos componentes de outros autores que o Arruma traz.
 
-![Janela «Sobre Arruma» com a versão 0.2.3](imagens/10-acerca.png)
+![Janela «Sobre Arruma» com a versão 0.2.4](imagens/10-acerca.png)
 
 ## Regras de organização
 
@@ -755,7 +755,7 @@ O Arruma abre e analisa as pastas indicadas, todas juntas (o que não for pasta 
 
 ### Linux
 
-**O ícone do Arruma aparece como um quadrado vazio no menu ou na barra de tarefas.** Acontece quando uma cópia antiga, instalada com o `instalar.sh`, foi apagada à mão: a lista de ícones guardada na tua pasta pessoal continua a apontar para um ícone que já não existe. O pacote do Arruma, desde a versão 0.2.3, refaz essa lista quando é instalado. Se o quadrado continuar, refá-la tu no Terminal:
+**O ícone do Arruma aparece como um quadrado vazio no menu ou na barra de tarefas.** Acontece quando uma cópia antiga, instalada com o `instalar.sh`, foi apagada à mão: a lista de ícones guardada na tua pasta pessoal continua a apontar para um ícone que já não existe. O pacote do Arruma, desde a versão 0.2.4, refaz essa lista quando é instalado. Se o quadrado continuar, refá-la tu no Terminal:
 
 ```bash
 gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor
@@ -763,7 +763,7 @@ gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor
 
 Depois fecha e volta a abrir o Arruma. Se o menu continuar com o quadrado, termina a sessão e volta a entrar.
 
-**O `instalar.sh` responde «O pacote arruma 0.2.3 já está instalado no sistema.».** Tens o pacote `.deb` instalado, e o `instalar.sh` nunca se instala por cima dele. Para atualizar, instala o `.deb` mais recente. Se a linha seguinte disser «Ainda há uma cópia antiga na pasta pessoal; retira-a com ./instalar.sh --remover.», corre esse comando. Se disser que a cópia na pasta pessoal é mais recente do que o pacote e que é essa que se abre, escolhe uma das duas: ou retiras o pacote (`sudo apt remove arruma`) e continuas com o `instalar.sh`, ou retiras a cópia (`./instalar.sh --remover`) e instalas um `.deb` recente.
+**O `instalar.sh` responde «O pacote arruma 0.2.4 já está instalado no sistema.».** Tens o pacote `.deb` instalado, e o `instalar.sh` nunca se instala por cima dele. Para atualizar, instala o `.deb` mais recente. Se a linha seguinte disser «Ainda há uma cópia antiga na pasta pessoal; retira-a com ./instalar.sh --remover.», corre esse comando. Se disser que a cópia na pasta pessoal é mais recente do que o pacote e que é essa que se abre, escolhe uma das duas: ou retiras o pacote (`sudo apt remove arruma`) e continuas com o `instalar.sh`, ou retiras a cópia (`./instalar.sh --remover`) e instalas um `.deb` recente.
 
 **O Arruma não abre depois do `instalar.sh`.** O `instalar.sh` não instala as peças de que o Arruma depende. Instala-as (precisas da palavra-passe de administrador):
 
@@ -827,19 +827,19 @@ Estas tabelas juntam as mensagens que podes ver ao instalar, atualizar ou remove
 | `Enganou-se, tente de novo.` | A palavra-passe estava errada. | Escreve-a outra vez, com atenção às maiúsculas. |
 | `sudo: 3 tentativas incorrectas` | Erraste três vezes. | Repete o comando desde o início. |
 | `ana não está no ficheiro sudoers.` | A tua conta não é de administrador. | Pede a quem administra o computador que instale o pacote, ou usa o [`instalar.sh`](#só-para-ti-sem-palavra-passe-de-administrador), que não precisa de palavra-passe. |
-| `A ler as listas de pacotes... Pronto`, `A preparar para desempacotar ...`, `A descompactar arruma (0.2.3) ...`, `A instalar arruma (0.2.3) ...`, `A processar 'triggers' para ...` | Durante a instalação. | Nada; é o progresso normal. |
-| `Note, a seleccionar 'arruma' em vez de './arruma_0.2.3_all.deb'` | O apt reconheceu o ficheiro. | Nada. |
+| `A ler as listas de pacotes... Pronto`, `A preparar para desempacotar ...`, `A descompactar arruma (0.2.4) ...`, `A instalar arruma (0.2.4) ...`, `A processar 'triggers' para ...` | Durante a instalação. | Nada; é o progresso normal. |
+| `Note, a seleccionar 'arruma' em vez de './arruma_0.2.4_all.deb'` | O apt reconheceu o ficheiro. | Nada. |
 | `Os seguintes pacotes adicionais vão ser instalados:` (com traduções mais antigas, como as do Linux Mint 21: `Os pacotes adicionais seguintes serão instalados:`) | Faltam peças de que o Arruma precisa e o apt vai descarregá-las. | Responde à pergunta seguinte com Enter. É preciso internet. |
 | `Pacotes recomendados:` | O sistema não vai instalar os extras recomendados. | Instala-os à parte ([passo 8](#com-o-terminal-recomendado)). |
 | `Pacotes sugeridos:` | O apt lista idiomas extra para a leitura de digitalizações (espanhol, francês, alemão, italiano). | Nada, a não ser que queiras ler PDF digitalizados nesses idiomas. |
 | `Deseja continuar? [S/n]` | Há outros pacotes a instalar (ou a remover). | Carrega em Enter. O «S» maiúsculo é a resposta que vale quando só carregas em Enter. |
-| `N: O download é executado sem isolamento e como root, pois o arquivo '/home/ana/Transferências/arruma_0.2.3_all.deb' não pôde ser acessado pelo usuário '_apt'. - pkgAcquire::Run (13: Permissão recusada)` (em português do Brasil; com traduções mais antigas aparece em inglês: `N: Download is performed unsandboxed as root as file … couldn't be accessed by user '_apt'.`) | O ficheiro está na tua pasta pessoal, que o utilizador `_apt` do sistema não pode ler, e por isso o apt lê-o como administrador. | Nada; é só um aviso e a instalação já ficou feita. Se não o quiseres ver, descarrega o ficheiro para `/tmp` e instala-o de lá. |
+| `N: O download é executado sem isolamento e como root, pois o arquivo '/home/ana/Transferências/arruma_0.2.4_all.deb' não pôde ser acessado pelo usuário '_apt'. - pkgAcquire::Run (13: Permissão recusada)` (em português do Brasil; com traduções mais antigas aparece em inglês: `N: Download is performed unsandboxed as root as file … couldn't be accessed by user '_apt'.`) | O ficheiro está na tua pasta pessoal, que o utilizador `_apt` do sistema não pode ler, e por isso o apt lê-o como administrador. | Nada; é só um aviso e a instalação já ficou feita. Se não o quiseres ver, descarrega o ficheiro para `/tmp` e instala-o de lá. |
 | `bash: cd: /home/ana/Transferências: Ficheiro ou pasta inexistente` | A pasta de transferências tem outro nome (por exemplo `Downloads`). | Escreve `cd ~/Downloads` (ou o nome que a pasta tem no gestor de ficheiros) e continua. |
 | `Aguardando por trava de cache: Não foi possível obter a trava …` ou, mais tarde, `E: Não foi possível obter a trava …` (em português do Brasil; com traduções mais antigas, em inglês: `Waiting for cache lock: Could not get lock …` e `E: Could not get lock …`) | Outro programa, por exemplo o das atualizações do Linux Mint, está a instalar pacotes. | Com a primeira mensagem, espera: o apt continua sozinho quando o outro programa acabar. Se aparecer a mensagem com `E:`, espera que as atualizações terminem e repete o comando. |
-| `E: Ficheiro não suportado ./arruma_0.2.3_all.deb dado na linha de comandos` | O Terminal está noutra pasta e não encontra o ficheiro. | Escreve `cd ~/Transferências` (ou a pasta onde está o ficheiro) e repete. |
-| `E: Não foi possível encontrar o pacote arruma_0.2.3_all.deb` | Faltou o `./` antes do nome. | Repete com `./arruma_0.2.3_all.deb`. |
+| `E: Ficheiro não suportado ./arruma_0.2.4_all.deb dado na linha de comandos` | O Terminal está noutra pasta e não encontra o ficheiro. | Escreve `cd ~/Transferências` (ou a pasta onde está o ficheiro) e repete. |
+| `E: Não foi possível encontrar o pacote arruma_0.2.4_all.deb` | Faltou o `./` antes do nome. | Repete com `./arruma_0.2.4_all.deb`. |
 | `Os pacotes a seguir têm dependências não satisfeitas:` seguido de `arruma : Depende: python3 (>= 3.10)` (a redação pode variar ligeiramente) | O sistema é antigo demais (Linux Mint 20 ou anterior). | O Arruma precisa do Linux Mint 21 ou mais recente. |
-| `arruma já está na versão mais recente (0.2.3).` (com traduções mais antigas, como as do Linux Mint 21: `arruma já é a versão mais recente (0.2.3).`) | Já tens esta versão. | Nada. Para reinstalar, vê [Atualizar, reinstalar e desinstalar](#atualizar-reinstalar-e-desinstalar). |
+| `arruma já está na versão mais recente (0.2.4).` (com traduções mais antigas, como as do Linux Mint 21: `arruma já é a versão mais recente (0.2.4).`) | Já tens esta versão. | Nada. Para reinstalar, vê [Atualizar, reinstalar e desinstalar](#atualizar-reinstalar-e-desinstalar). |
 | `Será feito o DOWNGRADE aos seguintes pacotes:` | Tens instalada uma versão mais recente do que a do ficheiro. | Para ficares com a mais recente, escreve `n` e carrega em Enter. Enter sozinho aceita descer de versão. |
 
 #### No Instalador de Pacotes (duplo clique)
@@ -848,7 +848,7 @@ Estas tabelas juntam as mensagens que podes ver ao instalar, atualizar ou remove
 |---|---|---|
 | «Requer alterações em 3 outros pacotes» (no GDebi, «Requer a instalação de 3 pacotes»; o número varia) | Faltam peças de que o Arruma precisa. | Carrega em «Instalar pacote»; o instalador trata delas. |
 | «Para instalar este pacote, é necessário autenticar-se.» (no GDebi, «Authentication is required to run GDebi») | Pedido da palavra-passe. | Escreve a tua palavra-passe. |
-| «A instalação foi bem sucedida» e «arruma 0.2.3 está agora instalado.» (no GDebi, «Instalação completa» e «Pacote 'arruma_0.2.3_all.deb' foi instalado») | Fim da instalação. | Abre o Arruma no menu. |
+| «A instalação foi bem sucedida» e «arruma 0.2.4 está agora instalado.» (no GDebi, «Instalação completa» e «Pacote 'arruma_0.2.4_all.deb' foi instalado») | Fim da instalação. | Abre o Arruma no menu. |
 | «A mesma versão já está instalada» | Já tens esta versão. | Nada. Se quiseres reinstalar, o botão passa a «Reinstalar pacote». |
 | «Erro: Uma versão mais recente já se encontra instalada» | Tens uma versão mais recente. | O instalador não deixa descer de versão: ficas com a que tens. |
 | «Falha ao instalar todas as dependências», seguido de «To fix this run 'sudo apt-get install -f' in a terminal window.» (esta segunda frase pode aparecer em inglês) | Faltou instalar alguma peça. | No Terminal, corre `sudo apt-get install -f`. |
@@ -860,7 +860,7 @@ Só aparecem se houver uma cópia do `instalar.sh` na pasta pessoal de algum uti
 | Mensagem | O que quer dizer | O que fazer |
 |---|---|---|
 | «Arruma: retirada a cópia antiga em /home/ana/.local (o histórico e as definições ficam).» | O pacote retirou a cópia do `instalar.sh`. | Nada. |
-| «Arruma: a cópia em /home/ana/.local é a versão 0.3.0, mais recente do que este pacote (0.2.3).», seguida de «Fica onde está e continua a ter prioridade; para usar o pacote, retira-a com ./instalar.sh --remover (o histórico e as definições ficam).» | A cópia do `instalar.sh` é mais recente e continua a ser a que abre. | Se preferires o pacote, corre `./instalar.sh --remover` na pasta onde extraíste o código. |
+| «Arruma: a cópia em /home/ana/.local é a versão 0.3.0, mais recente do que este pacote (0.2.4).», seguida de «Fica onde está e continua a ter prioridade; para usar o pacote, retira-a com ./instalar.sh --remover (o histórico e as definições ficam).» | A cópia do `instalar.sh` é mais recente e continua a ser a que abre. | Se preferires o pacote, corre `./instalar.sh --remover` na pasta onde extraíste o código. |
 | «Arruma: a cópia antiga em /home/ana/.local está numa pasta ligada a outro sítio e ficou onde está.», seguida de «Para usar o pacote, retira-a com ./instalar.sh --remover (o histórico e as definições ficam).» | Por segurança, o pacote não mexe em pastas que apontam para outro sítio. | Corre `./instalar.sh --remover`. |
 | «Arruma: não foi possível retirar toda a cópia antiga em /home/ana/.local; retira-a com ./instalar.sh --remover.» | A remoção ficou a meio. | Corre `./instalar.sh --remover`. |
 | «Arruma: não foi possível procurar uma cópia antiga em /home/ana/.local.» | O pacote não conseguiu ver essa pasta pessoal. | Se esse utilizador alguma vez usou o `instalar.sh`, corre lá `./instalar.sh --remover`. |
@@ -870,11 +870,11 @@ Só aparecem se houver uma cópia do `instalar.sh` na pasta pessoal de algum uti
 | Mensagem | Quando aparece | O que fazer |
 |---|---|---|
 | «✓ Arruma instalado com sucesso!», com a lista dos sítios onde o encontras | Fim da instalação ou da atualização. | Abre o Arruma no menu, em Acessórios. |
-| «O Arruma 0.2.3 já está instalado. Não há nada a atualizar.» | Já tens esta versão. | Nada. |
-| «A atualizar o Arruma de 0.2.1 para 0.2.3 (o histórico e as definições ficam).» | Tens uma versão mais antiga. | Nada; a atualização continua sozinha. |
-| «Está instalado o Arruma 0.3.0, mais recente do que a versão desta cópia (0.2.3). Substituir? [s/N]» | Tens uma versão mais recente. | Enter (ou `n`) mantém a que tens e responde «Nada foi alterado.»; `s` substitui. |
-| «Está instalado o Arruma de versão desconhecida, que não se consegue comparar com esta cópia (0.2.3). Substituir? [s/N]» | Não foi possível ler a versão instalada. | `s` substitui; Enter mantém. |
-| «O pacote arruma 0.2.3 já está instalado no sistema.» | Tens o pacote `.deb` instalado. O `instalar.sh` recusa-se sempre. | Lê a linha seguinte; ver também [Problemas frequentes](#problemas-frequentes). |
+| «O Arruma 0.2.4 já está instalado. Não há nada a atualizar.» | Já tens esta versão. | Nada. |
+| «A atualizar o Arruma de 0.2.4 para 0.2.4 (o histórico e as definições ficam).» | Tens uma versão mais antiga. | Nada; a atualização continua sozinha. |
+| «Está instalado o Arruma 0.3.0, mais recente do que a versão desta cópia (0.2.4). Substituir? [s/N]» | Tens uma versão mais recente. | Enter (ou `n`) mantém a que tens e responde «Nada foi alterado.»; `s` substitui. |
+| «Está instalado o Arruma de versão desconhecida, que não se consegue comparar com esta cópia (0.2.4). Substituir? [s/N]» | Não foi possível ler a versão instalada. | `s` substitui; Enter mantém. |
+| «O pacote arruma 0.2.4 já está instalado no sistema.» | Tens o pacote `.deb` instalado. O `instalar.sh` recusa-se sempre. | Lê a linha seguinte; ver também [Problemas frequentes](#problemas-frequentes). |
 | «Opção desconhecida: --remove. Usa ./instalar.sh para instalar ou atualizar, ou ./instalar.sh --remover» / «para retirar o Arruma da pasta pessoal.» (com a opção que escreveste) | Escreveste uma opção que não existe. | Usa `./instalar.sh` ou `./instalar.sh --remover`. |
 | «✓ Arruma removido da pasta pessoal.» / «O histórico e as definições ficam em ~/.local/share/arruma e ~/.config/arruma.» | Depois de `./instalar.sh --remover`. | Nada. |
 
@@ -896,15 +896,15 @@ Aparecem logo que abres o instalador, quando o Arruma já está instalado (nesse
 
 | Mensagem | Quando aparece | O que fazer |
 |---|---|---|
-| «O Arruma 0.2.3 já está instalado. Não há nada a atualizar.» / «Para o reinstalar, desinstala-o primeiro.» | Já tens esta versão. | «OK» fecha o instalador sem mudar nada. Para reinstalar, desinstala primeiro. |
-| «O Arruma vai ser atualizado da versão … para a 0.2.3.» / «O histórico e as definições ficam.» | Tens uma versão mais antiga. | «OK» continua com a atualização; «Cancelar» fecha sem mudar nada. |
-| «Está instalado o Arruma …, mais recente do que a versão deste instalador (0.2.3).» / «Queres mesmo substituí-lo pela versão mais antiga?» | Tens uma versão mais recente. | «Não» fecha sem mudar nada, e é quase sempre o que convém. «Sim» substitui pela versão mais antiga. |
+| «O Arruma 0.2.4 já está instalado. Não há nada a atualizar.» / «Para o reinstalar, desinstala-o primeiro.» | Já tens esta versão. | «OK» fecha o instalador sem mudar nada. Para reinstalar, desinstala primeiro. |
+| «O Arruma vai ser atualizado da versão … para a 0.2.4.» / «O histórico e as definições ficam.» | Tens uma versão mais antiga. | «OK» continua com a atualização; «Cancelar» fecha sem mudar nada. |
+| «Está instalado o Arruma …, mais recente do que a versão deste instalador (0.2.4).» / «Queres mesmo substituí-lo pela versão mais antiga?» | Tens uma versão mais recente. | «Não» fecha sem mudar nada, e é quase sempre o que convém. «Sim» substitui pela versão mais antiga. |
 
 As versões 0.1.0 e 9.9.9 são versões de teste, usadas só para fazer aparecer estas caixas.
 
-![Caixa «O Arruma 0.2.3 já está instalado»](imagens/windows-07-mesma-versao.png)
+![Caixa «O Arruma 0.2.4 já está instalado»](imagens/windows-07-mesma-versao.png)
 
-![Caixa de atualização da versão 0.1.0 para a 0.2.3](imagens/windows-08-atualizar.png)
+![Caixa de atualização da versão 0.1.0 para a 0.2.4](imagens/windows-08-atualizar.png)
 
 ![Caixa de versão mais recente já instalada](imagens/windows-09-versao-mais-recente.png)
 
@@ -949,10 +949,10 @@ Aparecem por cima da página «Introdução», logo que o instalador abre.
 | Mensagem | Quando aparece | O que fazer |
 |---|---|---|
 | «Este instalador é para Macs com processador Intel» / «Este Mac tem um processador Apple (M1, M2, M3…). Descarrega o instalador «apple-silicon».» | Abriste o instalador Intel num Mac com processador Apple. | Não é possível continuar. Descarrega o `apple-silicon`. |
-| «O Arruma 0.2.3 já está instalado» / «Não há nada a atualizar. Para o reinstalar, põe primeiro o Arruma no Lixo.» | Já tens esta versão. | «Fechar». Para reinstalar, põe primeiro o Arruma no Lixo. |
-| «Está instalada uma versão mais recente» / «Está instalado o Arruma …, mais recente do que a versão deste instalador (0.2.3). Se continuares nesta janela, será substituído pela versão mais antiga. Pela linha de comandos fica como está; para o substituir, põe primeiro o Arruma no Lixo.» | Tens uma versão mais recente. | «OK». Para manter a mais recente, fecha o instalador sem continuar (Cmd+Q, ou menu Instalador → «Sair do Instalador»; o nome pode variar ligeiramente); se continuares, fica instalada a mais antiga. |
+| «O Arruma 0.2.4 já está instalado» / «Não há nada a atualizar. Para o reinstalar, põe primeiro o Arruma no Lixo.» | Já tens esta versão. | «Fechar». Para reinstalar, põe primeiro o Arruma no Lixo. |
+| «Está instalada uma versão mais recente» / «Está instalado o Arruma …, mais recente do que a versão deste instalador (0.2.4). Se continuares nesta janela, será substituído pela versão mais antiga. Pela linha de comandos fica como está; para o substituir, põe primeiro o Arruma no Lixo.» | Tens uma versão mais recente. | «OK». Para manter a mais recente, fecha o instalador sem continuar (Cmd+Q, ou menu Instalador → «Sair do Instalador»; o nome pode variar ligeiramente); se continuares, fica instalada a mais antiga. |
 
-![Caixa «O Arruma 0.2.3 já está instalado» no instalador do macOS](imagens/macos-02-mesma-versao.png)
+![Caixa «O Arruma 0.2.4 já está instalado» no instalador do macOS](imagens/macos-02-mesma-versao.png)
 
 ![Caixa «Está instalada uma versão mais recente» no instalador do macOS](imagens/macos-03-versao-mais-recente.png)
 
@@ -966,10 +966,10 @@ Em qualquer sistema, atualizar é instalar a versão nova da mesma maneira. O in
 
 ```bash
 cd ~/Transferências
-sudo apt install ./arruma_0.2.3_all.deb
+sudo apt install ./arruma_0.2.4_all.deb
 ```
 
-Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão actualizados os seguintes pacotes:` e `A descompactar arruma (0.2.3) sobre (0.2.1) ...`. Se for a mesma, responde `arruma já está na versão mais recente (0.2.3).` (com traduções mais antigas, `arruma já é a versão mais recente (0.2.3).`) e não muda nada. Se for mais recente, mostra `Será feito o DOWNGRADE aos seguintes pacotes:` (descer de versão) e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
+Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão actualizados os seguintes pacotes:` e `A descompactar arruma (0.2.4) sobre (0.2.4) ...`. Se for a mesma, responde `arruma já está na versão mais recente (0.2.4).` (com traduções mais antigas, `arruma já é a versão mais recente (0.2.4).`) e não muda nada. Se for mais recente, mostra `Será feito o DOWNGRADE aos seguintes pacotes:` (descer de versão) e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
 
 Com duplo clique no ficheiro, o Instalador de Pacotes recusa descer de versão e, para a mesma versão, oferece «Reinstalar pacote».
 
@@ -980,7 +980,7 @@ Com o `instalar.sh`, atualizar é descarregar o código novo, extraí-lo e corre
 **Reinstalar a mesma versão.** Serve, por exemplo, para reparar a instalação:
 
 ```bash
-sudo apt install --reinstall ./arruma_0.2.3_all.deb
+sudo apt install --reinstall ./arruma_0.2.4_all.deb
 ```
 
 Se já arrumaste Transferências com o Arruma, o pacote está agora em `~/Transferências/Instaladores`: escreve antes `cd ~/Transferências/Instaladores`.
@@ -999,7 +999,7 @@ Em qualquer dos casos ficam `~/.config/arruma` (definições) e `~/.local/share/
 
 ### Windows
 
-**Atualizar.** Descarrega o instalador novo e abre-o (o aviso do SmartScreen pode voltar a aparecer). Desta vez não há pergunta sobre o modo de instalação nem página da pasta, e as tarefas adicionais vêm como as escolheste da última vez. Aparece a caixa «O Arruma vai ser atualizado da versão … para a 0.2.3.»; carrega em «OK» e segue o assistente. Se o Arruma estiver aberto, o assistente mostra a página «A preparar para instalar» (ver [Outras caixas do assistente](#outras-caixas-do-assistente)).
+**Atualizar.** Descarrega o instalador novo e abre-o (o aviso do SmartScreen pode voltar a aparecer). Desta vez não há pergunta sobre o modo de instalação nem página da pasta, e as tarefas adicionais vêm como as escolheste da última vez. Aparece a caixa «O Arruma vai ser atualizado da versão … para a 0.2.4.»; carrega em «OK» e segue o assistente. Se o Arruma estiver aberto, o assistente mostra a página «A preparar para instalar» (ver [Outras caixas do assistente](#outras-caixas-do-assistente)).
 
 **Reinstalar a mesma versão.** O instalador recusa («Para o reinstalar, desinstala-o primeiro.»). Desinstala o Arruma e volta a instalá-lo. É também assim que mudas as tarefas adicionais, por exemplo para acrescentar ou tirar o «Arrumar com o Arruma» do clique direito.
 

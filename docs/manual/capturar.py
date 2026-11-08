@@ -609,6 +609,14 @@ def correr(casa: Path, saida: Path) -> int:
             yield lambda: not win.toast.get_child_revealed()
             yield 0.5
             self.captura("07-historico")
+            # «O que mudou» da arrumação: de que pastas para que pastas foram os itens.
+            mudou = botao(next(r for r in hist.list.get_children() if any(t.startswith("Arrumação") for t in textos(r))),
+                          "O que mudou")
+            mudou.set_active(True)
+            yield 1.0
+            self.captura("07e-historico-o-que-mudou")
+            mudou.set_active(False)
+            yield 0.5
 
             # Definições (o princípio e o fim da página).
             win.navigate("settings")

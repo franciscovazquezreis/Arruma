@@ -59,7 +59,7 @@ def changes_summary(ops, undo: bool = False, limit: int = 6) -> list[str]:
 def undo_question(s, ops=None) -> tuple[str, str, str]:
     """Título, texto e botão da confirmação antes de anular uma sessão (ou o que falta de uma anulada em parte).
     Com «ops» (as operações por anular), diz também de que pastas para que pastas voltam os itens."""
-    where = changes_summary(ops, undo=True) if ops else []
+    where = changes_summary(ops, undo=True, limit=4) if ops else []
     title, text, ok = _undo_question(s)
     return title, text + ("\n\n" + "\n".join(where) if where else ""), ok
 
@@ -138,8 +138,8 @@ class HistoryPage(Gtk.Stack):
         box.pack_start(label(s["title"], "section-title", ellipsize=True, max_width=60), False, False, 0)
         lines = changes_summary([o for o in self.win.db.ops(s["id"]) if o["status"] in ("ok", "anulada")],
                                 limit=12)
-        box.pack_start(label("\n".join(lines) or "Só pastas vazias removidas.", wrap=True, max_width=70,
-                             selectable=True), False, False, 0)
+        box.pack_start(label("\n".join(lines) or "Só pastas vazias removidas.", wrap=True, max_width=70),
+                       False, False, 0)
         if s["undone"]:
             box.pack_start(label("Esta arrumação foi anulada: os itens voltaram ao sítio onde estavam."
                                  if s["undone"] == UNDONE else "Parte destes itens já voltou ao sítio onde estava.",
@@ -178,8 +178,6 @@ class HistoryPage(Gtk.Stack):
             sub += f" · {display_path(s['root'])}"
             col.pack_start(label(sub, "small", "dim", ellipsize=True), False, False, 0)
             box.pack_start(col, True, True, 0)
-            if s["id"] != running:
-                box.pack_end(self._details_button(s), False, False, 0)
             if s["id"] == running:
                 box.pack_end(label("A decorrer", "pill", "info"), False, False, 0)
             elif s["undone"] == UNDONE:
@@ -191,6 +189,8 @@ class HistoryPage(Gtk.Stack):
                 box.pack_end(b, False, False, 0)
                 if partly:
                     box.pack_end(label("Anulada em parte", "pill", "off"), False, False, 0)
+            if s["id"] != running:
+                box.pack_end(self._details_button(s), False, False, 0)  # à esquerda do «Anular»
             row.add(box)
             self.list.add(row)
         self.list.show_all()
