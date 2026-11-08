@@ -165,6 +165,53 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual((video.stat().st_size, (album / "foto.jpg").read_text()), (100_000, "foto"))
         self.assertFalse(dest.exists())
 
+    def test_move_to_another_disk_when_the_original_cannot_be_removed(self):
+        # Um ficheiro aberto noutro programa (no Windows não se apaga): nada fica a meio, e diz-se porquê.
+        pen = self.tmp / "Pen"
+        album = pen / "Viagem Paris"
+        for i in range(4):
+            write(album / f"foto_{i}.jpg", f"foto {i}")
+        video = write(pen / "ferias.mp4", "V" * 1000)
+        dest = self.root / "Imagens"
+        actions = [Action(0, "move_dir", str(album), str(dest / album.name), tx.IMAGE, 4, "", 1.0, "regras"),
+                   move(1, video, dest / video.name)]
+        real_remove = os.remove
+
+        def remove(path, *a, **k):
+            if str(path) == str(video):
+                raise PermissionError(errno.EACCES, "O ficheiro está a ser usado por outro processo", str(path))
+            return real_remove(path, *a, **k)
+
+        def remove_tree(path):  # apaga dois ficheiros do álbum e para no terceiro, aberto noutro programa
+            for i in (0, 1):
+                real_remove(os.path.join(path, f"foto_{i}.jpg"))
+            raise PermissionError(errno.EACCES, "O ficheiro está a ser usado por outro processo",
+                                  os.path.join(path, "foto_2.jpg"))
+        with self.cross_device(pen), mock.patch.object(os, "remove", remove), \
+                mock.patch.object(executor_mod, "_remove_tree", remove_tree):
+            res = self.ex.apply(actions, str(pen), "teste", remove_empty=False)
+        self.assertEqual(res.ok, 0)
+        self.assertEqual(len(res.errors), 2)
+        self.assertTrue(all("ficou onde estava" in msg for _, msg in res.errors), res.errors)
+        self.assertEqual(sorted(os.listdir(album)), [f"foto_{i}.jpg" for i in range(4)])
+        self.assertEqual((album / "foto_0.jpg").read_text(), "foto 0")
+        self.assertTrue(video.exists())
+        self.assertFalse(dest.exists() and os.listdir(dest))
+
+    def test_read_only_files_do_not_stop_a_move_to_another_disk(self):
+        # No Windows, um ficheiro só de leitura não se apaga sem lhe tirar essa marca.
+        pen = self.tmp / "Pen"
+        album = write(pen / "Álbum" / "foto.jpg", "foto").parent
+        os.chmod(album / "foto.jpg", 0o444)
+        dest = self.root / "Imagens"
+        with self.cross_device(pen):
+            res = self.ex.apply([Action(0, "move_dir", str(album), str(dest / album.name), tx.IMAGE, 4, "", 1.0,
+                                        "regras")], str(pen), "teste", remove_empty=False)
+        self.assertEqual((res.ok, res.errors), (1, []))
+        self.assertFalse(album.exists())
+        self.assertEqual((dest / "Álbum" / "foto.jpg").read_text(), "foto")
+        os.chmod(dest / "Álbum" / "foto.jpg", 0o644)
+
     def test_move_to_another_disk_cut_half_way(self):
         # O Arruma morre (corte de luz, sessão terminada) a meio de copiar um vídeo da pen: o original, inteiro,
         # fica no sítio e a cópia incompleta não fica com o nome certo. Anular não o dá como «outro item com o
@@ -450,6 +497,20 @@ class UndoTextTests(unittest.TestCase):
         self.assertIn("Ainda falta 1 item por voltar ao sítio onde estava.", text)
         self.assertIn("Ainda faltam 3 itens por voltar ao sítio onde estavam.",
                       undo_question({**s, "undone": 2, "n_left": 3})[1])
+
+    def test_where_things_go_back_to(self):
+        from arruma.core.system import TRASH_FROM, TRASH_TO
+        from arruma.ui.page_history import changes_summary, undo_question
+        t, d, r = (os.path.join(os.sep, "casa", n) for n in ("Transferências", "Documentos", "Repetidas"))
+        ops = [{"op": "move", "src": os.path.join(t, f"f{i}.pdf"), "dst": os.path.join(d, f"f{i}.pdf")}
+               for i in range(3)]
+        ops += [{"op": "trash", "src": os.path.join(r, "foto.jpg"), "dst": None},
+                {"op": "mkdir", "src": d, "dst": None}]
+        self.assertEqual(changes_summary(ops), [f"• 3 de {t} para {d}", f"• 1 de {r} {TRASH_TO}"])
+        self.assertEqual(changes_summary(ops, undo=True), [f"• 3 voltam de {d} para {t}",
+                                                           f"• 1 sai {TRASH_FROM} para {r}"])
+        s = {"title": "Arrumação de «Transferências»", "undone": 0, "n_ok": 4, "n_left": 4, "n_items": 4}
+        self.assertTrue(undo_question(s, ops)[1].endswith(f"\n\n• 3 voltam de {d} para {t}\n• 1 sai {TRASH_FROM} para {r}"))
 
     def test_report_gives_the_real_reasons(self):
         from arruma.ui.page_history import REPORT_MAX, undo_report

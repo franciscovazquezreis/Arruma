@@ -672,7 +672,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
         if s["undone"] == UNDONE:
             self.toast.show(f"{s['title']}: já foi anulada.")
             return
-        title, text, ok_label = undo_question(s)
+        title, text, ok_label = undo_question(s, [o for o in self.db.ops(session_id) if o["status"] == "ok"])
         if not confirm(self, title, text, ok_label):
             return
         rescan = self._task == "scan"  # uma análise a meio é interrompida e volta a fazer-se no fim
