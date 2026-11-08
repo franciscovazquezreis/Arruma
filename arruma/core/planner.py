@@ -343,9 +343,10 @@ class Planner:
 
         files = [f for f in scan.files if f.parent in individual]
         # Atalhos e lançadores ficam onde estão: servem para abrir programas e sítios a partir dali.
-        shortcuts = [f for f in files if f.ext in tx.SHORTCUT_EXT]
+        shortcuts = [f for f in files if f.ext in tx.SHORTCUT_EXT or (not f.ext and _is_mac_alias(f.path))]
         if shortcuts:
-            files = [f for f in files if f.ext not in tx.SHORTCUT_EXT]
+            skip = {f.path for f in shortcuts}
+            files = [f for f in files if f.path not in skip]
             n = len(shortcuts)
             self.notes.append(f"{plural(n, 'atalho fica', 'atalhos ficam')} onde {'está' if n == 1 else 'estão'} "
                               f"(por exemplo, «{shortcuts[0].name}»): servem para abrir programas e sítios a "
@@ -716,6 +717,15 @@ def _documents_base(action: Action, plan: Plan) -> str:
         if is_within(action.src, root) and "documents" in bases:
             return bases["documents"]
     return plan.bases["documents"]
+
+
+def _is_mac_alias(path: str) -> bool:
+    """Um atalho do Finder (alias), que não tem extensão: começa por «book», quatro zeros e «mark»."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(12) == b"book\x00\x00\x00\x00mark"
+    except OSError:
+        return False
 
 
 def _companions(files: list[FileItem], placements: dict[int, Placement]) -> dict[int, int]:

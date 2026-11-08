@@ -477,10 +477,11 @@ class PlanChoiceTests(unittest.TestCase):
         r = self.tmp / "Secretária"
         for name in ("Banco.url", "firefox.desktop", "Google Chrome.lnk"):
             write(r / name, "[Desktop Entry]")
+        write(r / "Documentos alias", b"book\x00\x00\x00\x00mark\x00\x00\x00\x00" + b"\x00" * 200)  # Finder
         write(r / "relatorio_medico.txt", "Relatório médico: consulta de cardiologia, hemograma, receita")
         plan = Planner(scan(str(r)), self.settings, "personal").build()
         self.assertEqual([os.path.basename(a.src) for a in plan.actions], ["relatorio_medico.txt"])
-        self.assertTrue(any(n.startswith("3 atalhos ficam onde estão") for n in plan.notes), plan.notes)
+        self.assertTrue(any(n.startswith("4 atalhos ficam onde estão") for n in plan.notes), plan.notes)
 
     def test_saved_web_page_keeps_its_folder(self):
         r = self.tmp / "Transferências"
