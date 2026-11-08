@@ -537,6 +537,33 @@ class WindowTests(unittest.TestCase):
     def moved(self):
         return [p.name for p in self.root.iterdir() if p.is_file()]
 
+    def test_a_new_plan_asks_before_dropping_your_choices(self):
+        plan = self.build_plan()
+        plan.actions[0].enabled = False  # desmarcado por ti
+        self.answers = [False]
+        self.win.build_plan("inside")
+        self.assertEqual(self.questions[-1][0], "Descartar as tuas escolhas no plano?")
+        self.assertIs(self.win.plan_page.plan, plan)
+        self.answers = [False]
+        self.win.start_scan(str(self.root))  # «Analisar novamente» também pergunta
+        self.assertEqual(len(self.questions), 2)
+        self.assertIs(self.win.plan_page.plan, plan)
+        self.win.build_plan("inside")  # sim
+        self.assertTrue(pump(lambda: self.win.plan_page.plan is not plan and self.win.plan_page.plan is not None))
+
+    def test_ignoring_a_folder_takes_it_out_of_the_current_analysis(self):
+        write(self.root / "Fotografias" / "foto.jpg", "igual " * 100)
+        write(self.root / "Repetidas" / "foto.jpg", "igual " * 100)
+        self.win.start_scan(str(self.root))
+        self.assertTrue(pump(lambda: self.win._task is None and self.win.scan_result is not None))
+        self.build_plan()
+        self.win.settings.excluded.append(str(self.root / "Fotografias"))
+        self.win.exclusions_changed()
+        self.assertIsNone(self.win.plan_page.plan)
+        self.assertTrue(pump(lambda: self.win._task is None and self.win.scan_result is not None))
+        self.assertFalse(any("Fotografias" in f.path for f in self.win.scan_result.files))
+        self.assertTrue(any("Repetidas" in f.path for f in self.win.scan_result.files))
+
     def test_only_copies_that_are_still_copies_go_to_the_trash(self):
         a = write(self.root / "Fotografias" / "foto.jpg", "igual " * 100)
         b = write(self.root / "Repetidas" / "foto.jpg", "igual " * 100)

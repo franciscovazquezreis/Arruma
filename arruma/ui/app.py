@@ -417,7 +417,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                 message(self, f"Não é possível escolher «{os.path.basename(os.path.normpath(p)) or p}»", err,
                         Gtk.MessageType.WARNING)
                 return
-        if self._refuse_if_busy():
+        if self._refuse_if_busy() or (not refresh and not self.drop_edited_plan()):
             return
         if COMPUTER_TOKEN in raw_list or "/" in raw_list:
             title = "Todo o computador"
@@ -478,6 +478,31 @@ class ArrumaWindow(Gtk.ApplicationWindow):
 
         run_bg(work, done, fail)
 
+    def exclusions_changed(self) -> None:
+        """«Pastas a ignorar sempre» mudou: a análise atual volta a fazer-se já com a lista nova, e o plano e os
+        duplicados, que ainda contavam com essas pastas, deixam de valer."""
+        if not self.scan_result or self._busy:
+            return  # a meio de mudar ficheiros, a lista conta a partir da próxima análise
+        if self.plan_page.plan is not None:
+            self.plan_page.reset()
+            self.nav_badges["plan"].set_text("")
+        self._refresh_analysis()
+        self.toast.show("A análise foi refeita com a lista nova de pastas a ignorar.")
+
+    def drop_edited_plan(self) -> bool:
+        """Antes de trocar o plano por outro: se tem escolhas tuas (marcas, destinos, nomes), pergunta primeiro.
+        Verdadeiro se pode seguir."""
+        plan = self.plan_page.plan
+        if plan is None or self.plan_page.get_visible_child_name() != "content":
+            return True
+        changed = sum(1 for a in plan.actions if a.enabled != a.default_enabled or a.source == "manual")
+        if not changed:
+            return True
+        return confirm(self, "Descartar as tuas escolhas no plano?",
+                       f"Mudaste {plural(changed, 'item', 'itens')} no plano atual (marcas, destinos ou nomes). "
+                       "Um plano novo começa do zero, com as propostas do Arruma, e essas escolhas perdem-se.",
+                       "Descartar e continuar", destructive=True)
+
     def _refresh_analysis(self) -> None:
         """Depois de mudar ficheiros, volta a analisar as mesmas pastas em segundo plano (como depois de anular):
         a Análise e os Duplicados mostram onde as coisas estão agora e um plano novo parte do que está no disco."""
@@ -486,7 +511,7 @@ class ArrumaWindow(Gtk.ApplicationWindow):
             self.start_scan(COMPUTER_TOKEN if sr.whole_computer else list(sr.roots), refresh=True)
 
     def build_plan(self, mode: str) -> None:
-        if not self.scan_result or self._refuse_if_busy():
+        if not self.scan_result or self._refuse_if_busy() or not self.drop_edited_plan():
             return
         cancel = self._new_task("plan")
         skip = threading.Event()
@@ -613,6 +638,9 @@ class ArrumaWindow(Gtk.ApplicationWindow):
                 return
             removed = set(paths) - {p for p, _ in res.errors}
             self.scan_result.files = [f for f in self.scan_result.files if f.path not in removed]
+            if removed and self.plan_page.plan is not None:  # o plano ainda movia as cópias que foram para o Lixo
+                self.plan_page.reset()
+                self.nav_badges["plan"].set_text("")
             self.history_page.refresh()
             self.find_duplicates()
             if res.ok:

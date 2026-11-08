@@ -56,6 +56,7 @@ class Action:
     source: str
     renamed: bool = False
     enabled: bool = True
+    default_enabled: bool = True  # como o plano o propôs (cópias de segurança e afins vêm por confirmar)
     area: str | None = None
     base_key: str = ""
     count: int = 1
@@ -498,7 +499,7 @@ class Planner:
         def add(op, src, dst, kind, size, p: Placement, count=1, enabled=True):
             nonlocal next_id
             actions.append(Action(next_id, op, src, dst, kind, size, p.reason, p.confidence, p.source,
-                                  renamed=bool(p.new_name), enabled=enabled, area=p.area,
+                                  renamed=bool(p.new_name), enabled=enabled, default_enabled=enabled, area=p.area,
                                   base_key=p.base, count=count))
             next_id += 1
 

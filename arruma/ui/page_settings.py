@@ -166,9 +166,11 @@ class SettingsPage(Gtk.ScrolledWindow):
             self.win.settings.excluded.append(path)
             self.win.settings.save()
             self._rebuild_excluded()
+            self.win.exclusions_changed()
 
     def _remove_excluded(self, path: str) -> None:
         if path in self.win.settings.excluded:
             self.win.settings.excluded.remove(path)
             self.win.settings.save()
             self._rebuild_excluded()
+            self.win.exclusions_changed()

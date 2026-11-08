@@ -556,10 +556,13 @@ def confirm(parent: Gtk.Window, title: str, text: str, ok_label: str,
     dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=Gtk.MessageType.QUESTION,
                             buttons=Gtk.ButtonsType.NONE, text=title)
     dlg.format_secondary_text(text)
-    dlg.add_button(cancel_label, Gtk.ResponseType.CANCEL)
+    cancel = dlg.add_button(cancel_label, Gtk.ResponseType.CANCEL)
     ok = dlg.add_button(ok_label, Gtk.ResponseType.OK)
     add_classes(ok, "destructive-action" if destructive else "suggested-action")
-    dlg.set_default_response(Gtk.ResponseType.OK)
+    # Numa ação que apaga ou desfaz, um Enter a mais (ou carregado sem querer) cancela em vez de confirmar.
+    dlg.set_default_response(Gtk.ResponseType.CANCEL if destructive else Gtk.ResponseType.OK)
+    if destructive:
+        cancel.grab_focus()
     resp = dlg.run()
     dlg.destroy()
     return resp == Gtk.ResponseType.OK

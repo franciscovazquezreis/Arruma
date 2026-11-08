@@ -68,9 +68,11 @@ def apply_summary(actions: list[Action], plan: Plan | None = None, remove_empty:
     são só ficheiros temporários: também pode ir o que arrastaste para lá, incluindo pastas inteiras."""
     moves = [a for a in actions if a.op in ("move", "move_dir")]
     trash = [a for a in actions if a.op == "trash"]
-    temp = sum(1 for a in trash if a.kind == tx.JUNK)
+    # Ficheiros temporários que o plano deixou por confirmar: podem ser cópias de segurança (.bak, .old).
+    backups = sum(1 for a in trash if a.kind == tx.JUNK and not a.default_enabled)
+    temp = sum(1 for a in trash if a.kind == tx.JUNK) - backups
     folders = [a for a in trash if a.kind != tx.JUNK and os.path.isdir(a.src)]
-    files = len(trash) - temp - len(folders)
+    files = len(trash) - temp - backups - len(folders)
     empty = sum(1 for a in actions if a.op == "rmdir")
     parts = []
     if moves:
@@ -92,6 +94,10 @@ def apply_summary(actions: list[Action], plan: Plan | None = None, remove_empty:
             parts.append(f"{plural(low, 'item tem', 'itens têm')} pouca certeza (filtro «A rever (pouca certeza)»).")
     if temp:
         parts.append(f"{plural(temp, 'ficheiro temporário vai', 'ficheiros temporários vão')} {TRASH_TO}.")
+    if backups:
+        what = plural(backups, "ficheiro que pode ser uma cópia de segurança (.bak, .old…) vai",
+                      "ficheiros que podem ser cópias de segurança (.bak, .old…) vão")
+        parts.append(f"{what} {TRASH_TO}.")
     if files:
         parts.append(f"{plural(files, 'ficheiro que escolheste vai', 'ficheiros que escolheste vão')} {TRASH_TO}.")
     if folders:
@@ -585,6 +591,10 @@ class PlanPage(Gtk.Stack):
 
     def _select_all(self, value: bool) -> None:
         for a in self._visible_actions():
+            # O que vai para o Lixo e vinha por confirmar (cópias de segurança .bak e .old, ficheiros temporários
+            # recentes) só fica marcado à mão, um a um.
+            if value and a.op == "trash" and not a.default_enabled:
+                continue
             a.enabled = value
         self._repopulate()
 
