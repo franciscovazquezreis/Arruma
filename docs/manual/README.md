@@ -739,7 +739,7 @@ brew install tesseract tesseract-lang poppler
 
 No gestor de ficheiros do Linux Mint, seleciona uma ou mais pastas, clica com o botão direito e escolhe «Arrumar com o Arruma». O Arruma abre e começa logo a análise; com várias pastas, analisa-as todas juntas. A opção só aparece com pastas selecionadas: não aparece no fundo de uma pasta aberta nem em ficheiros. Se não aparecer logo a seguir à instalação, fecha e volta a abrir o gestor de ficheiros.
 
-No Linux, o Arruma tem uma só janela. Se já estiver aberto, o pedido do Nemo vai para essa janela e começa uma análise nova, que substitui a análise e o plano que lá estavam, sem perguntar. Aplica ou abandona o plano antes de usares o clique direito. Enquanto o Arruma estiver a arrumar, o pedido do Nemo é recusado com a notificação «O Arruma ainda está a arrumar. Espera que termine.»; o mesmo acontece enquanto anula.
+No Linux, o Arruma tem uma só janela. Se já estiver aberto, o pedido do Nemo vai para essa janela e começa uma análise nova, que substitui a análise e o plano que lá estavam. Se o plano tiver mudanças tuas, o Arruma pergunta primeiro «Descartar as tuas escolhas no plano?». Enquanto o Arruma estiver a arrumar, o pedido do Nemo é recusado com a notificação «O Arruma ainda está a arrumar. Espera que termine.»; o mesmo acontece enquanto anula.
 
 ### Windows (Explorador de Ficheiros)
 
@@ -884,7 +884,7 @@ Só aparecem se houver uma cópia do `instalar.sh` na pasta pessoal de algum uti
 |---|---|---|
 | «✓ Arruma instalado com sucesso!», com a lista dos sítios onde o encontras | Fim da instalação ou da atualização. | Abre o Arruma no menu, em Acessórios. |
 | «O Arruma 0.2.4 já está instalado. Não há nada a atualizar.» | Já tens esta versão. | Nada. |
-| «A atualizar o Arruma de 0.2.4 para 0.2.4 (o histórico e as definições ficam).» | Tens uma versão mais antiga. | Nada; a atualização continua sozinha. |
+| «A atualizar o Arruma de 0.2.3 para 0.2.4 (o histórico e as definições ficam).» | Tens uma versão mais antiga. | Nada; a atualização continua sozinha. |
 | «Está instalado o Arruma 0.3.0, mais recente do que a versão desta cópia (0.2.4). Substituir? [s/N]» | Tens uma versão mais recente. | Enter (ou `n`) mantém a que tens e responde «Nada foi alterado.»; `s` substitui. |
 | «Está instalado o Arruma de versão desconhecida, que não se consegue comparar com esta cópia (0.2.4). Substituir? [s/N]» | Não foi possível ler a versão instalada. | `s` substitui; Enter mantém. |
 | «O pacote arruma 0.2.4 já está instalado no sistema.» | Tens o pacote `.deb` instalado. O `instalar.sh` recusa-se sempre. | Lê a linha seguinte; ver também [Problemas frequentes](#problemas-frequentes). |
@@ -982,7 +982,7 @@ cd ~/Transferências
 sudo apt install ./arruma_0.2.4_all.deb
 ```
 
-Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão actualizados os seguintes pacotes:` e `A descompactar arruma (0.2.4) sobre (0.2.4) ...`. Se for a mesma, responde `arruma já está na versão mais recente (0.2.4).` (com traduções mais antigas, `arruma já é a versão mais recente (0.2.4).`) e não muda nada. Se for mais recente, mostra `Será feito o DOWNGRADE aos seguintes pacotes:` (descer de versão) e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
+Se a versão instalada for mais antiga, o apt atualiza sem perguntar e mostra `Serão actualizados os seguintes pacotes:` e `A descompactar arruma (0.2.4) sobre (0.2.3) ...`. Se for a mesma, responde `arruma já está na versão mais recente (0.2.4).` (com traduções mais antigas, `arruma já é a versão mais recente (0.2.4).`) e não muda nada. Se for mais recente, mostra `Será feito o DOWNGRADE aos seguintes pacotes:` (descer de versão) e pergunta `Deseja continuar? [S/n]`. Aqui, cuidado: Enter sozinho aceita descer de versão. Para manteres a mais recente, escreve `n` e carrega em Enter.
 
 Com duplo clique no ficheiro, o Instalador de Pacotes recusa descer de versão e, para a mesma versão, oferece «Reinstalar pacote».
 
